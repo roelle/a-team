@@ -159,7 +159,11 @@ class Observer(ABC):
                         ag["total_tokens"] += calc_tot
                         total_tokens += calc_tot
 
-                cost = calculate_cost(in_tok, out_tok, model)
+                # A runner billed by the provider reports what the turn cost,
+                # cache reads included, which beats an estimate from the rates.
+                cost = ev.get("cost_usd")
+                if cost is None:
+                    cost = calculate_cost(in_tok, out_tok, model)
                 if cost is None:
                     # Unpriced model: count the turn, refuse to invent a figure,
                     # and remember why so the report can say which agent and

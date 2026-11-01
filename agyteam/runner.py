@@ -7,6 +7,7 @@ lives in a shared database, changing any one without touching the others.
 
     AGYTEAM_RUNNER=agyteam.runner_agy:AgyRunner        # default
     AGYTEAM_RUNNER=agyteam.runner_sdk:SdkRunner        # where the SDK is installed
+    AGYTEAM_RUNNER=agyteam.runner_claude:ClaudeRunner  # on Claude, with an API key
     AGYTEAM_RUNNER_CONFIG='{"binary": "agy"}'          # optional, JSON
 
 Why this exists: without it, delivery is passive — mail sits in an inbox until
@@ -35,8 +36,8 @@ from pathlib import Path
 # the model provider killed two unattended runs in ten minutes: the SDK retried
 # twice, gave up, and the supervisor logged it and moved on -- losing a run with
 # real state in it. Retrying here costs a sleep; not retrying costs the episode.
-RETRYABLE = ("503", "unavailable", "high demand", "429", "resource_exhausted",
-             "rate limit", "timeout", "temporarily")
+RETRYABLE = ("503", "529", "unavailable", "overloaded", "high demand", "429",
+             "resource_exhausted", "rate limit", "timeout", "temporarily")
 RETRY_ATTEMPTS = int(os.environ.get("AGYTEAM_RETRY_ATTEMPTS", 4))
 RETRY_BASE_SECONDS = float(os.environ.get("AGYTEAM_RETRY_BASE", 5))
 

@@ -7,6 +7,23 @@ the README for what counts as the public surface.
 
 ## [Unreleased]
 
+## [3.20.0] - 2026-11-01
+
+### Added
+- **Agents can run on Claude.** `agyteam.runner_claude:ClaudeRunner` wakes
+  agents through the Claude Agent SDK, with an API key or Bedrock, Vertex or
+  Foundry. A whole team can use it, or one agent in a mixed team. Agents keep
+  the same team tools, brief, memory and roster policy. Each agent has a fixed
+  tool list, and `tools_off` accepts either runtime's tool names. Sessions
+  live in `<team_dir>/claude`, and provider keys are unset in agents' shells.
+  Tool calls are audited, and each turn records its tokens, context size
+  and cost. Install it with `pip install "agyteam[claude]"`.
+
+### Changed
+- A provider's `529` or "overloaded" now counts as a transient failure, and
+  is waited out like a `429`.
+- The cost report uses what a turn says it cost, when it says so.
+
 ## [3.19.0] - 2026-10-31
 
 ### Added
@@ -569,7 +586,8 @@ MCP memory server.
 ## [1.0] - 2026-09-08
 Milestone tag (pre-semver).
 
-[Unreleased]: https://github.com/roelle/agy-team/compare/v3.19.0...HEAD
+[Unreleased]: https://github.com/roelle/agy-team/compare/v3.20.0...HEAD
+[3.20.0]: https://github.com/roelle/agy-team/compare/v3.19.0...v3.20.0
 [3.19.0]: https://github.com/roelle/agy-team/compare/v3.18.0...v3.19.0
 [3.18.0]: https://github.com/roelle/agy-team/compare/v3.17.0...v3.18.0
 [3.17.0]: https://github.com/roelle/agy-team/compare/v3.16.0...v3.17.0

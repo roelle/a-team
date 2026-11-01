@@ -523,9 +523,39 @@ they decide *how* an agent is woken:
 |---|---|---|
 | `agyteam.runner_agy:AgyRunner` (library default) | `agy --conversation <id> -p "<message>"` | the agy CLI |
 | `agyteam.runner_sdk:SdkRunner` (what `./run` uses with a Gemini key) | a persistent SDK session per agent | `google-antigravity` |
-| `agyteam.runner_mixed:MixedRunner` | per-agent runner from `roster.json` | `google-antigravity` |
+| `agyteam.runner_claude:ClaudeRunner` | a Claude Agent SDK session per agent, resumed each turn | `pip install "agyteam[claude]"`, `ANTHROPIC_API_KEY` |
+| `agyteam.runner_mixed:MixedRunner` | per-agent runner from `roster.json` | whatever those runners need |
 | `agyteam.runner_host:HostRunner` | a host's own start / deliver / stop-hook commands, from config | any hosted runtime |
 | your own | anything | — |
+
+**`ClaudeRunner` runs agents on Claude**, with no Antigravity anywhere. Set
+`AGYTEAM_RUNNER=agyteam.runner_claude:ClaudeRunner` and `ANTHROPIC_API_KEY` in
+the supervisor's environment, or put one agent on it in a mixed team:
+`{"name": "qa", "runner": "agyteam.runner_claude:ClaudeRunner", "model":
+"claude-opus-5-5", "effort": "high"}`. The default model is `claude-opus-5-5`.
+Bedrock, Vertex and Foundry work too, through their usual `CLAUDE_CODE_USE_*`
+settings. A claude.ai login does not: Anthropic does not allow one in a
+product built on this SDK.
+
+- **Same team, same tools.** Agents get the same MCP servers, brief, memory
+  and roster policy as on any runtime.
+- **Agents have a fixed tool list.** A call outside it is refused, because
+  nobody is there to approve it. `tools_off` takes either runtime's names:
+  `run_command` withholds `Bash`.
+- **Sessions live in `<team_dir>/claude`,** apart from your own `~/.claude`.
+  Your settings and `CLAUDE.md` files are not loaded unless you set
+  `"setting_sources"`.
+- **Provider keys are unset in agents' shells.** That keeps them out of a
+  stray `env`. It does not stop a determined agent, which runs as the same
+  user. Only a container does.
+- **Spending is yours to limit.** This bills your API key. The runner config
+  takes `max_budget_usd` and `max_turns` per turn, off by default, and turns
+  are recorded with what they cost.
+- **It does not contain agents.** File tools are held to an agent's workspaces
+  by the policy, but `Bash` runs with the supervisor's access. Run the team in
+  a container, or withhold `Bash`.
+- **Recall needs a judge of its own.** With no Gemini key and no agy CLI, set
+  `"judge_via"` to a command that calls Claude (see Recall).
 
 **`HostRunner` is for a runtime that owns the agent loop** — an IDE or hosted
 agent platform whose whole surface is "start a conversation", "deliver a
@@ -1564,7 +1594,7 @@ Releases follow [Semantic Versioning](https://semver.org/), tagged
 in [RELEASING.md](RELEASING.md). Pin a tag rather than `main`:
 
 ```bash
-pip install "agyteam @ git+https://github.com/roelle/agy-team.git@v3.19.0"
+pip install "agyteam @ git+https://github.com/roelle/agy-team.git@v3.20.0"
 python -m agyteam.supervisor --version
 ```
 

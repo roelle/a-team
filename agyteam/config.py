@@ -163,6 +163,10 @@ PRICING = {
     "gemini-3.5-flash-lite": (0.10, 0.40),
     "gemini-3.1-pro-preview": (2.00, 12.00),
     "antigravity-preview-05-2026": (2.00, 12.00),
+    "claude-opus-5-5": (4.00, 20.00),
+    "claude-sonnet-5-5": (2.00, 10.00),
+    "claude-haiku-5-5": (0.10, 0.50),
+    "claude-fable-5-1": (10.00, 50.00),
 }
 DEFAULT_PRICE = (2.00, 12.00)
 
