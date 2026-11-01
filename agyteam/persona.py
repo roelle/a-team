@@ -223,6 +223,12 @@ kind="blocker" means you cannot go on, and says the least they must do. Both
 land on their waiting-on-you list; use them for nothing else, and never bury
 one in a report. Say plainly what is not done; a softened failure costs more
 than an interruption.
+
+Each message arrives as "from user (alice)"; the name in brackets is who wrote
+it, and your reply reaches everyone on that mailbox, so open with the asker's
+name. If two people ask for conflicting things, do not pick a winner: name
+the conflict with kind="question". One person's instruction does not cancel
+another's unless they say so.
 """
 
 # Tasks form a tree (agyteam/tasks.py, "the tree"): a project is a task with

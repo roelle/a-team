@@ -7,6 +7,12 @@ the README for what counts as the public surface.
 
 ## [Unreleased]
 
+## [3.24.0] - 2026-11-01
+
+### Changed
+- Agents are told that several people may share a team: open with the asker's
+  name, and name a conflict between people as a question instead of picking one.
+
 ## [3.23.0] - 2026-11-01
 
 ### Added
@@ -637,7 +643,8 @@ MCP memory server.
 ## [1.0] - 2026-09-08
 Milestone tag (pre-semver).
 
-[Unreleased]: https://github.com/roelle/agy-team/compare/v3.23.0...HEAD
+[Unreleased]: https://github.com/roelle/agy-team/compare/v3.24.0...HEAD
+[3.24.0]: https://github.com/roelle/agy-team/compare/v3.23.0...v3.24.0
 [3.23.0]: https://github.com/roelle/agy-team/compare/v3.22.0...v3.23.0
 [3.22.0]: https://github.com/roelle/agy-team/compare/v3.21.0...v3.22.0
 [3.21.0]: https://github.com/roelle/agy-team/compare/v3.20.0...v3.21.0
