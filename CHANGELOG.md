@@ -7,6 +7,14 @@ break; the public surface is the command line and the HTTP API under /api.
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-10-31
+
+### Added
+- **Admin shows what channel mail costs.** Under Agents, **Channel mail**
+  says how many posts that mentioned nobody reached agents in the last 7
+  days, about how many tokens that was, and how much came from each
+  channel. `/api/admin` returns it as `quiet_mail`. Requires agy-team 3.19.0.
+
 ## [0.15.0] - 2026-10-29
 
 ### Added
@@ -368,7 +376,8 @@ break; the public surface is the command line and the HTTP API under /api.
   changes.
 - Requires agy-team 3.0.0.
 
-[Unreleased]: https://github.com/roelle/agy-chat/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/roelle/agy-chat/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/roelle/agy-chat/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/roelle/agy-chat/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/roelle/agy-chat/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/roelle/agy-chat/compare/v0.12.0...v0.13.0

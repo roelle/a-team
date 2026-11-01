@@ -416,3 +416,15 @@ def test_state_says_when_each_view_last_had_news_so_unread_survives_a_reload(ser
     assert set(st["latest"]) == {"c:billing", "d:coder,user"}
     # A direct message to you is addressed to you; your own messages are not news.
     assert "d:coder,user" in st["mentions_of_user"] and "c:billing" not in st["mentions_of_user"]
+
+
+def test_admin_says_what_channel_mail_costs(server):
+    app, port, td, _ = server
+    (td / "events.jsonl").write_text(json.dumps(
+        {"ts": time.strftime("%Y-%m-%d %H:%M:%S"), "event": "turn", "agent": "coder",
+         "input_tokens": 4000, "trigger": {"quiet": {
+             "msgs": 3, "bytes": 400, "deferred": 0, "channels": {"docs": 400}}}}) + "\n")
+    _, doc = call(port, "GET", "/api/admin?team=demo", token=app.token)
+    q = doc["quiet_mail"]
+    assert q["msgs"] == 3 and q["est_tokens"] == 100 and q["share"] == 0.025
+    assert q["channels"] == {"docs": 400}

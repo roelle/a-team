@@ -344,13 +344,14 @@ class App:
 
     def admin(self, team: str) -> dict:
         t = self.team(team)
-        roster = t.roster()
+        roster, rec = t.roster(), Record(t.dir)
         return {"agents": [{k: a.get(k) for k in ("name", *actions.AGENT_FIELDS) if k in a}
                            for a in roster.get("agents", [])],
                 "fields": list(actions.AGENT_FIELDS),
                 "memory_model": roster.get("memory_model"),
                 "avatars": actions.avatars(t.dir),
-                "norms": actions.norms(t.dir)}
+                "norms": actions.norms(t.dir),
+                "quiet_mail": rec.quiet_mail() if hasattr(rec, "quiet_mail") else None}
 
     def agent(self, team: str, body: dict) -> dict:
         t = self.team(team)
