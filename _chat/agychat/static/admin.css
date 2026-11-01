@@ -1,0 +1,77 @@
+/* The admin page: agents, norms, memories, update. */
+body.admin-page { display: block; overflow: auto; }
+.admin-page .top { flex-wrap: wrap; row-gap: 6px; }
+.admin-tabs { display: flex; gap: 4px; flex-wrap: wrap; margin: 0 0 16px; border-bottom: 1px solid var(--line); }
+.admin-tabs .tab { background: none; border: 0; border-bottom: 2px solid transparent; color: var(--dim); padding: 6px 10px; white-space: nowrap; }
+.admin-tabs .tab.active { color: var(--fg); border-bottom-color: var(--accent); }
+.pic { width: 30px; height: 30px; border-radius: 8px; display: inline-grid; place-items: center; background: var(--code); color: var(--dim); font-weight: 700; cursor: pointer; overflow: hidden; vertical-align: middle; }
+.pic img { width: 100%; height: 100%; object-fit: cover; }
+.small-link { background: none; border: 0; color: var(--accent); font-size: 12px; cursor: pointer; padding: 0; }
+.top-link { margin-left: 0; }
+.admin-tabs + .top-link { margin-left: auto; }
+.admin { max-width: 1100px; margin: 0 auto; padding: 20px 20px 60px; }
+.admin h2 { margin: 4px 0 6px; font-size: 20px; }
+.admin h3 { margin: 22px 0 8px; font-size: 14px; }
+.admin .sub { color: var(--dim); margin: 0 0 14px; }
+.admin code { background: var(--code); padding: 0 4px; border-radius: 4px; }
+.grid { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+.grid th, .grid td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.grid th { font-size: 12px; color: var(--dim); font-weight: 600; }
+.grid input[type=text] { width: 100%; padding: 4px 6px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--fg); font: inherit; }
+.grid input[type=text]:hover, .grid input[type=text]:focus { border-color: var(--line); background: var(--bg); }
+.grid tr.dirty { background: rgba(58,111,247,.06); }
+.grid .name { font-weight: 600; white-space: nowrap; }
+.grid .row-actions { white-space: nowrap; text-align: right; }
+.row-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.row-form input:not([type=checkbox]) { padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--fg); }
+.row-form .wide { flex: 1; min-width: 220px; }
+.inline { display: flex; gap: 6px; align-items: center; font-size: 13px; color: var(--dim); }
+.inline select { padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--fg); }
+#norms { width: 100%; min-height: 55vh; padding: 12px; border: 1px solid var(--line); border-radius: 10px;
+         background: var(--panel); color: var(--fg); font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.actions { display: flex; gap: 10px; align-items: center; justify-content: flex-end; margin-top: 10px; }
+.actions.left { justify-content: flex-start; flex-wrap: wrap; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; margin: 10px 0; }
+.memory .head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.memory .head .name { font-weight: 700; }
+.memory .head .desc { color: var(--dim); flex: 1 1 180px; }
+.memory .meta { font-size: 12px; color: var(--dim); margin-top: 2px; }
+.memory details { margin-top: 6px; }
+.card ul { margin: 6px 0 0; padding-left: 18px; }
+.memory pre { white-space: pre-wrap; margin: 8px 0 0; font: 13px/1.45 inherit; }
+.log { background: var(--code); border-radius: 8px; padding: 10px 12px; max-height: 40vh; overflow: auto;
+       white-space: pre-wrap; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.vers td { padding: 2px 12px 2px 0; }
+.recall-head { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+.recall-legend { display: flex; gap: 12px; font-size: 12px; color: var(--dim); margin-left: auto; }
+.recall-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
+.recall-legend .miss { width: 7px; height: 7px; border-radius: 50%; }
+.recall-chart { display: grid; grid-template-columns: repeat(14, 1fr); gap: 2px; margin: 10px 0 4px; }
+.recall-day { display: flex; flex-direction: column; align-items: stretch; cursor: default; }
+.recall-day .col { height: 64px; display: flex; flex-direction: column; justify-content: flex-end; gap: 2px;
+                   border-bottom: 1px solid var(--line); padding: 0 2px; }
+.recall-day .col span { display: block; min-height: 0; }
+.recall-day .col .none { background: var(--line); border-radius: 0 0 0 0; }
+.recall-day .col .offered { background: var(--accent); }
+.recall-day .col span:first-child { border-radius: 4px 4px 0 0; }
+.recall-day .col:hover span { filter: brightness(1.12); }
+.recall-day .miss { height: 12px; text-align: center; font-size: 10px; line-height: 12px; color: var(--dim); }
+.recall-day .miss i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--bad); }
+.recall-day .lbl { text-align: center; font-size: 10px; color: var(--dim); }
+.recall-misses { margin: 8px 0 0; padding-left: 18px; font-size: 13px; }
+.recall-misses li { margin: 4px 0; }
+.state-ok { color: var(--ok); }
+.state-warn { color: var(--warn); }
+.state-bad { color: var(--bad); }
+@media (max-width: 720px) {
+  .admin { padding: 14px 16px 40px; }
+
+  .row-form > * { flex: 1 1 100%; }
+  .row-form .inline, .row-form .btn { flex: 0 0 auto; }
+  .grid thead { display: none; }
+  .grid tr { display: block; border-bottom: 1px solid var(--line); }
+  .grid td { display: block; border: 0; }
+  .grid td[data-label]::before { content: attr(data-label); display: block; font-size: 11px; color: var(--dim); }
+  .admin-page .team-label { display: none; }
+  .admin-page .top { gap: 8px; }
+}

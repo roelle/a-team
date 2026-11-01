@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin — agy-chat</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/admin.css">
+</head>
+<body class="admin-page">
+<header class="top">
+  <div class="brand">agy<span>admin</span></div>
+  <label class="team-label" for="team">Team</label>
+  <select id="team"></select>
+  <nav id="app-nav" class="app-nav"></nav>
+</header>
+
+<main class="admin">
+  <nav class="admin-tabs">
+    <button data-tab="agents" class="tab">Agents</button>
+    <button data-tab="norms" class="tab">Norms</button>
+    <button data-tab="memories" class="tab">Memories</button>
+    <button data-tab="tasks" class="tab">Tasks</button>
+    <button data-tab="update" class="tab">Update &amp; restart</button>
+  </nav>
+  <section id="tab-agents" class="pane">
+    <h2>Agents</h2>
+    <p class="sub">Changes go to the roster through agy-team, so a running supervisor adopts them. A
+      removed agent's turn is cancelled; its memories and history stay on disk. Workspaces and other
+      policy fields are edited in <code>roster.json</code>.</p>
+    <table class="grid">
+      <thead><tr><th title="Click to set a picture">Picture</th><th>Name</th><th>Role</th><th>Default model</th>
+        <th title="Model for distill, memory review and retro turns; needs a runtime that switches models mid-conversation (the agy CLI)">Memory model</th><th>Principal</th>
+        <th title="Tool names this agent may not call, comma-separated">Tools off</th>
+        <th title="The name it is shown by, and answers to as @alias">Alias</th><th></th></tr></thead>
+      <tbody id="agents"></tbody>
+    </table>
+    <h3>Channel mail</h3>
+    <div id="quiet" class="sub"></div>
+    <h3>Your picture</h3>
+    <div class="row-form"><span id="me-pic"></span><span class="sub">Shown beside what you post.</span></div>
+    <input type="file" id="pic-file" accept="image/*" class="hidden">
+    <h3>Add an agent</h3>
+    <form id="add-agent" class="row-form">
+      <input name="name" placeholder="name, e.g. at-Ada" required>
+      <input name="role" placeholder="role: what it does" class="wide">
+      <input name="model" placeholder="model (optional)">
+      <label class="inline"><input type="checkbox" name="all_channels" checked> join every channel</label>
+      <button class="btn">Add</button>
+    </form>
+  </section>
+
+  <section id="tab-norms" class="pane hidden">
+    <h2>Norms</h2>
+    <p class="sub"><code>NORMS.md</code> is part of every agent's brief. An agent reads it when a
+      conversation starts, so a change reaches each agent on its next fresh conversation
+      (<code>python -m agyteam.supervisor --cycle-all</code> makes that now).</p>
+    <textarea id="norms" spellcheck="false"></textarea>
+    <div class="actions"><span id="norms-state" class="sub"></span><button id="save-norms" class="btn">Save norms</button></div>
+    <h3>Lessons in common</h3>
+    <p class="sub">The same lesson in three or more agents' memories, matched by wording: each is a
+      candidate for a norm, if it is one. "Draft" adds a line to the editor above for you to
+      rewrite; nothing is saved until you save.</p>
+    <div id="candidates"><p class="sub">Looking…</p></div>
+  </section>
+
+  <section id="tab-memories" class="pane hidden">
+    <h2>Memories</h2>
+    <p class="sub">Each agent's own memory, with its history: how long it has been known, how often
+      it was rewritten, how often the agent read it back. What you write here it reads as its own,
+      marked as written by the operator. A <strong>review</strong> is a turn in which the agent goes
+      over its memories and merges, rewrites and deletes; it runs on its own at milestones and weekly,
+      between the agent's turns. Nothing removed is lost: it is in the archive below.</p>
+    <div class="row-form"><label class="inline">Agent <select id="mem-agent"></select></label>
+      <label class="inline">Sort <select id="mem-sort">
+        <option value="name">name</option><option value="least">least read</option>
+        <option value="most">most read</option><option value="oldest">oldest</option>
+        <option value="revised">most revised</option><option value="recalled">most recalled</option>
+        <option value="missed">missed by recall</option></select></label>
+      <label class="inline"><input type="checkbox" id="mem-unread"> never read</label>
+      <button id="new-memory" class="btn small ghost">+ Memory</button>
+      <button id="review-now" class="btn small">Review now</button></div>
+    <div id="mem-summary" class="sub"></div>
+    <div id="recall" class="card hidden"></div>
+    <div id="memories"></div>
+    <h3>Recent reviews</h3>
+    <div id="reviews"></div>
+    <h3>Archive</h3>
+    <div id="archive"></div>
+  </section>
+
+  <section id="tab-tasks" class="pane hidden">
+    <h2>Tasks</h2>
+    <p class="sub">Tasks form a tree: a project is a task with tasks under it. Levels say how big a
+      task is: <span id="level-names"></span>. A team can rename them with <code>"task_levels"</code>
+      in its roster.</p>
+    <h3>Project labels into parent tasks</h3>
+    <p class="sub">Each project label becomes a top-level task at level 1, with the label's tasks under
+      it. A label whose tasks are all closed becomes a closed, archived parent, out of view. Labels stay
+      on the tasks.</p>
+    <div class="actions left"><button id="mig-preview" class="btn ghost">Preview</button>
+      <button id="mig-run" class="btn" disabled>Convert</button></div>
+    <div id="mig-out"></div>
+  </section>
+
+  <section id="tab-update" class="pane hidden">
+    <h2>Update &amp; restart</h2>
+    <p class="sub">Update brings agy-team and agy-chat to their newest code, then restarts every
+      running team <strong>gracefully</strong>: no new turns start, mail keeps queuing, the turns in
+      flight finish, and each supervisor restarts itself on the new code. Then agy-chat restarts
+      and this page reloads. Nobody has to catch the team idle.</p>
+    <div id="versions" class="card"></div>
+    <div class="actions left">
+      <button id="check" class="btn ghost">Check for updates</button>
+      <button id="run-update" class="btn">Update &amp; restart everything</button>
+      <label class="inline"><input type="checkbox" id="now"> cancel turns in flight instead of waiting (their mail goes back)</label>
+    </div>
+    <pre id="check-out" class="log hidden"></pre>
+    <h3>Log</h3>
+    <pre id="log" class="log">(nothing yet)</pre>
+  </section>
+</main>
+
+<div id="modal" class="modal hidden"><div class="modal-card" id="modal-card"></div></div>
+<div id="toast" class="toast hidden"></div>
+<script src="/static/common.js"></script>
+<script src="/static/admin.js"></script>
+</body>
+</html>
