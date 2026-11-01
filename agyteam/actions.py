@@ -179,7 +179,8 @@ def create_task(team_dir, project: str, title: str, owner: str | None = None,
                 deadline: str | None = None, requires_review: bool = False,
                 rank: float | None = None, parent: str | None = None,
                 level: int | None = None, priority: int | None = None,
-                auto_close: bool = False) -> dict:
+                auto_close: bool = False, blocked_by: list[str] | None = None,
+                writes: list[str] | None = None) -> dict:
     _guard()
     from . import tasks
     try:
@@ -188,7 +189,7 @@ def create_task(team_dir, project: str, title: str, owner: str | None = None,
                          requires_review=requires_review, rank=rank, parent=parent or None,
                          level=level if level not in ("", None) else None,
                          priority=priority if priority not in ("", None) else None,
-                         auto_close=bool(auto_close))
+                         auto_close=bool(auto_close), blocked_by=blocked_by, writes=writes)
     except tasks.TaskError as e:
         raise OperatorError(str(e)) from None
     if t.get("owner") and t.get("status") not in tasks.PAUSED:
@@ -200,11 +201,12 @@ def create_task(team_dir, project: str, title: str, owner: str | None = None,
 def update_task(team_dir, task_id: str, **changes) -> dict:
     """status, owner, title, project, note, channel ("" unlinks), deadline,
     rank, parent ("" for top level), level ("auto" to work it out), priority,
-    auto_close, archived."""
+    auto_close, archived, blocked_by, writes."""
     _guard()
     from . import tasks
     allowed = {"status", "owner", "title", "project", "note", "channel", "deadline", "rank",
-               "parent", "level", "priority", "auto_close", "archived"}
+               "parent", "level", "priority", "auto_close", "archived",
+               "blocked_by", "writes"}
     unknown = set(changes) - allowed
     if unknown:
         raise OperatorError(f"cannot change {', '.join(sorted(unknown))} from here")

@@ -56,6 +56,19 @@ status on a linked task is noted in its channel, quietly.
 The operator ("user") may change any task, owned or not: that is what moving
 a card on a board is.
 
+## Work that has to wait for other work
+
+`blocked_by` names the tasks that must be done first. A task with one still
+open cannot be started, except by the operator, and whoever owns it hears when
+the last one closes, or when one closes without being done. Before this, the
+order lived in a note, and an agent told to wait for another's result had to
+remember to come back.
+
+`writes` names the paths a task expects to change. It locks nothing: agents
+share a checkout, and most writes go through a shell no list could police. What
+it does is say so, on the task, when two open tasks expect to touch one path,
+while that is still cheap to sort out.
+
 ## Why no separate project file
 
 A project is a grouping string on a task, not a second record with its own
@@ -79,6 +92,8 @@ FILENAME = "tasks.jsonl"
 STATUSES = {"icebox", "queued", "claimed", "running", "blocked", "review",
             "done", "failed", "cancelled"}
 TERMINAL = {"done", "failed", "cancelled"}
+#: A task in one of these has begun, so what it waits for must be finished.
+STARTED = {"claimed", "running"}
 #: Not finished, but nothing happens to it: no claims, no reminders.
 PAUSED = {"icebox"}
 OPERATOR = "user"
@@ -92,7 +107,8 @@ _KIND_SWEPT = "swept"
 _MUTABLE_FIELDS = ("project", "title", "owner", "status", "note", "check_after",
                    "collaborators", "requires_review", "evidence", "until",
                    "poll_every", "deadline", "channel", "rank", "links",
-                   "parent", "level", "priority", "auto_close", "archived", "archived_by")
+                   "parent", "level", "priority", "auto_close", "archived", "archived_by",
+                   "blocked_by", "writes")
 
 # What an agent may call a status and what it is here. The allowed set was
 # discoverable only by trial -- update_task(status="in_progress") was refused
@@ -292,7 +308,8 @@ def snapshot(team_dir: Path | str) -> dict[str, dict]:
                            "created_by", "note", "check_after", "collaborators",
                            "requires_review", "evidence", "until", "poll_every",
                            "deadline", "channel", "rank", "links",
-                           "parent", "level", "priority", "auto_close", "archived")}
+                           "parent", "level", "priority", "auto_close", "archived",
+                           "blocked_by", "writes")}
             state[tid]["created_at"] = rec.get("ts")
             state[tid]["updated_at"] = rec.get("ts")
         elif tid in state:
@@ -318,7 +335,8 @@ def create(team_dir: Path | str, project: str, title: str,
            deadline: str | None = None, channel: str | None = None,
            status: str | None = None, rank: float | None = None,
            parent: str | None = None, level: int | None = None,
-           priority: int | None = None, auto_close: bool = False) -> dict:
+           priority: int | None = None, auto_close: bool = False,
+           blocked_by: list[str] | None = None, writes: list[str] | None = None) -> dict:
     """Append a new task and return its current state. `status` may start
     it in the icebox; anything else starts queued.
 
@@ -361,12 +379,15 @@ def create(team_dir: Path | str, project: str, title: str,
         "level": _level(level),
         "priority": _priority(priority),
         "auto_close": bool(auto_close),
+        "blocked_by": _clean(blocked_by),
+        "writes": _paths(writes),
     }
     if until and not entry["check_after"]:
         # A condition is checked from the next sweep on, not left to wait
         # for a reminder nobody set.
         entry["check_after"] = _now()
     with filelock.locked(path(team_dir)):
+        _check_blockers(snapshot(team_dir), entry["id"], entry["blocked_by"])
         _append(team_dir, entry)
     t = get(team_dir, entry["id"])
     if channel:
@@ -391,6 +412,8 @@ def claim(team_dir: Path | str, task_id: str, agent: str) -> dict | None:
         if current.get("status") in PAUSED and agent != OPERATOR:
             raise TaskError(f"task {task_id} is in the icebox: the operator has "
                             f"parked it. Ask them before working on it")
+        if agent != OPERATOR:
+            _refuse_if_waiting(snapshot(team_dir), current)
         _append(team_dir, {"id": task_id, "kind": _KIND_UPDATED, "ts": _now(),
                            "by": agent, "owner": agent, "status": "claimed"})
     return get(team_dir, task_id)
@@ -407,7 +430,8 @@ def update(team_dir: Path | str, task_id: str, by: str, *,
            project: str | None = None, links: list | None = None,
            parent: str | None = None, level: int | str | None = None,
            priority: int | str | None = None, auto_close: bool | None = None,
-           archived: bool | None = None) -> dict | None:
+           archived: bool | None = None, blocked_by: list[str] | None = None,
+           writes: list[str] | None = None) -> dict | None:
     """Append a mutation by `by`. None if task_id is unknown.
 
     Only the owner -- or the operator -- may change an owned task, and
@@ -447,6 +471,12 @@ def update(team_dir: Path | str, task_id: str, by: str, *,
                 and status not in PAUSED and by != OPERATOR):
             raise TaskError(f"task {task_id} is in the icebox: the operator "
                             f"parked it, and only they take it back out")
+        waiting_on = _clean(blocked_by) if blocked_by is not None else None
+        if waiting_on is not None:
+            _check_blockers(state, task_id, waiting_on)
+        if status in STARTED and by != OPERATOR:
+            _refuse_if_waiting(state, current if waiting_on is None
+                               else {**current, "blocked_by": waiting_on})
         final_status = status or current.get("status")
         if when and final_status in TERMINAL:
             raise TaskError(f"task {task_id} is {final_status}; a reminder on "
@@ -495,16 +525,96 @@ def update(team_dir: Path | str, task_id: str, by: str, *,
         if archived is not None:
             entry["archived"] = _now() if archived else None
             entry["archived_by"] = by if archived else None
+        if waiting_on is not None:
+            entry["blocked_by"] = waiting_on
+        if writes is not None:
+            entry["writes"] = _paths(writes)
         _append(team_dir, entry)
     t = get(team_dir, task_id)
     if t and status in TERMINAL and current.get("status") not in TERMINAL:
         _children_closed(team_dir, t)
+        _blockers_closed(team_dir, t)
     if t and t.get("channel"):
         if channel and channel != current.get("channel"):
             _notice(team_dir, t, by, "linked to this channel")
         elif status is not None and status != current.get("status"):
             _notice(team_dir, t, by, f"{current.get('status')} \u2192 {status}")
     return t
+
+
+def _clean(names) -> list[str]:
+    """Distinct, in order."""
+    return list(dict.fromkeys(n.strip() for n in names or [] if n and n.strip()))
+
+
+def _paths(paths) -> list[str]:
+    """`writes` in one spelling: no ./ in front and no / behind."""
+    out = (p.strip().removeprefix("./").rstrip("/") for p in paths or [] if p and p.strip())
+    return list(dict.fromkeys(p or "." for p in out))
+
+
+def _check_blockers(state: dict, task_id: str, blockers: list[str]) -> None:
+    for b in blockers:
+        if b == task_id:
+            raise TaskError(f"task {task_id} cannot wait for itself")
+        if b not in state:
+            raise TaskError(f"no task {b!r} to wait for")
+        stack, seen = [b], set()
+        while stack:
+            cur = stack.pop()
+            if cur == task_id:
+                raise TaskError(f"{b} already waits for {task_id}, so {task_id} "
+                                f"waiting for it would stop both")
+            if cur not in seen:
+                seen.add(cur)
+                stack.extend((state.get(cur) or {}).get("blocked_by") or [])
+
+
+def open_blockers(state: dict, t: dict) -> list[str]:
+    """What `t` still waits for. A blocker that failed or was cancelled still
+    counts: the work it was meant to deliver does not exist."""
+    return [b for b in t.get("blocked_by") or []
+            if (state.get(b) or {}).get("status") != "done"]
+
+
+def _refuse_if_waiting(state: dict, t: dict) -> None:
+    waiting = open_blockers(state, t)
+    if waiting:
+        said = ", ".join(f"{b} ({(state.get(b) or {}).get('status')})" for b in waiting)
+        raise TaskError(f"task {t['id']} waits for {said}. You will be told when "
+                        f"it is ready, or take the wait off with "
+                        f"update_task(blocked_by='none')")
+
+
+def overlaps(state: dict, t: dict) -> list[dict]:
+    """Other open tasks that expect to write where `t` does."""
+    def same(a: str, b: str) -> bool:
+        return a == b or "." in (a, b) or a.startswith(b + "/") or b.startswith(a + "/")
+
+    if t.get("status") in TERMINAL or not t.get("writes"):
+        return []
+    return [o for o in state.values()
+            if o["id"] != t["id"] and o.get("status") not in TERMINAL
+            and any(same(a, b) for a in t["writes"] for b in o.get("writes") or [])]
+
+
+def _blockers_closed(team_dir, t: dict) -> None:
+    """A task closed: tell the owner of each task that was waiting for it."""
+    state = snapshot(team_dir)
+    for x in state.values():
+        if t["id"] not in (x.get("blocked_by") or []) or x.get("status") in TERMINAL:
+            continue
+        to = x.get("owner") or x.get("created_by") or OPERATOR
+        name = f"{x['id']} \u201c{x.get('title')}\u201d"
+        if t.get("status") != "done":
+            _message(team_dir, to, f"{t['id']} \u201c{t.get('title')}\u201d, which {name} "
+                                   f"waits for, closed as {t.get('status')}. Decide what "
+                                   f"happens to {x['id']}: wait for a replacement, or "
+                                   f"change or close it.", x["id"])
+        elif not open_blockers(state, x):
+            _message(team_dir, to, f"{name} is ready: everything it was waiting for is "
+                                   f"done, the last being {t['id']} "
+                                   f"\u201c{t.get('title')}\u201d.", x["id"])
 
 
 def _check_channel(team_dir, channel: str | None) -> str | None:

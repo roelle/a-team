@@ -7,6 +7,24 @@ the README for what counts as the public surface.
 
 ## [Unreleased]
 
+## [3.22.0] - 2026-11-01
+
+### Added
+- **Tasks can wait for other tasks.** `blocked_by` names what must be done
+  first. Until then only the operator can start the task, and its owner is
+  told when it is ready, or when something it waits for fails.
+- **Tasks can say where they will write.** `writes` names the paths a task
+  expects to change, and `list_tasks` warns when open tasks overlap. It locks
+  nothing.
+- **`Record.needs_you()` lists what is waiting on a person:** a stopped team,
+  unanswered questions and blockers, tasks the operator owns, and tasks an
+  agent marked blocked.
+
+### Changed
+- Agents are now told how to write to the user: only when there is something
+  to review, use, decide or unblock, result first, with `kind="question"` and
+  `kind="blocker"` kept for what needs an answer.
+
 ## [3.21.0] - 2026-11-01
 
 ### Added
@@ -605,7 +623,8 @@ MCP memory server.
 ## [1.0] - 2026-09-08
 Milestone tag (pre-semver).
 
-[Unreleased]: https://github.com/roelle/agy-team/compare/v3.21.0...HEAD
+[Unreleased]: https://github.com/roelle/agy-team/compare/v3.22.0...HEAD
+[3.22.0]: https://github.com/roelle/agy-team/compare/v3.21.0...v3.22.0
 [3.21.0]: https://github.com/roelle/agy-team/compare/v3.20.0...v3.21.0
 [3.20.0]: https://github.com/roelle/agy-team/compare/v3.19.0...v3.20.0
 [3.19.0]: https://github.com/roelle/agy-team/compare/v3.18.0...v3.19.0

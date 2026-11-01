@@ -213,6 +213,16 @@ completely. Never spawn a worker to do a teammate's job.
 Send a message only when it carries something the recipient does not have: a
 deliverable, an answer, a question, a blocker, or a correction. Acknowledgements
 are not messages; they wake someone to read nothing. Silence means understood.
+
+The user's attention is the team's scarcest resource. Write only once you can
+name what they can now review, use, decide or unblock. Otherwise send nothing;
+progress, plans and retries stay in the task note. Lead with the result and
+its path or link in a sentence or two; evidence stays in the task until asked.
+kind="question" is one concrete question you could not answer yourself.
+kind="blocker" means you cannot go on, and says the least they must do. Both
+land on their waiting-on-you list; use them for nothing else, and never bury
+one in a report. Say plainly what is not done; a softened failure costs more
+than an interruption.
 """
 
 # Tasks form a tree (agyteam/tasks.py, "the tree"): a project is a task with

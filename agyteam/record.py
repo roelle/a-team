@@ -353,6 +353,65 @@ class Record:
         except OSError:
             return None
 
+    def needs_you(self) -> list[dict]:
+        """What is waiting on a person, oldest first; empty when nothing is.
+
+        Each row has "kind" and "ts", and points at where to deal with it:
+
+            stopped   the team is stopped: "reason"
+            question, blocker
+                      a message to the operator with no reply yet: "id",
+                      "from", "content", "channel" or "dm", and "task_id"
+            task      an open task the operator owns: "id", "title", "status"
+            stuck     a task an agent marked blocked: the same, plus "owner"
+
+        Only those kinds of message count, not ordinary mail: whether a
+        report is really a question is not something to guess from its text.
+        A reply from the operator in the same conversation or thread clears
+        a message.
+        """
+        from . import tasks as tasks_lib
+        rows = []
+        reason = self.stopped()
+        if reason:
+            rows.append({"kind": "stopped", "reason": reason, "ts": ""})
+        operator = self.operator()
+        names = {"user", operator.get("name"), *operator.get("handles", [])} - {"", None}
+        replied: dict[tuple, int] = {}          # by place in the log: ts is to the second
+        waiting = []
+        for n, m in enumerate(self.bus()):
+            sender = m.get("from")
+            where = (("channel", m["channel"]) if m.get("channel")
+                     else ("dm", m.get("to") if sender == "user" else sender))
+            if sender == "user":
+                replied[where] = n
+                if m.get("thread"):
+                    replied[("thread", m["thread"])] = n
+            elif m.get("kind") in ("question", "blocker") and (
+                    m.get("to") in names or names & set(m.get("mentions") or [])):
+                waiting.append((n, m, where))
+        for n, m, where in waiting:
+            keys = [("thread", m["thread"])] if m.get("thread") else [where]
+            if m.get("id"):
+                keys.append(("thread", m["id"]))
+            if any(replied.get(k, -1) > n for k in keys):
+                continue
+            rows.append({"kind": m["kind"], "ts": m.get("ts") or "", "id": m.get("id"),
+                         "from": m.get("from"), "content": m.get("content"),
+                         "task_id": m.get("task_id"), where[0]: where[1],
+                         "thread": m.get("thread")})
+        for t in self.tasks():
+            status = t.get("status")
+            if status in tasks_lib.TERMINAL or t.get("archived"):
+                continue
+            row = {"id": t["id"], "title": t.get("title"), "status": status,
+                   "ts": t.get("updated_at") or ""}
+            if t.get("owner") in names and status not in tasks_lib.PAUSED:
+                rows.append({"kind": "task", **row})
+            elif status == "blocked":
+                rows.append({"kind": "stuck", "owner": t.get("owner"), **row})
+        return sorted(rows, key=lambda r: _epoch(r["ts"]) or 0)
+
     def presence(self) -> dict[str, dict]:
         """{agent: {"state", "since", "detail"}}.
 

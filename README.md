@@ -665,6 +665,15 @@ session with the plugin installed is left alone. How a note gets there depends o
 
 Each note is recorded as a `steer` event in `events.jsonl`.
 
+### What is waiting on you
+
+`Record.needs_you()` lists what needs a person, oldest first: a stopped team, a
+`question` or `blocker` sent to the operator with no reply yet, a task the
+operator owns, and a task an agent marked `blocked`. Only those two message
+kinds count, so an ordinary report stays a report, and agents are told to use
+them for that alone. A reply in the same conversation or thread clears a
+message. agy-chat shows the list at the top of the sidebar when it has anything on it.
+
 ### Knowing when to stop
 
 An early real run produced 31 messages of pure courtesy — *"Acknowledged, thanks
@@ -820,6 +829,18 @@ python -m agyteam.tasks list      # what is tracked, and when each reminder fire
 A `project` is a grouping string on a task, not a separate object — if
 project-level metadata turns out to be needed later, it can be added as a
 field the same way `note` was.
+
+### Tasks that wait for other tasks
+
+`blocked_by` on `create_task` or `update_task` names the tasks that must be
+done first. A task with one still open cannot be claimed or started, except by
+the operator. Its owner is told when the last one is done, or when one closes
+as failed or cancelled, because that work now does not exist and someone has to
+decide. Pass `'none'` to take the wait off.
+
+`writes` names the paths a task expects to change, and `list_tasks` shows an
+`overlap:` line when two open tasks share one. It locks nothing: it is a warning,
+early enough to split the work or agree an order.
 
 ### Tasks form a tree: projects are tasks with tasks under them
 
@@ -1620,7 +1641,7 @@ Releases follow [Semantic Versioning](https://semver.org/), tagged
 in [RELEASING.md](RELEASING.md). Pin a tag rather than `main`:
 
 ```bash
-pip install "agyteam @ git+https://github.com/roelle/agy-team.git@v3.21.0"
+pip install "agyteam @ git+https://github.com/roelle/agy-team.git@v3.22.0"
 python -m agyteam.supervisor --version
 ```
 

@@ -33,6 +33,11 @@ _STATUS = {"type": "string", "enum": sorted(tasks_lib.STATUSES),
 _CHANNEL = string("The channel this task is discussed in, e.g. 'billing'; its "
                   "status changes are noted there. '' unlinks it")
 
+_BLOCKED_BY = string("Comma-separated task ids that must be done first. It cannot "
+                     "be started until then, and its owner is told when it is ready")
+_WRITES = string("Comma-separated paths it expects to change. This locks nothing: "
+                 "it warns you and others when open tasks overlap")
+
 TOOLS = [
     tool("create_task",
          "Start tracking work that will outlive this turn -- a simulation, a "
@@ -67,6 +72,8 @@ TOOLS = [
           "requires_review": boolean("true if this task may not close, and its "
                                      "result may not go to the user, without an "
                                      "approved review naming it"),
+          "blocked_by": _BLOCKED_BY,
+          "writes": _WRITES,
           "channel": _CHANNEL},
          ["title"]),
     tool("claim_task",
@@ -96,6 +103,10 @@ TOOLS = [
                           "out from what is under it"),
           "priority": string("P0 (most urgent) to P4"),
           "auto_close": boolean("Close it by itself once everything under it is done"),
+          "blocked_by": string("Comma-separated task ids that must be done first, "
+                               "replacing any set before; 'none' to clear"),
+          "writes": string("Comma-separated paths it expects to change, replacing "
+                           "any set before; 'none' to clear"),
           "channel": _CHANNEL},
          ["task_id"]),
     tool("complete_task",
@@ -188,6 +199,7 @@ def _in_flight(team_dir: Path | None) -> dict[str, tuple[str, str]]:
 
 def _blocks(rows: list[dict], team_dir: Path | None = None, indent: dict | None = None) -> list[str]:
     flying = _in_flight(team_dir) if rows else {}
+    state = tasks_lib.snapshot(team_dir) if rows and team_dir is not None else {}
     shape = tasks_lib.tree(team_dir) if rows and team_dir is not None else {}
     names = tasks_lib.level_names(team_dir) if team_dir is not None else tasks_lib.DEFAULT_LEVEL_NAMES
     blocks = []
@@ -213,6 +225,9 @@ def _blocks(rows: list[dict], team_dir: Path | None = None, indent: dict | None 
             extra.append(f"with {', '.join(t['collaborators'])}")
         if t.get("requires_review"):
             extra.append("requires review")
+        waiting = tasks_lib.open_blockers(state, t) if t.get("status") not in tasks_lib.TERMINAL else []
+        if waiting:
+            extra.append(f"waits for {', '.join(waiting)}")
         if t.get("channel"):
             extra.append(f"discussed in #{t['channel']}")
         tail = f" ({'; '.join(extra)})" if extra else ""
@@ -222,6 +237,11 @@ def _blocks(rows: list[dict], team_dir: Path | None = None, indent: dict | None 
                      f"{t.get('title')} — owner: {t.get('owner') or 'unclaimed'}{tail}")
         if node.get("path") and indent is None:
             lines.append(f"  under: {' › '.join(node['path'])}")
+        if t.get("writes"):
+            lines.append(f"  writes: {', '.join(t['writes'])}")
+        for o in tasks_lib.overlaps(state, t):
+            lines.append(f"  overlap: {o['id']} ({o.get('owner') or 'unclaimed'}) "
+                         f"expects to write {', '.join(o['writes'])}")
         if t.get("note"):
             lines.append(f"  note: {t['note']}")
         if t.get("evidence"):
@@ -288,7 +308,9 @@ def _create_task(agent: str, team_dir: Path, a: dict) -> str:
                              parent=parent or None,
                              level=_text(a, "level") or None,
                              priority=_text(a, "priority") or None,
-                             auto_close=flag(a, "auto_close"))
+                             auto_close=flag(a, "auto_close"),
+                             blocked_by=_names(a, "blocked_by"),
+                             writes=_names(a, "writes"))
     except tasks_lib.TaskError as e:
         return f"[error: {e}]"
     where = (f"\n[it is under {parent}, the task you are working on; pass "
@@ -339,11 +361,20 @@ def _update_task(agent: str, team_dir: Path, a: dict) -> str:
                          parent=_parent_arg(a),
                          level=_text(a, "level") or None,
                          priority=_text(a, "priority") or None,
-                         auto_close=flag(a, "auto_close") if "auto_close" in a else None)
+                         auto_close=flag(a, "auto_close") if "auto_close" in a else None,
+                         blocked_by=_list_arg(a, "blocked_by"),
+                         writes=_list_arg(a, "writes"))
     if t is None:
         return f"[error: no task with id '{task_id}']"
     out = f"[updated]\n{_render([t], team_dir)}"
     return _with_delivery(team_dir, t, out) if (raw and not clear) or until else out
+
+
+def _list_arg(a: dict, key: str) -> list[str] | None:
+    """None leaves the field alone; 'none' empties it."""
+    if key not in a:
+        return None
+    return [] if _text(a, key).lower() in ("", "none") else _names(a, key)
 
 
 def _parent_arg(a: dict) -> str | None:
