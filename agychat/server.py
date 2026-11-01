@@ -483,14 +483,17 @@ class App:
         time.sleep(1.5)                  # let the page see "restarting" first
         self.reexec()
 
+    def restart_args(self) -> list[str]:
+        """The page reloads itself, so a restart opens no second browser tab."""
+        return [a for a in self.argv if a not in ("--open", "--no-open")] + ["--no-open"]
+
     def _reexec(self) -> None:
         """Replace this process with a fresh one on the new code: same
         arguments (less --open), same token, same port."""
         os.environ["AGYCHAT_TOKEN"] = self.token
         sys.stdout.flush()
         sys.stderr.flush()
-        args = [a for a in self.argv if a not in ("--open", "--no-open")]
-        os.execv(sys.executable, [sys.executable, "-m", "agychat", *args])
+        os.execv(sys.executable, [sys.executable, "-m", "agychat", *self.restart_args()])
 
 
 def _app_version() -> str:
@@ -725,8 +728,7 @@ def opens_browser(asked, host: str) -> bool:
     """--open or --no-open, or else: is someone at this machine's own screen?"""
     if asked is not None:
         return asked
-    return (is_loopback(host) and sys.stdout.isatty()
-            and not os.environ.get("SSH_CONNECTION") and not os.environ.get("AGYCHAT_TOKEN"))
+    return is_loopback(host) and sys.stdout.isatty() and not os.environ.get("SSH_CONNECTION")
 
 
 def is_loopback(host: str) -> bool:

@@ -182,18 +182,25 @@ def test_without_a_teams_root_there_is_nowhere_to_put_one(fresh):
         fresh.new_team({"name": "t", "runtime": "agy"})
 
 
-@pytest.mark.parametrize("asked,host,tty,ssh,restart,opens", [
-    (None, "127.0.0.1", True, None, None, True),
-    (None, "127.0.0.1", False, None, None, False),      # a service
-    (None, "127.0.0.1", True, "1.2.3.4 5 6 7", None, False),
-    (None, "0.0.0.0", True, None, None, False),
-    (None, "127.0.0.1", True, None, "kept-across-a-restart", False),
-    (True, "0.0.0.0", False, None, None, True),
-    (False, "127.0.0.1", True, None, None, False)])
-def test_who_gets_a_browser(monkeypatch, asked, host, tty, ssh, restart, opens):
+@pytest.mark.parametrize("asked,host,tty,ssh,opens", [
+    (None, "127.0.0.1", True, None, True),
+    (None, "127.0.0.1", False, None, False),            # a service
+    (None, "127.0.0.1", True, "1.2.3.4 5 6 7", False),
+    (None, "0.0.0.0", True, None, False),
+    (True, "0.0.0.0", False, None, True),
+    (False, "127.0.0.1", True, None, False)])
+def test_who_gets_a_browser(monkeypatch, asked, host, tty, ssh, opens):
     monkeypatch.setattr(server_module.sys.stdout, "isatty", lambda: tty, raising=False)
-    for name, value in (("SSH_CONNECTION", ssh), ("AGYCHAT_TOKEN", restart)):
-        monkeypatch.delenv(name, raising=False)
-        if value:
-            monkeypatch.setenv(name, value)
+    monkeypatch.delenv("SSH_CONNECTION", raising=False)
+    if ssh:
+        monkeypatch.setenv("SSH_CONNECTION", ssh)
     assert server_module.opens_browser(asked, host) is opens
+
+
+def test_a_restart_opens_no_second_tab(tmp_path):
+    app = App(tmp_path, [], "matt")
+    app.argv = ["--open", "--port", "9000"]
+    args = app.restart_args()
+    assert args == ["--port", "9000", "--no-open"]
+    parsed = server_module.opens_browser(False if "--no-open" in args else None, "127.0.0.1")
+    assert parsed is False

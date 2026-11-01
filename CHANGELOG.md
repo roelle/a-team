@@ -7,6 +7,11 @@ break; the public surface is the command line and the HTTP API under /api.
 
 ## [Unreleased]
 
+## [0.18.1] - 2026-11-01
+
+### Fixed
+- Update & restart would have opened a second browser tab.
+
 ## [0.18.0] - 2026-11-01
 
 ### Added
@@ -404,7 +409,8 @@ break; the public surface is the command line and the HTTP API under /api.
   changes.
 - Requires agy-team 3.0.0.
 
-[Unreleased]: https://github.com/roelle/agy-chat/compare/v0.18.0...HEAD
+[Unreleased]: https://github.com/roelle/agy-chat/compare/v0.18.1...HEAD
+[0.18.1]: https://github.com/roelle/agy-chat/compare/v0.18.0...v0.18.1
 [0.18.0]: https://github.com/roelle/agy-chat/compare/v0.17.1...v0.18.0
 [0.17.1]: https://github.com/roelle/agy-chat/compare/v0.17.0...v0.17.1
 [0.17.0]: https://github.com/roelle/agy-chat/compare/v0.16.0...v0.17.0
