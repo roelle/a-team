@@ -7,6 +7,20 @@ the README for what counts as the public surface.
 
 ## [Unreleased]
 
+## [3.23.0] - 2026-11-01
+
+### Added
+- **A team can start with no checkout.** `python -m agyteam.starter runtimes`
+  says what this machine can run and what each runtime still needs, and
+  `python -m agyteam.starter new <name>` creates a team on the starter roster.
+  `actions.create_team` does the same for a client.
+- **The plugin ships inside the package.** `python -m agyteam.install_plugin`
+  installs it from a plain pip or pipx install.
+
+### Changed
+- The starter roster moved from a heredoc in `plugin/install.sh` to
+  `plugin/starter_roster.json`.
+
 ## [3.22.0] - 2026-11-01
 
 ### Added
@@ -623,7 +637,8 @@ MCP memory server.
 ## [1.0] - 2026-09-08
 Milestone tag (pre-semver).
 
-[Unreleased]: https://github.com/roelle/agy-team/compare/v3.22.0...HEAD
+[Unreleased]: https://github.com/roelle/agy-team/compare/v3.23.0...HEAD
+[3.23.0]: https://github.com/roelle/agy-team/compare/v3.22.0...v3.23.0
 [3.22.0]: https://github.com/roelle/agy-team/compare/v3.21.0...v3.22.0
 [3.21.0]: https://github.com/roelle/agy-team/compare/v3.20.0...v3.21.0
 [3.20.0]: https://github.com/roelle/agy-team/compare/v3.19.0...v3.20.0

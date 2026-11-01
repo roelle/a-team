@@ -38,9 +38,17 @@ agyteam-lifecycle = "agyteam.lifecycle:main"
 [tool.setuptools.dynamic]
 version = {attr = "agyteam.__version__"}
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["agyteam*"]
+# The plugin ships inside the package, so `python -m agyteam.install_plugin`
+# works from a plain install, with no checkout.
+[tool.setuptools]
+packages = ["agyteam", "agyteam.plugin"]
+
+[tool.setuptools.package-dir]
+"agyteam.plugin" = "plugin"
+
+[tool.setuptools.package-data]
+"agyteam.plugin" = ["*.sh", "*.json", "agy-team/*.json", "agy-team/rules/**/*",
+                    "agy-team/skills/**/*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

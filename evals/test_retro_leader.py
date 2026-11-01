@@ -100,9 +100,9 @@ def test_an_accountable_leader_is_named_as_a_tension_in_the_report():
 
 
 def test_the_seeded_roster_and_the_resolver_agree(tmp_path):
-    """The seed lives in a shell heredoc in plugin/install.sh, where no import
-    reaches it -- so it drifted from the code once already."""
-    text = (ROOT / "plugin" / "install.sh").read_text()
+    """The seed is a data file no import reaches, so it drifted from the code
+    once already."""
+    text = (ROOT / "plugin" / "starter_roster.json").read_text()
     manager_line = next(ln for ln in text.splitlines()
                         if '"name": "manager"' in ln)
     start = text.index(manager_line)

@@ -1,4 +1,4 @@
-"""The roster install.sh seeds must run on whichever runtime installs it.
+"""The roster a new team starts with must run on whichever runtime installs it.
 
 It pinned manager and qa to "gemini-3.1-pro-preview", an SDK model id. The
 agy CLI -- the default runner -- does not know that name, so on a fresh CLI
@@ -16,8 +16,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def seeded() -> dict:
-    text = (ROOT / "plugin" / "install.sh").read_text()
-    body = re.search(r"<<JSON\n(.*?)\nJSON\n", text, re.S).group(1)
+    body = (ROOT / "plugin" / "starter_roster.json").read_text()
     return json.loads(body.replace("$TEAM", "t"))
 
 

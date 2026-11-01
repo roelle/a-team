@@ -60,9 +60,8 @@ CASES = [
 
 
 def default_roster() -> dict:
-    """The roster `plugin/install.sh` seeds: the product's own defaults."""
-    text = (ROOT / "plugin" / "install.sh").read_text()
-    body = re.search(r"<<JSON\n(.*?)\nJSON\n", text, re.S).group(1)
+    """The roster a new team starts with: the product's own defaults."""
+    body = (ROOT / "plugin" / "starter_roster.json").read_text()
     doc = json.loads(body.replace("$TEAM", TEAM))
     doc["mission"] = MARKER
     return doc

@@ -476,16 +476,13 @@ def test_manager_persona_and_roster() -> tuple[int, int]:
         tpm_brief[-500:],
     ))
 
-    # 3. Check seeded roster in plugin/install.sh
-    install_script = (ROOT / "plugin" / "install.sh").read_text()
-    marker_start = 'cat > "$DURABLE/team/roster.json" <<JSON'
-    marker_end = "\nJSON"
-    has_markers = marker_start in install_script and marker_end in install_script
-    checks.append(check("install.sh contains roster heredoc markers", has_markers, "markers found"))
+    # 3. Check the starter roster
+    roster_file = ROOT / "plugin" / "starter_roster.json"
+    has_markers = roster_file.exists()
+    checks.append(check("the starter roster exists", has_markers, str(roster_file)))
 
     if has_markers:
-        raw_json = install_script.split(marker_start)[1].split(marker_end)[0]
-        json_clean = raw_json.replace("($TEAM)", "(test)").strip()
+        json_clean = roster_file.read_text().replace("($TEAM)", "(test)").strip()
         try:
             roster_data = json.loads(json_clean)
             json_valid = True
@@ -529,7 +526,7 @@ def test_manager_persona_and_roster() -> tuple[int, int]:
                             and boots.get("workers") is False,
                             f"tools_off={boots.get('tools_off')}, workers={boots.get('workers')}"))
         checks.append(check("install.sh self-test isolates AGYTEAM_RUNNER with env -u",
-                            "env -u AGYTEAM_RUNNER" in install_script,
+                            "env -u AGYTEAM_RUNNER" in (ROOT / "plugin" / "install.sh").read_text(),
                             "env -u AGYTEAM_RUNNER check"))
 
     return sum(checks), len(checks)

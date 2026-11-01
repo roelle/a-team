@@ -205,7 +205,7 @@ select_runner() {
 # A team needs a roster before anyone can be woken. plugin/install.sh seeds
 # one, but nothing told a new user to run it, so the first `./run` ended at
 # "no agents on the roster". Seed the same default team here, from the one
-# copy of it -- the heredoc in plugin/install.sh -- so the two cannot drift.
+# copy of it -- plugin/starter_roster.json -- so the two cannot drift.
 ensure_roster() {
     local team_dir roster team
     team_dir="$("$PYTHON_BIN" -c 'from agyteam import scope; print(scope.team_dir())')"
@@ -215,11 +215,10 @@ ensure_roster() {
     fi
     team="${AGYTEAM_TEAM:-default}"
     mkdir -p "$team_dir/inbox"
-    sed -n '/<<JSON$/,/^JSON$/p' "$REPO_DIR/plugin/install.sh" | sed '1d;$d' \
-        | sed "s/(\$TEAM)/($team)/" > "$roster"
+    sed "s/(\$TEAM)/($team)/" "$REPO_DIR/plugin/starter_roster.json" > "$roster"
     if ! "$PYTHON_BIN" -c 'import json,sys; json.load(open(sys.argv[1]))' "$roster" 2>/dev/null; then
         rm -f "$roster"
-        echo "Error: could not seed a default roster from plugin/install.sh." >&2
+        echo "Error: could not seed a default roster from plugin/starter_roster.json." >&2
         exit 1
     fi
     echo "Seeded the default team (manager, tpm, coder, syseng, qa) at $roster"

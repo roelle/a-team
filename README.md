@@ -156,6 +156,21 @@ a turn lives in the supervisor's process, which is why the restart drains.
 - **Billing / Quota Limits**: If you see quota or 429 rate limit errors, verify your Google AI Studio project has billing enabled and tier quotas configured for Gemini API access. A failure that means the account itself is out (`insufficient_quota`, HTTP 402, "credit balance is too low"; see `AGYTEAM_BUDGET_HALT_PATTERNS`) stops the whole team once and tells you, instead of every agent failing in turn; the mail stays queued, and `python -m agyteam.lifecycle start` resumes.
 - **Python Version**: `agy-team` requires Python 3.10 or newer. If `./run` reports an older version, install Python 3.10+ using your system package manager (e.g. `sudo apt install python3 python3-venv` on Ubuntu/Debian, or `brew install python` on macOS).
 
+### With no checkout
+
+[agy-chat](https://github.com/roelle/agy-chat) installs agy-team with it, and its
+first page sets up a team. To do the same from a shell:
+
+```bash
+python -m agyteam.starter runtimes        # what this machine can run, and what each still needs
+python -m agyteam.starter new acme --runner agy
+python -m agyteam.install_plugin          # the agy CLI runtime only
+```
+
+The plugin ships inside the package, so `install_plugin` needs no checkout. It
+runs the same `plugin/install.sh`. Neither command takes a key: a key belongs in
+the environment the supervisor starts in.
+
 ## Developer / Manual Quick Start
 
 ```bash
@@ -1641,7 +1656,7 @@ Releases follow [Semantic Versioning](https://semver.org/), tagged
 in [RELEASING.md](RELEASING.md). Pin a tag rather than `main`:
 
 ```bash
-pip install "agyteam @ git+https://github.com/roelle/agy-team.git@v3.22.0"
+pip install "agyteam @ git+https://github.com/roelle/agy-team.git@v3.23.0"
 python -m agyteam.supervisor --version
 ```
 

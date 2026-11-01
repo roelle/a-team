@@ -298,6 +298,29 @@ def restart(team_dir, now: bool = False, by: str = "user") -> dict:
 
 
 
+# --- a new team ---------------------------------------------------------------
+
+def create_team(teams_root, name: str, runtime: str) -> dict:
+    """A team on the starter roster, on one of starter.runtimes() that is
+    ready. The agy runtime reaches its tools through the plugin, so that is
+    installed first."""
+    _guard()
+    from . import install_plugin, starter
+    ready = {r["id"]: r for r in starter.runtimes() if r["ready"]}
+    if runtime not in ready:
+        raise OperatorError(f"runtime {runtime!r} is not ready on this machine")
+    if runtime == "agy":
+        done = install_plugin.install()
+        if done.returncode:
+            raise OperatorError(f"could not install the agy plugin: "
+                                f"{(done.stderr or done.stdout).strip()[-400:]}")
+    try:
+        team_dir = starter.create_team(teams_root, name, ready[runtime]["runner"])
+    except starter.StarterError as e:
+        raise OperatorError(str(e)) from None
+    return {"team_dir": str(team_dir), "note": ready[runtime]["note"]}
+
+
 # --- the roster --------------------------------------------------------------
 #
 # Written through roster.save, which records each write, so a running
