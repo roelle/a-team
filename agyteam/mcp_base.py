@@ -128,8 +128,12 @@ def check_args(tools: list[dict], name: str, args: dict) -> dict:
     return out
 
 
-def serve(server_name: str, tools: list[dict], dispatch) -> None:
-    """Run the stdio loop. `dispatch(tool_name, args) -> str`."""
+def serve(server_name: str, tools: list[dict], dispatch, footer=None) -> None:
+    """Run the stdio loop. `dispatch(tool_name, args) -> str`.
+
+    `footer()`, if given, is added to the end of each result: it is how a note
+    reaches an agent on a host with no hook of its own (agyteam.steer).
+    """
     def reply(msg_id, result=None, error=None):
         body = {"jsonrpc": "2.0", "id": msg_id}
         body.update({"error": error} if error else {"result": result})
@@ -162,6 +166,9 @@ def serve(server_name: str, tools: list[dict], dispatch) -> None:
                 err = False
             except Exception as e:
                 out, err = f"[error: {e}]", True
+            note = footer() if footer else ""
+            if note:
+                out = f"{out}\n\n{note}"
             reply(msg_id, {"content": [{"type": "text", "text": out}],
                            "isError": err})
         elif method == "ping":

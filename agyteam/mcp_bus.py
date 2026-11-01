@@ -29,7 +29,7 @@ from pathlib import Path
 
 from . import mcp_base
 from .mcp_base import fit, serve, string, tool
-from . import heartbeat, policy
+from . import heartbeat, policy, steer
 from . import roster as roster_lib
 from .transport import KINDS, Transport, load
 
@@ -217,7 +217,7 @@ def _load_text(load: dict | None) -> str:
 
 
 def _check_inbox(t: Transport) -> str:
-    msgs = t.fetch()
+    msgs = steer.already_read(_team_dir(t), t.me, t.fetch())
     if not msgs:
         return "[inbox empty]"
     # Oldest first, and only as many as fit inline; only those are marked
@@ -973,7 +973,8 @@ def main(transport: Transport, admin: bool = False):
             return str(e)
 
     try:
-        serve(f"agy-team-bus:{transport.me}", tools, dispatch)
+        serve(f"agy-team-bus:{transport.me}", tools, dispatch,
+              footer=lambda: steer.take_notes(_team_dir(transport), transport.me, transport))
     finally:
         transport.close()
 

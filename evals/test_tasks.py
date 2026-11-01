@@ -362,7 +362,7 @@ def dispatcher(agent, team, monkeypatch):
     """The server's dispatch function, as the stdio loop would call it."""
     captured = {}
     monkeypatch.setattr(mcp_tasks, "serve",
-                        lambda name, tools, dispatch: captured.update(d=dispatch))
+                        lambda name, tools, dispatch, footer=None: captured.update(d=dispatch))
     mcp_tasks.main(agent, team_dir=team)
     return captured["d"]
 

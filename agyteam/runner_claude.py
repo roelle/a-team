@@ -44,6 +44,7 @@ from . import persona
 from . import policy
 from . import roster as roster_lib
 from . import scope
+from . import steer
 from .runner import Runner, with_retry
 
 DEFAULT_MODEL = "claude-opus-5-5"
@@ -195,7 +196,12 @@ class ClaudeRunner(Runner):
                     duration_s=max(0.0, time.monotonic() - t0) if t0 is not None else None)
             except Exception:
                 pass                    # accounting must never break a turn
-            return {}
+            steer.count_call(team_dir, agent, _team_tool(data["tool_name"]), data.get("tool_input"))
+            note = steer.take_notes(team_dir, agent)
+            if not note:
+                return {}
+            return {"hookSpecificOutput": {"hookEventName": data["hook_event_name"],
+                                           "additionalContext": note}}
 
         return {"PreToolUse": [HookMatcher(hooks=[before])],
                 "PostToolUse": [HookMatcher(hooks=[after])],

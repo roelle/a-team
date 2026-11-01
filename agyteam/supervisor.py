@@ -874,6 +874,7 @@ class Supervisor:
         for agent, turn in self.inflight.items():
             doc[agent] = {"handle": turn["handle"], "ts": turn["ts"],
                           "hop": turn["hop"], "trigger": turn["trigger"],
+                          "pull": self.inbox_pull,
                           "msgs": [m.as_dict() for m in turn["msgs"]]}
             if turn.get("distill"):
                 doc[agent]["distill"] = turn["distill"]
@@ -1629,8 +1630,7 @@ class Supervisor:
                     "turn": turn, "deferred": deferred, "since": time.monotonic(),
                     "future": self._recall_pool().submit(self._recall_block, agent, msgs, recall_cfg)}
                 continue
-            if self.inbox_pull:
-                receipts.open_turn(self.team_dir, agent)
+            receipts.open_turn(self.team_dir, agent)
             try:
                 turn["handle"] = self.runner.begin(agent, self.wake_prompt(msgs, deferred))
             except Exception as e:          # the runner could not even start it
@@ -1739,8 +1739,7 @@ class Supervisor:
                 except Exception:
                     block = ""
             turn = prep["turn"]
-            if self.inbox_pull:
-                receipts.open_turn(self.team_dir, agent)
+            receipts.open_turn(self.team_dir, agent)
             try:
                 turn["handle"] = self.runner.begin(agent, self.wake_prompt(turn["msgs"], prep["deferred"]) + block)
             except Exception as e:
@@ -1801,6 +1800,7 @@ class Supervisor:
                         transport.requeue(msgs)
                     except TypeError:
                         transport.requeue(agent, msgs)
+                    self._restore_pulled_mail(agent, transport, {**turn, "msgs": []})
                 elif self.inbox_pull:
                     self._restore_pulled_mail(agent, transport, turn)
             elif self.inbox_pull:
@@ -1811,6 +1811,7 @@ class Supervisor:
                 # took is done with.
                 receipts.close_turn(self.team_dir, agent)
             elif hasattr(transport, "acknowledge") and callable(transport.acknowledge):
+                receipts.close_turn(self.team_dir, agent)
                 try:
                     transport.acknowledge(msgs)
                 except TypeError:
@@ -2287,6 +2288,7 @@ class Supervisor:
                         transport.requeue(turn["msgs"])
                     except TypeError:
                         transport.requeue(agent, turn["msgs"])
+                    self._restore_pulled_mail(agent, transport, {**turn, "msgs": []})
             del self.inflight[agent]
             self._log(f"    {agent}: turn cancelled for the restart; its mail is back in its inbox")
         self._save_ledger()

@@ -48,6 +48,8 @@ done
 
 sed -e "s|__PYTHON__|$PYTHON|g" -e "s|__AGYTEAM_HOME__|$PLUGIN_DST|g" \
     "$AGYTEAM_HOME/plugin/mcp_config.template.json" > "$PLUGIN_DST/mcp_config.json"
+sed -e "s|__PYTHON__|$PYTHON|g" \
+    "$AGYTEAM_HOME/plugin/hooks.template.json" > "$PLUGIN_DST/hooks.json"
 
 if [ ! -f "$DURABLE/team/roster.json" ]; then
   cat > "$DURABLE/team/roster.json" <<JSON

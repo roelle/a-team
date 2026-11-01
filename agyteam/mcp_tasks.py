@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 from .mcp_base import ArgError, boolean, fit, flag, serve, string, tool
-from . import heartbeat, policy
+from . import heartbeat, policy, steer
 from . import roster as roster_lib
 from . import scope
 from . import tasks as tasks_lib
@@ -436,7 +436,8 @@ def main(agent: str, team_dir: Path | None = None):
         except (tasks_lib.TaskError, ArgError) as e:
             return f"[error: {e}]"
 
-    serve(f"agy-team-tasks:{agent}", TOOLS, dispatch)
+    serve(f"agy-team-tasks:{agent}", TOOLS, dispatch,
+          footer=lambda: steer.take_notes(td, agent))
 
 
 if __name__ == "__main__":

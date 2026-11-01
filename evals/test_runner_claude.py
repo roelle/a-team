@@ -9,6 +9,8 @@ import json
 import os
 import subprocess
 import sys
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -20,6 +22,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "evals"))
 
 from agyteam.runner_claude import ClaudeRunner  # noqa: E402
+from agyteam.transport import load as load_transport  # noqa: E402
 from fake_anthropic import FakeAnthropic, status, use  # noqa: E402
 
 BUS = "mcp__agyteam_bus__"
@@ -306,6 +309,43 @@ def test_an_agent_can_do_ordinary_work_without_a_prompt(team, api, tmp_path):
     assert (repo / ".git").is_dir() and not (repo / "old.txt").exists()
     assert (shared / "b.py").exists()
     assert "[refused" not in json.dumps(api.requests[-1]["messages"])
+
+
+def begin_turn(td, agent="coder"):
+    """What the supervisor's ledger says while a turn runs."""
+    (td / "inflight.json").write_text(json.dumps({agent: {"ts": "2026-11-01 10:00:00", "msgs": []}}))
+
+
+def said_to_model(request):
+    """The text of every user message in a request."""
+    return json.dumps(request["messages"])
+
+
+@pytest.mark.parametrize("api", [[use("Bash", {"command": "echo hi"})] * 4 + ["done"]],
+                         indirect=True)
+def test_the_same_call_three_times_reaches_the_model_as_a_note(team, api):
+    begin_turn(team)
+    assert runner().wake("coder", "go") == "done"
+    assert "3 times in a row" not in said_to_model(api.requests[2])
+    assert "3 times in a row" in said_to_model(api.requests[3])
+
+
+@pytest.mark.parametrize("api", [[use("mcp__agyteam_bus__list_teammates"), use("Bash", {"command": "true"}),
+                                  "done"]], indirect=True)
+def test_mail_that_arrives_mid_turn_reaches_the_model_at_the_next_step(team, api):
+    begin_turn(team)
+
+    def deliver():
+        while not api.requests:
+            time.sleep(0.01)
+        bus = load_transport("user")
+        bus.send("coder", "Stop, wrong branch.")
+        bus.close()
+
+    threading.Thread(target=deliver, daemon=True).start()
+    assert runner().wake("coder", "go") == "done"
+    assert "from user: Stop, wrong branch." in said_to_model(api.requests[-1])
+
 
 
 if __name__ == "__main__":

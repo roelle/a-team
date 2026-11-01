@@ -20,7 +20,7 @@ repo it happened to be working in.
 import os
 import sys
 
-from . import memory_log
+from . import memory_log, scope, steer
 from .mcp_base import serve, string, tool
 from .memory import (MemoryStore, detect_conflicts, extract_provenance,
                      normalize_name, review_memories)
@@ -174,7 +174,9 @@ def main(store: MemoryStore):
         return fn(args) if fn else f"[error: unknown tool '{name}']"
 
     try:
-        serve(f"agy-team-memory:{store.agent}", TOOLS, dispatch)
+        td = scope.team_dir(os.environ.get("AGYTEAM_TEAM_DIR"))
+        serve(f"agy-team-memory:{store.agent}", TOOLS, dispatch,
+              footer=lambda: steer.take_notes(td, store.agent))
     finally:
         store.close()
 

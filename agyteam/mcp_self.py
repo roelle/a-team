@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 from .mcp_base import serve, tool
-from . import roster, scope
+from . import roster, scope, steer
 
 TOOLS = [
     tool("whoami",
@@ -255,7 +255,8 @@ def main(agent: str, team_dir: Path | None = None):
         fn = handlers.get(name)
         return fn(args) if fn else f"[error: unknown tool '{name}']"
 
-    serve(f"agy-team-self:{agent}", TOOLS, dispatch)
+    serve(f"agy-team-self:{agent}", TOOLS, dispatch,
+          footer=lambda: steer.take_notes(td, agent))
 
 
 if __name__ == "__main__":

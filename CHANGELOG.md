@@ -7,6 +7,25 @@ the README for what counts as the public surface.
 
 ## [Unreleased]
 
+## [3.21.0] - 2026-11-01
+
+### Added
+- **Mail reaches an agent during its turn.** Waking mail that arrives while an
+  agent works is put in front of the model at its next step, with a pointer to
+  `check_inbox`. It works on the agy CLI, Claude and the Antigravity SDK, and
+  on any other host at the next team tool result. Quiet posts still wait.
+- **Agents are told when they repeat themselves.** The same tool call 3, 5 or
+  8 times in a row gets a note. It is advice and blocks nothing, except on the
+  Antigravity SDK, where a repeat of 5 or more refuses one call to say so.
+- The installed plugin now has a `hooks.json`, and `python -m agyteam.hook_step`
+  is there for any host with step hooks. Both leave anything that is not a
+  supervised turn alone.
+
+### Fixed
+- Mail read with `check_inbox` during a turn was lost if that turn then failed,
+  unless the team used `inbox_pull`. It now goes back to the inbox.
+- `check_inbox` during a turn no longer repeats the mail already in the prompt.
+
 ## [3.20.0] - 2026-11-01
 
 ### Added
@@ -586,7 +605,8 @@ MCP memory server.
 ## [1.0] - 2026-09-08
 Milestone tag (pre-semver).
 
-[Unreleased]: https://github.com/roelle/agy-team/compare/v3.20.0...HEAD
+[Unreleased]: https://github.com/roelle/agy-team/compare/v3.21.0...HEAD
+[3.21.0]: https://github.com/roelle/agy-team/compare/v3.20.0...v3.21.0
 [3.20.0]: https://github.com/roelle/agy-team/compare/v3.19.0...v3.20.0
 [3.19.0]: https://github.com/roelle/agy-team/compare/v3.18.0...v3.19.0
 [3.18.0]: https://github.com/roelle/agy-team/compare/v3.17.0...v3.18.0

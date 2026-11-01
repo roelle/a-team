@@ -639,6 +639,32 @@ running team the budget is a rate: at most `--max-hops` wakes in any
 agent shows as `held` in `Record.presence()`, and the user's own messages
 always wake their recipient.
 
+### Reaching an agent during a turn
+
+A turn can run for many minutes, so two things no longer wait for it to end.
+
+**Mail.** Waking mail that arrives during a turn is put in front of the model at
+its next step: who it is from, the start of each message, and a pointer to
+`check_inbox`. The agent reads it there, so one path still takes mail out of an
+inbox, and it comes back if the turn then fails. Quiet channel posts still wait
+for a wake.
+
+**Repeats.** An agent that makes the same call 3, 5 or 8 times in a row gets a
+note saying so. Fields where the model describes a call, such as `toolSummary`,
+do not count as part of it. The note is advice: nothing stops the call.
+
+Each note is shown once. Only supervised turns get them, so a person's own
+session with the plugin installed is left alone. How a note gets there depends on the runtime:
+
+| Runtime | How a note arrives |
+|---|---|
+| agy CLI | The plugin's `hooks.json`, before each model call |
+| Claude | The runner's tool hook, after each tool call |
+| Antigravity SDK | That SDK's post-tool hook can only look, so a person's mail or a repeat of 5 or more refuses one call and says why. Anything else waits for the next team tool result. |
+| Any other host | The end of the next team tool result. Point the host's hooks at `python -m agyteam.hook_step` if it has them. |
+
+Each note is recorded as a `steer` event in `events.jsonl`.
+
 ### Knowing when to stop
 
 An early real run produced 31 messages of pure courtesy — *"Acknowledged, thanks
@@ -1594,7 +1620,7 @@ Releases follow [Semantic Versioning](https://semver.org/), tagged
 in [RELEASING.md](RELEASING.md). Pin a tag rather than `main`:
 
 ```bash
-pip install "agyteam @ git+https://github.com/roelle/agy-team.git@v3.20.0"
+pip install "agyteam @ git+https://github.com/roelle/agy-team.git@v3.21.0"
 python -m agyteam.supervisor --version
 ```
 

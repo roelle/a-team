@@ -21,6 +21,7 @@ from google.antigravity.hooks import (on_compaction, policy, post_tool_call,
                                       pre_tool_call_decide)
 
 from . import config as cfg
+from . import scope, steer
 from .persona import CONTRACT
 from .store import Toolbox
 
@@ -253,6 +254,25 @@ def build_config(workspace: Path, model: str = cfg.DEFAULT_MODEL,
             return types.HookResult(allow=True)
 
         hooks.append(readonly_extra_workspaces)
+
+    if with_bus:
+        # This SDK's post-tool hook can only look, so a note goes out by
+        # refusing one call. Before the audit hook: a refused call did not run.
+        team_dir = scope.team_dir(os.environ.get("AGYTEAM_TEAM_DIR"))
+
+        @pre_tool_call_decide
+        def steer_turn(tool_call):
+            tool = getattr(tool_call.name, "value", None) or str(tool_call.name)
+            steer.count_call(team_dir, name, tool, tool_call.args)
+            note = "" if "check_inbox" in tool else steer.take_notes(
+                team_dir, name, urgent_only=True)
+            if note:
+                return types.HookResult(allow=False, message=(
+                    f"{note}\n[This call did not run. Make it again if it is "
+                    f"still what you want.]"))
+            return types.HookResult(allow=True)
+
+        hooks.append(steer_turn)
 
     if pre_trace is not None:
         @pre_tool_call_decide
