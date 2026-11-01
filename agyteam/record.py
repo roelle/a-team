@@ -390,6 +390,50 @@ class Record:
                 out[agent] = {"state": "offline", "since": None, "detail": ""}
         return out
 
+    def quiet_mail(self, days: float = 7, now: float | None = None) -> dict:
+        """What channel membership costs: mail a wake carried that did not
+        ask for the agent, from the `quiet` each turn's trigger records.
+
+        {"days", "turns", "turns_with_quiet", "msgs", "bytes", "deferred",
+         "est_tokens", "input_tokens", "share",
+         "channels": {name: {"msgs", "bytes"}} (bytes only, largest first),
+         "agents": {name: {"msgs", "bytes", "turns"}}}
+
+        est_tokens is bytes / 4. share is est_tokens over the uncached input
+        tokens of the same turns, the first read only: the mail then stays
+        in the agent's context, re-read at the cached rate until compaction.
+        """
+        now = time.time() if now is None else now
+        out = {"days": days, "turns": 0, "turns_with_quiet": 0, "msgs": 0, "bytes": 0,
+               "deferred": 0, "input_tokens": 0}
+        channels: dict[str, int] = {}
+        agents: dict[str, dict] = {}
+        for e in self.events():
+            if e.get("event") != "turn":
+                continue
+            at = _epoch(e.get("ts"))
+            if at is None or at < now - days * 86400:
+                continue
+            out["turns"] += 1
+            out["input_tokens"] += e.get("input_tokens") or 0
+            q = (e.get("trigger") or {}).get("quiet")
+            if not q:
+                continue
+            out["turns_with_quiet"] += 1
+            for k in ("msgs", "bytes", "deferred"):
+                out[k] += q.get(k) or 0
+            for name, size in (q.get("channels") or {}).items():
+                channels[name] = channels.get(name, 0) + size
+            a = agents.setdefault(e.get("agent") or "unknown", {"msgs": 0, "bytes": 0, "turns": 0})
+            a["msgs"] += q.get("msgs") or 0
+            a["bytes"] += q.get("bytes") or 0
+            a["turns"] += 1
+        out["est_tokens"] = out["bytes"] // 4
+        out["share"] = round(out["est_tokens"] / out["input_tokens"], 4) if out["input_tokens"] else None
+        out["channels"] = dict(sorted(channels.items(), key=lambda kv: -kv[1]))
+        out["agents"] = agents
+        return out
+
     def load(self, now: float | None = None) -> dict[str, dict]:
         """How busy each agent is, so work can go where there is room.
 

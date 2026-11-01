@@ -7,6 +7,7 @@ nobody; send_to_teammate says "queued", and whether anyone is running to
 deliver it, instead of "delivered".
 """
 import json
+import time
 import sys
 from pathlib import Path
 
@@ -79,6 +80,46 @@ def test_quiet_mail_is_read_on_the_next_wake(team):
     assert sorted(disp["trigger"]["kinds"]) == ["deliverable", "fyi"]
     turn = events(team, "turn")[-1]
     assert turn["trigger"]["senders"] == ["manager"] and turn["hop"] == 1
+
+
+def test_the_record_says_what_quiet_mail_a_wake_carried(team):
+    """Asked for: does being in every channel cost tokens? Quiet posts wake
+    nobody, but each wake carries them, so each turn records how much."""
+    from agyteam import channels
+    from agyteam.observer import format_quiet_mail
+    from agyteam.record import Record
+
+    channels.create(team, "docs", ["coder", "qa"])
+    channels.post(load_transport("qa"), team, "docs", "the guide moved", kind="work")
+    load_transport("manager").send_kind("coder", "please do X", kind="deliverable")
+    sup = Supervisor(AGENTS, ScriptedRunner({}), quiet=True)
+    try:
+        sup.step()
+    finally:
+        sup.close()
+    q = events(team, "turn")[-1]["trigger"]["quiet"]
+    assert q["msgs"] == 1 and q["deferred"] == 0 and list(q["channels"]) == ["docs"]
+    r = Record(team).quiet_mail()
+    assert r["turns"] == 1 and r["turns_with_quiet"] == 1
+    assert r["bytes"] == q["bytes"] > 0 and r["est_tokens"] == q["bytes"] // 4
+    assert r["agents"]["coder"]["msgs"] == 1 and list(r["channels"]) == ["docs"]
+    text = format_quiet_mail(r)
+    assert "1 posts on 1 of 1 turns" in text and "#docs: about" in text
+    assert Record(team).quiet_mail(days=0, now=time.time() + 60)["turns"] == 0
+
+
+def test_a_turn_with_no_quiet_mail_records_none(team):
+    from agyteam.observer import format_quiet_mail
+    from agyteam.record import Record
+
+    load_transport("manager").send_kind("coder", "please do X", kind="deliverable")
+    sup = Supervisor(AGENTS, ScriptedRunner({}), quiet=True)
+    try:
+        sup.step()
+    finally:
+        sup.close()
+    assert "quiet" not in events(team, "turn")[-1]["trigger"]
+    assert "none on 1 turns" in format_quiet_mail(Record(team).quiet_mail())
 
 
 def test_a_review_round_trip_is_two_wakes_not_six(team):

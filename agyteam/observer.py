@@ -276,6 +276,22 @@ def calculate_cost(input_tokens: int | None, output_tokens: int | None,
     return in_cost + out_cost
 
 
+def format_quiet_mail(q: dict) -> str:
+    """Record.quiet_mail() as a few lines for the --cost report."""
+    lines = [f"\nQuiet channel mail, last {q['days']:g} days:"]
+    if not q["turns_with_quiet"]:
+        lines.append(f"  none on {q['turns']} turns (recorded from 3.19.0 on)")
+        return "\n".join(lines)
+    share = "" if q["share"] is None else f", {q['share']:.1%} of uncached input"
+    lines.append(f"  {q['msgs']} posts on {q['turns_with_quiet']} of {q['turns']} turns, "
+                 f"about {q['est_tokens']:,} tokens{share}")
+    if q["deferred"]:
+        lines.append(f"  {q['deferred']} more left waiting by the wake prompt's size limit")
+    lines.append("  Each stays in context, re-read at the cached rate, until compaction.")
+    lines += [f"  #{name}: about {size // 4:,} tokens" for name, size in q["channels"].items()]
+    return "\n".join(lines)
+
+
 def format_summary(data: dict) -> str:
     """Format summary data into an easily readable terminal report."""
     lines = ["=== Team Observability & Cost Summary ==="]

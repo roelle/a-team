@@ -1360,6 +1360,21 @@ class Supervisor:
         chosen = set(map(id, loud + keep))
         return [m for m in msgs if id(m) in chosen], len(quiet) - len(keep)
 
+    @staticmethod
+    def _quiet_mail(msgs: list[Message], deferred: int) -> dict:
+        """What a wake carries that did not ask for this agent: how many
+        quiet messages, their size, and their channels (Record.quiet_mail
+        adds it up, to show what being in a channel costs). Empty if none."""
+        quiet = [m for m in msgs if not m.wakes]
+        if not quiet and not deferred:
+            return {}
+        channels: dict[str, int] = {}
+        for m in quiet:
+            name = m.channel or "direct"
+            channels[name] = channels.get(name, 0) + len(m.render().encode("utf-8", "replace"))
+        return {"msgs": len(quiet), "bytes": sum(channels.values()),
+                "deferred": deferred, "channels": channels}
+
     def wake_prompt(self, msgs: list[Message], deferred: int = 0) -> str:
         """What an agent is woken with.
 
@@ -1594,6 +1609,9 @@ class Supervisor:
             trigger = {"senders": sorted({m.sender for m in msgs}),
                        "kinds": sorted({m.kind for m in msgs}),
                        "task_ids": sorted({m.task_id for m in msgs if m.task_id})}
+            quiet = self._quiet_mail(msgs, deferred)
+            if quiet:
+                trigger["quiet"] = quiet
             try:
                 self.runner.turn_meta[agent] = {"trigger": trigger, "hop": self.hops}
             except Exception:
@@ -4366,6 +4384,8 @@ def main(argv=None, runner=None):
         from . import observer as observer_lib
         obs = observer_lib.load()
         print(observer_lib.format_summary(obs.summary()))
+        from .record import Record
+        print(observer_lib.format_quiet_mail(Record(team_dir).quiet_mail()))
         return
     agents = _agents_from_roster(team_dir)
     if not agents:

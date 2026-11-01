@@ -1106,7 +1106,9 @@ with everyone). Agents post with `post_to_channel(channel, content, [kind],
 channel), `@all` (the whole roster, members or not). Every other member gets
 a quiet copy that waits in its inbox and is read with everything else unread
 the next time that agent is woken for anything. A busy channel costs no
-turns, and nobody misses what was said while they were away. Every message
+turns, and nobody misses what was said while they were away. It does cost
+context: `agyteam --cost` and `Record.quiet_mail()` show how much of it each
+channel put in front of agents. Every message
 has an `id`; a reply passes `thread=<id>` (direct messages too), and agents
 see the ids on what they receive. The post is logged to `bus.jsonl` once,
 addressed to `#<channel>`, with its mentions.
@@ -1562,7 +1564,7 @@ Releases follow [Semantic Versioning](https://semver.org/), tagged
 in [RELEASING.md](RELEASING.md). Pin a tag rather than `main`:
 
 ```bash
-pip install "agyteam @ git+https://github.com/roelle/agy-team.git@v3.18.0"
+pip install "agyteam @ git+https://github.com/roelle/agy-team.git@v3.19.0"
 python -m agyteam.supervisor --version
 ```
 

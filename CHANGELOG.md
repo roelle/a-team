@@ -7,6 +7,16 @@ the README for what counts as the public surface.
 
 ## [Unreleased]
 
+## [3.19.0] - 2026-10-31
+
+### Added
+- **The record says what channel membership costs.** A quiet post wakes
+  nobody, but it arrives with the agent's next wake. Each turn's `trigger`
+  now records the quiet mail it carried: `quiet` with `msgs`, `bytes`,
+  `deferred` and `channels`. `Record.quiet_mail(days=7)` adds it up by
+  channel and agent, with a token estimate and its share of uncached input.
+  `agyteam --cost` prints it. Turns before this release record nothing.
+
 ## [3.18.0] - 2026-10-29
 
 ### Added
@@ -559,7 +569,8 @@ MCP memory server.
 ## [1.0] - 2026-09-08
 Milestone tag (pre-semver).
 
-[Unreleased]: https://github.com/roelle/agy-team/compare/v3.18.0...HEAD
+[Unreleased]: https://github.com/roelle/agy-team/compare/v3.19.0...HEAD
+[3.19.0]: https://github.com/roelle/agy-team/compare/v3.18.0...v3.19.0
 [3.18.0]: https://github.com/roelle/agy-team/compare/v3.17.0...v3.18.0
 [3.17.0]: https://github.com/roelle/agy-team/compare/v3.16.0...v3.17.0
 [3.16.0]: https://github.com/roelle/agy-team/compare/v3.15.0...v3.16.0
