@@ -54,7 +54,7 @@ class Team:
                 continue
         return out
 
-    def resolve(self, raw: str) -> tuple[Path | None, str | None]:
+    def resolve(self, raw: str, home_too: bool = True) -> tuple[Path | None, str | None]:
         """(path, None) for something this team may show, else (None, why).
 
         Absolute and ~ paths are taken as they are; a relative one is looked
@@ -76,15 +76,17 @@ class Team:
             return None, "not a path"
         if any(p == r or r in p.parents for r in roots):
             return p, None
+        if not home_too:                # someone other than the operator
+            return None, "outside this team and its workspaces"
         home = Path.home().resolve()
         if home in p.parents and not any(part.startswith(".") for part in p.relative_to(home).parts):
             return p, None
         return None, "outside this team's workspaces and your home directory"
 
-    def read_artifact(self, raw: str) -> dict:
+    def read_artifact(self, raw: str, home_too: bool = True) -> dict:
         """A file's contents for the artifact pane, if it is somewhere this
         team may show (see resolve). Read-only."""
-        p, why = self.resolve(raw)
+        p, why = self.resolve(raw, home_too)
         if p is None:
             return {"error": why, "path": raw}
         if not p.exists():

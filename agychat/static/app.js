@@ -204,6 +204,8 @@ async function refreshState() {
   for (const [k, ts] of Object.entries(S.state.mentions_of_user || {}))
     if (ts > (S.seen[`${S.team}|${k}`] || "") && !(S.view && viewKey(S.view) === k)) S.atMe[k] = true;
   $("#me").textContent = `posting as ${S.state.author}`;
+  document.querySelector('.nav-link[href^="/admin"]')?.classList.toggle("hidden", !!S.state.member);
+  for (const id of ["#sup-start", "#sup-stop", "#sup-restart"]) if (S.state.member) $(id)?.classList.add("hidden");
   renderSidebar(); renderAgents(); renderTasks(); renderSupervisor();
   if (S.view) { renderViewTasks(); renderBookmarks(); }
 }

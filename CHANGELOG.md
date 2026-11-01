@@ -7,6 +7,19 @@ break; the public surface is the command line and the HTTP API under /api.
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-11-01
+
+### Added
+- **Other people can have links of their own.** `agy-chat people add <name>`
+  prints a link once. What they post carries their name. They can use chat,
+  the board and the wiki, but not Admin, and can read files only in the team
+  and its workspaces. Anyone with a link can direct the agents, and the agents
+  run commands as you, so give links only to people you would hand a shell.
+  Requires agy-team 3.24.0 for agents to answer them by name.
+
+### Fixed
+- A token that is not ASCII is refused, instead of failing the request.
+
 ## [0.18.1] - 2026-11-01
 
 ### Fixed
@@ -409,7 +422,8 @@ break; the public surface is the command line and the HTTP API under /api.
   changes.
 - Requires agy-team 3.0.0.
 
-[Unreleased]: https://github.com/roelle/agy-chat/compare/v0.18.1...HEAD
+[Unreleased]: https://github.com/roelle/agy-chat/compare/v0.19.0...HEAD
+[0.19.0]: https://github.com/roelle/agy-chat/compare/v0.18.1...v0.19.0
 [0.18.1]: https://github.com/roelle/agy-chat/compare/v0.18.0...v0.18.1
 [0.18.0]: https://github.com/roelle/agy-chat/compare/v0.17.1...v0.18.0
 [0.17.1]: https://github.com/roelle/agy-chat/compare/v0.17.0...v0.17.1

@@ -34,12 +34,24 @@ from urllib.parse import parse_qs, urlparse
 from agyteam import actions, starter
 from agyteam.record import Feed, Record
 
+from . import people
 from .teams import Team, discover
 
 STATIC = Path(__file__).resolve().parent / "static"
 COOKIE = "agychat"
 UPLOAD_BYTES = 30_000_000        # a JSON body carrying a base64 picture or attachment
 UPLOAD_PATHS = ("/api/attach", "/api/avatar")
+
+
+class Forbidden(Exception):
+    """Someone with a link of their own asked for what only the operator may."""
+
+
+#: All someone other than the operator can reach, so a new endpoint starts closed.
+PERSON_GET = {"/api/teams", "/api/state", "/api/messages", "/api/artifact", "/api/tasks",
+              "/api/task", "/api/search", "/api/models", "/api/activity", "/api/wiki",
+              "/api/events", "/api/file", "/api/avatar"}
+PERSON_POST = {"/api/post", "/api/task", "/api/attach", "/api/bookmarks"}
 
 
 def epoch(ts) -> float | None:
@@ -61,7 +73,8 @@ class App:
     def __init__(self, teams_root: Path | None, team_dirs: list[Path], author: str):
         self.teams_root = teams_root
         self.team_dirs = team_dirs
-        self.author = author
+        self.owner = author
+        self._request = threading.local()
         self.host = "127.0.0.1"         # what serve() bound; the Host check reads it
         # A restart for an update passes the token on, so open tabs stay
         # signed in. Taken out of the environment at once: supervisors this
@@ -74,6 +87,19 @@ class App:
         self.reexec = self._reexec
         self._usage_cache: dict = {}
         self.refresh()
+
+    @property
+    def person(self) -> str | None:
+        """Who this request is from, when it is not the operator."""
+        return getattr(self._request, "person", None)
+
+    @person.setter
+    def person(self, name: str | None) -> None:
+        self._request.person = name
+
+    @property
+    def author(self) -> str:
+        return self.person or self.owner
 
     def refresh(self) -> dict[str, Team]:
         self._teams = discover(self.teams_root, self.team_dirs)
@@ -130,7 +156,8 @@ class App:
             if frm != "supervisor" and ("user" in (m.get("mentions") or [])
                                         or (not m.get("channel") and m.get("to") == "user")):
                 mentions[key] = m.get("ts")
-        return {"team": team, "author": self.author, "operator": rec.operator(),
+        return {"team": team, "author": self.author, "member": bool(self.person),
+                "operator": rec.operator(),
                 "mentions_of_user": mentions, "latest": latest,
                 "needs_you": rec.needs_you(),
                 "agents": agents, "channels": rec.channels(),
@@ -303,6 +330,8 @@ class App:
     def task_action(self, team: str, body: dict) -> dict:
         t = self.team(team)
         action = body.get("action")
+        if self.person and action not in ("create", "update"):
+            raise Forbidden(f"{action} is the operator's")
         if action == "create":
             return actions.create_task(
                 t.dir, body.get("project") or "", body.get("title") or "",
@@ -564,10 +593,21 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             return False
 
+    def _is_operator(self, token: str) -> bool:
+        # As bytes: compare_digest raises on a str that is not ASCII.
+        return secrets.compare_digest(token.encode("utf-8", "replace"), self.app.token.encode())
+
     def _authed(self) -> bool:
+        """Is this the operator, or someone with a link? Sets app.person, for
+        this request's thread, to which; a thread may serve an earlier request."""
+        self.app.person = None
         c = SimpleCookie(self.headers.get("Cookie") or "")
-        return (COOKIE in c and secrets.compare_digest(c[COOKIE].value, self.app.token)) or \
-            secrets.compare_digest(self.headers.get("X-Token", ""), self.app.token)
+        given = [c[COOKIE].value] if COOKIE in c else []
+        given.append(self.headers.get("X-Token", ""))
+        if any(map(self._is_operator, given)):
+            return True
+        self.app.person = next(filter(None, map(people.who, given)), None)
+        return self.app.person is not None
 
     def _query(self) -> tuple[str, dict]:
         u = urlparse(self.path)
@@ -581,8 +621,8 @@ class Handler(BaseHTTPRequestHandler):
         path, q = self._query()
         if path in ("/", "/index.html", "/wiki", "/board", "/admin"):
             extra = {}
-            if q.get("token") and secrets.compare_digest(q["token"], self.app.token):
-                extra["Set-Cookie"] = f"{COOKIE}={self.app.token}; Path=/; HttpOnly; SameSite=Strict"
+            if q.get("token") and (self._is_operator(q["token"]) or people.who(q["token"])):
+                extra["Set-Cookie"] = f"{COOKIE}={q['token']}; Path=/; HttpOnly; SameSite=Strict"
             elif not self._authed():
                 return self._send(401, b"Open the URL agy-chat printed (it carries the token).",
                                   "text/plain")
@@ -601,6 +641,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(404, b"not found", "text/plain")
         if not self._authed():
             return self._json({"error": "not authorised"}, 401)
+        if self.app.person and path not in PERSON_GET:
+            return self._json({"error": "that is the operator's"}, 403)
         try:
             if path == "/api/setup":
                 return self._json(self.app.setup())
@@ -612,7 +654,8 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/messages":
                 return self._json(self.app.messages(team, q))
             if path == "/api/artifact":
-                return self._json(self.app.team(team).read_artifact(q.get("path", "")))
+                return self._json(self.app.team(team).read_artifact(q.get("path", ""),
+                                                                    not self.app.person))
             if path == "/api/tasks":
                 return self._json({"tasks": self.app.tasks(team)})
             if path == "/api/task":
@@ -638,7 +681,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/events":
                 return self._events(team)
             if path == "/api/file":
-                p, why = self.app.team(team).resolve(q.get("path", ""))
+                p, why = self.app.team(team).resolve(q.get("path", ""), not self.app.person)
                 if p is None or not p.is_file():
                     return self._json({"error": why or "no such file"}, 404)
                 return self._raw(p)
@@ -671,6 +714,8 @@ class Handler(BaseHTTPRequestHandler):
         if not (self.headers.get("Content-Type") or "").startswith("application/json"):
             return self._json({"error": "send JSON"}, 415)
         path, q = self._query()
+        if self.app.person and path not in PERSON_POST:
+            return self._json({"error": "that is the operator's"}, 403)
         try:
             length = int(self.headers.get("Content-Length") or 0)
             cap = UPLOAD_BYTES if path in UPLOAD_PATHS else 1_000_000
@@ -692,6 +737,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(fn(team, body))
         except actions.OperatorError as e:
             return self._json({"error": str(e)}, 400)
+        except Forbidden as e:
+            return self._json({"error": str(e)}, 403)
         except LookupError as e:
             return self._json({"error": str(e)}, 404)
         except Exception as e:
@@ -752,6 +799,9 @@ def serve(app: App, host: str = "127.0.0.1", port: int = 8765) -> ThreadingHTTPS
 
 
 def main(argv=None) -> int:
+    args = list(sys.argv[1:] if argv is None else argv)
+    if args[:1] == ["people"]:
+        return people.main(args[1:])
     ap = argparse.ArgumentParser(prog="agy-chat", description=__doc__.split("\n\n")[0])
     from . import __version__
     from agyteam import __version__ as agyteam_version

@@ -23,7 +23,7 @@ the conversation.
 ## Run it
 
 ```bash
-pipx install "agy-chat @ git+https://github.com/roelle/agy-chat.git@v0.18.1"
+pipx install "agy-chat @ git+https://github.com/roelle/agy-chat.git@v0.19.0"
 agy-chat
 ```
 
@@ -229,13 +229,38 @@ untick that and pick some.
 - **Team wiki** opens the team's `NORMS.md` and every agent's saved memories
   in a new tab.
 
+## More than one person
+
+Give someone their own link:
+
+```bash
+agy-chat people add alice --url http://your-host:8765
+```
+
+It is printed once, and only a hash is kept. `agy-chat people list` shows who is
+here, and `agy-chat people remove alice` ends a link at once.
+
+What they post carries their name, and agents see it and answer them by name.
+They can use chat, the board and the wiki. They cannot use Admin, start or stop
+a team, create or archive channels, or waive a review, and they can read files
+only in the team and its workspaces. The operator's link can also read your home
+directory.
+
+**This does not make it safe to share widely.** Anyone with a link can tell the
+agents what to do, and the agents run commands as you. Give links only to people
+you would hand a shell. To reach this app from another machine you need `--host`
+or a tunnel, and everything under [Security](#security) applies.
+
+All people share one mailbox for now: when an agent writes to the user, everyone
+sees it, including the Waiting on you list.
+
 ## Decisions made for v1
 
 | question | v1 answer |
 |---|---|
 | Do unmentioned channel posts wake a lead agent? | No. Only mentions wake; everyone reads the channel on their next wake. |
 | Can you comment on an artifact? | Not inline. The pane is read-only; quote lines in a thread reply. |
-| One operator or several? | One. Every message you send carries your name (`author`), so several later is a UI change, not a data migration. |
+| One operator or several? | One operator, who can add people with links of their own. Every message carries its writer's name (`author`), so several later is a UI change, not a data migration. |
 | Same app as agy-team? | No: a separate app over agy-team's public client API (`agyteam.record`, `agyteam.actions`). It never reads or writes the team's files itself. |
 | The board: same app or another? | Same app, its own page. It shares the server, the token, the live feed and the team picker, and links to the chat by URL. The task store and actions are agy-team's, so another client (or a sync to an external tracker) can be built on them later. |
 | Delete a channel for real? | No. Delete archives it and hides it here; its messages stay in `bus.jsonl`, the team's record. Restore brings it back. |
