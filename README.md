@@ -23,12 +23,26 @@ the conversation.
 ## Run it
 
 ```bash
-pip install "agy-chat @ git+https://github.com/roelle/agy-chat.git@v0.17.1"
-agy-chat --author <your name>
+pipx install "agy-chat @ git+https://github.com/roelle/agy-chat.git@v0.18.0"
+agy-chat
 ```
 
-That installs agy-team's core with it (standard library only). From a
-checkout, to hack on it:
+That installs agy-team's core with it (standard library only) and opens your
+browser. On a first run the page shows what this machine can run agents on,
+and what each option still needs, and creates a team for you. It takes no
+keys: put an API key in the environment you start agy-chat from.
+
+To run agents on an API key, add that runtime's package:
+
+```bash
+pipx inject agy-chat google-antigravity google-genai     # Gemini
+pipx inject agy-chat claude-agent-sdk                    # Claude
+```
+
+The browser opens only when you start it yourself on this machine; `--no-open`
+turns that off, and it stays off over SSH or as a service. `--author` sets the
+name on your posts, which is your login name by default. From a checkout, to
+hack on it:
 
 ```bash
 git clone https://github.com/roelle/agy-chat.git && cd agy-chat

@@ -7,6 +7,19 @@ break; the public surface is the command line and the HTTP API under /api.
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-11-01
+
+### Added
+- **A first run sets up a team.** With no teams, the page shows what this
+  machine can run agents on and what each option still needs, then creates a
+  team and starts it. `GET /api/setup` and `POST /api/new_team` do the same.
+  Requires agy-team 3.23.0.
+
+### Changed
+- `agy-chat` opens your browser when you start it yourself on this machine.
+  It does not over SSH, as a service, or across a restart; `--no-open` turns
+  it off.
+
 ## [0.17.1] - 2026-11-01
 
 ### Fixed
@@ -391,7 +404,8 @@ break; the public surface is the command line and the HTTP API under /api.
   changes.
 - Requires agy-team 3.0.0.
 
-[Unreleased]: https://github.com/roelle/agy-chat/compare/v0.17.1...HEAD
+[Unreleased]: https://github.com/roelle/agy-chat/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/roelle/agy-chat/compare/v0.17.1...v0.18.0
 [0.17.1]: https://github.com/roelle/agy-chat/compare/v0.17.0...v0.17.1
 [0.17.0]: https://github.com/roelle/agy-chat/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/roelle/agy-chat/compare/v0.15.0...v0.16.0

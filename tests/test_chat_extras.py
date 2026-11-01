@@ -3,9 +3,16 @@ bookmarks, and artifact paths -- over HTTP."""
 import base64
 import http.client
 import json
+import subprocess
 import time
 from pathlib import Path
 
+import pytest
+
+from agychat import server as server_module
+from agychat.server import App
+from agychat.teams import Team
+from agyteam import actions, install_plugin, starter
 from agyteam.transport_file import FileTransport
 from test_api import call, server, team  # noqa: F401  (fixtures)
 
@@ -126,3 +133,67 @@ def test_the_board_sets_what_a_task_waits_for_and_writes(server):
     assert done["blocked_by"] == [first["id"]] and done["writes"] == ["src"]
     row = next(t for t in app.tasks("demo") if t["id"] == second["id"])
     assert row["blocked_by"] == [first["id"]] and row["writes"] == ["src"]
+
+
+@pytest.fixture
+def fresh(tmp_path, monkeypatch):
+    """An app with no teams, on a machine where only the agy CLI is ready."""
+    monkeypatch.delenv("AGYTEAM_TEAM_DIR", raising=False)
+    monkeypatch.delenv("AGYTEAM_AGENT", raising=False)
+    monkeypatch.setattr(starter.shutil, "which", lambda name: "/usr/bin/agy")
+    monkeypatch.setattr(starter, "AGY_SETTINGS", tmp_path / "settings.json")
+    monkeypatch.setattr(install_plugin, "install",
+                        lambda: subprocess.CompletedProcess([], 0, stdout="", stderr=""))
+    monkeypatch.setattr(Team, "start_supervisor", lambda self: {"started": True, "pid": 1})
+    return App(tmp_path / "teams", [], "matt")
+
+
+def test_a_first_run_says_what_the_machine_can_run(fresh):
+    got = fresh.setup()
+    assert got["teams_root"].endswith("teams")
+    agy = next(r for r in got["runtimes"] if r["id"] == "agy")
+    assert agy["ready"] and "toolPermission" in agy["note"]
+
+
+def test_a_first_run_makes_a_team_that_shows_up_and_starts(fresh):
+    made = fresh.new_team({"name": "default", "runtime": "agy"})
+    assert made["team"] == "default" and made["supervisor"]["started"]
+    assert "toolPermission" in made["note"]
+    assert [t["name"] for t in fresh.teams()] == ["default"]
+    assert [a["name"] for a in fresh.state("default")["agents"]][0] == "manager"
+
+
+def test_a_team_that_cannot_start_is_still_made_and_says_why(fresh, monkeypatch):
+    def fails(self):
+        raise OSError("no such interpreter")
+    monkeypatch.setattr(Team, "start_supervisor", fails)
+    made = fresh.new_team({"name": "t", "runtime": "agy"})
+    assert made["supervisor"] == {"started": False, "reason": "no such interpreter"}
+
+
+def test_a_runtime_that_is_not_ready_is_refused(fresh):
+    with pytest.raises(actions.OperatorError, match="not ready"):
+        fresh.new_team({"name": "t", "runtime": "claude"})
+
+
+def test_without_a_teams_root_there_is_nowhere_to_put_one(fresh):
+    fresh.teams_root = None
+    with pytest.raises(actions.OperatorError, match="--team-dir"):
+        fresh.new_team({"name": "t", "runtime": "agy"})
+
+
+@pytest.mark.parametrize("asked,host,tty,ssh,restart,opens", [
+    (None, "127.0.0.1", True, None, None, True),
+    (None, "127.0.0.1", False, None, None, False),      # a service
+    (None, "127.0.0.1", True, "1.2.3.4 5 6 7", None, False),
+    (None, "0.0.0.0", True, None, None, False),
+    (None, "127.0.0.1", True, None, "kept-across-a-restart", False),
+    (True, "0.0.0.0", False, None, None, True),
+    (False, "127.0.0.1", True, None, None, False)])
+def test_who_gets_a_browser(monkeypatch, asked, host, tty, ssh, restart, opens):
+    monkeypatch.setattr(server_module.sys.stdout, "isatty", lambda: tty, raising=False)
+    for name, value in (("SSH_CONNECTION", ssh), ("AGYCHAT_TOKEN", restart)):
+        monkeypatch.delenv(name, raising=False)
+        if value:
+            monkeypatch.setenv(name, value)
+    assert server_module.opens_browser(asked, host) is opens

@@ -210,6 +210,12 @@ body.dragging.col { cursor: col-resize; } body.dragging.row { cursor: row-resize
 .mention.me { background: var(--accent); color: #fff; }
 .msg.mentions-me { border-left: 3px solid var(--accent); background: rgba(58,111,247,.05); }
 /* Addressed to you: louder than unread (bold) -- yellow, with a red @. */
+.setup { max-width: 560px; margin: 32px auto; padding: 0 16px; display: flex; flex-direction: column; gap: 8px; }
+.setup h2 { margin: 0; }
+.setup label.runtime { display: flex; gap: 8px; align-items: baseline; padding: 6px 0; }
+.setup label.runtime.off { opacity: .6; }
+.setup .hint { display: block; }
+.setup .btn { align-self: flex-start; margin-top: 8px; }
 .nav.needs li { align-items: baseline; gap: 6px; font-size: 13px; }
 .nav.needs li a { color: inherit; text-decoration: none; }
 .nav.needs li .what { font-weight: 700; color: #f6c744; }

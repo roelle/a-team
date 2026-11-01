@@ -121,12 +121,36 @@ function keyOf(m) {
   return null;
 }
 
+// The first run: no teams yet, so say what this machine can run and make one.
+async function renderSetup() {
+  const { runtimes, teams_root } = await api("/api/setup");
+  const ready = runtimes.filter((r) => r.ready);
+  $("#messages").innerHTML = `<form class="setup" id="setup">
+    <h2>Start your first team</h2>
+    <p>A team is a manager, a project lead, a coder, a systems engineer and a reviewer. You can change them later. It will live in ${esc(teams_root)}.</p>
+    <label>Team name</label><input type="text" name="name" value="default" required>
+    <label>What the agents run on</label>
+    ${runtimes.map((r) => `<label class="runtime ${r.ready ? "" : "off"}"><input type="radio" name="runtime" value="${esc(r.id)}" ${r.ready ? "" : "disabled"} ${r === ready[0] ? "checked" : ""}>
+      <span><b>${esc(r.label)}</b>${r.needs ? `<span class="hint">needs ${esc(r.needs)}</span>` : ""}${r.note ? `<span class="hint">${esc(r.note)}</span>` : ""}</span></label>`).join("")}
+    ${ready.length ? `<button class="btn">Create and start</button>` : `<p class="hint">Nothing here can run agents yet. Add one of the above, restart agy-chat, and come back.</p>`}
+  </form>`;
+  $("#setup").onsubmit = async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    try {
+      const made = await api("/api/new_team", { name: fd.get("name"), runtime: fd.get("runtime") });
+      if (made.note) toast(made.note);
+      location.search = `?team=${encodeURIComponent(made.team)}`;
+    } catch (err) { toast(err.message, true); }
+  };
+}
+
 async function loadTeams() {
   const { teams } = await api("/api/teams");
   S.teams = teams;
   const sel = $("#team");
   sel.innerHTML = teams.map((t) => `<option value="${esc(t.name)}">${esc(t.name)}${t.supervisor ? " ●" : ""}</option>`).join("");
-  if (!teams.length) { $("#messages").innerHTML = `<div class="empty">No teams found. Start agy-chat with --teams-root or --team-dir.</div>`; return; }
+  if (!teams.length) return renderSetup();
   const asked = new URLSearchParams(location.search).get("team");
   const want = asked || load("agychat.team", null);
   S.team = teams.some((t) => t.name === want) ? want : teams[0].name;

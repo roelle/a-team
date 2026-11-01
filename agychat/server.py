@@ -31,7 +31,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from agyteam import actions
+from agyteam import actions, starter
 from agyteam.record import Feed, Record
 
 from .teams import Team, discover
@@ -333,6 +333,26 @@ class App:
                                  until=body.get("until") or None,
                                  reason=body.get("reason") or "set from agy-chat", by=self.author)
 
+    def setup(self) -> dict:
+        """What a first run needs to know: this machine's runtimes, and where
+        a new team would go."""
+        return {"runtimes": starter.runtimes(), "teams_root": str(self.teams_root or "")}
+
+    def new_team(self, body: dict) -> dict:
+        """Create a team and start it. A team that made it but could not start
+        is still made, and says why."""
+        if not self.teams_root:
+            raise actions.OperatorError("this app was started with --team-dir only; "
+                                        "there is no teams root to add a team to")
+        made = actions.create_team(self.teams_root, body.get("name") or "",
+                                   body.get("runtime") or "")
+        team = Team(Path(made["team_dir"]))
+        try:
+            started = team.start_supervisor()
+        except Exception as e:
+            started = {"started": False, "reason": str(e)}
+        return {"team": team.name, "note": made["note"], "supervisor": started}
+
     def supervisor(self, team: str, body: dict) -> dict:
         t = self.team(team)
         if body.get("action") == "start":
@@ -579,6 +599,8 @@ class Handler(BaseHTTPRequestHandler):
         if not self._authed():
             return self._json({"error": "not authorised"}, 401)
         try:
+            if path == "/api/setup":
+                return self._json(self.app.setup())
             if path == "/api/teams":
                 return self._json({"teams": self.app.teams()})
             team = q.get("team", "")
@@ -659,6 +681,8 @@ class Handler(BaseHTTPRequestHandler):
                      "/api/norms": self.app.norms, "/api/memory": self.app.memory,
                      "/api/update": self.app.update, "/api/attach": self.app.attach,
                      "/api/avatar": self.app.avatar, "/api/bookmarks": self.app.bookmarks}
+            if path == "/api/new_team":
+                return self._json(self.app.new_team(body))
             fn = route.get(path)
             if fn is None:
                 return self._json({"error": "unknown endpoint"}, 404)
@@ -697,6 +721,14 @@ class Handler(BaseHTTPRequestHandler):
             return
 
 
+def opens_browser(asked, host: str) -> bool:
+    """--open or --no-open, or else: is someone at this machine's own screen?"""
+    if asked is not None:
+        return asked
+    return (is_loopback(host) and sys.stdout.isatty()
+            and not os.environ.get("SSH_CONNECTION") and not os.environ.get("AGYCHAT_TOKEN"))
+
+
 def is_loopback(host: str) -> bool:
     if host.lower() == "localhost":
         return True
@@ -731,8 +763,9 @@ def main(argv=None) -> int:
                          "beyond loopback is plain HTTP: anyone who can reach "
                          "it and has the printed URL can post as you")
     ap.add_argument("--port", type=int, default=8765)
-    ap.add_argument("--open", action=argparse.BooleanOptionalAction, default=False,
-                    help="open the URL in a browser (default: just print it)")
+    ap.add_argument("--open", action=argparse.BooleanOptionalAction, default=None,
+                    help="open the URL in a browser (default: yes when you start "
+                         "it yourself on this machine, not over SSH or as a service)")
     ap.add_argument("--author", default=os.environ.get("USER") or "operator",
                     help="your name on what you post")
     a = ap.parse_args(argv)
@@ -750,7 +783,7 @@ def main(argv=None) -> int:
         print(f"agy-chat: listening on {a.host}, beyond this machine, over plain "
               f"HTTP. Anyone who can reach it and has that URL can post as "
               f"{a.author} to agents with shells.", file=sys.stderr, flush=True)
-    if a.open:
+    if opens_browser(a.open, a.host):
         import webbrowser
         webbrowser.open(url)
     try:

@@ -59,7 +59,7 @@ async function loadTeams() {
   const asked = new URLSearchParams(location.search).get("team");
   const want = asked || load("agychat.team", null);
   S.team = teams.some((t) => t.name === want) ? want : teams[0]?.name;
-  if (!S.team) { $("#board").innerHTML = `<div class="empty">No teams found.</div>`; return; }
+  if (!S.team) { $("#board").innerHTML = `<div class="empty">No teams yet. <a href="/">Start one in Chat.</a></div>`; return; }
   $("#team").value = S.team;
   await openTeam();
 }
