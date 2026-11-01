@@ -176,6 +176,12 @@ function render() {
   }).join("") || `<div class="empty">${scopeId() ? "Nothing under it yet. + Task adds one here." : "Nothing at this level. Pick another level above, or + Task."}</div>`;
 }
 
+// What a task still waits for: anything not done, as agy-team counts it.
+function waitingFor(t) {
+  if (TERMINAL.has(t.status)) return [];
+  return (t.blocked_by || []).filter((b) => byId(b)?.status !== "done");
+}
+
 function cardHTML(t) {
   const now = new Date().toISOString();
   const over = t.deadline && t.deadline < now && !TERMINAL.has(t.status);
@@ -193,6 +199,7 @@ function cardHTML(t) {
       ${t.deadline ? `<span class="due ${over ? "over" : ""}" title="deadline ${esc(t.deadline)}">due ${esc(fmtDate(t.deadline))}</span>` : ""}
       ${t.check_after && !TERMINAL.has(t.status) ? `<span title="reminder ${esc(t.check_after)}">⏰</span>` : ""}
       ${t.requires_review ? `<span class="tag ${t.reviewed ? "ok" : "rev"}">${t.reviewed ? "reviewed" : "needs review"}</span>` : ""}
+      ${waitingFor(t).length ? `<span class="tag rev" title="waits for ${esc(waitingFor(t).map((b) => byId(b)?.title || b).join(", "))}">waits for ${waitingFor(t).length}</span>` : ""}
       ${t.status === "claimed" ? `<span title="claimed, not yet reported running">claimed</span>` : ""}
       ${n.tokens ? `<span class="tokens" title="tokens spent on it and everything under it (an estimate)">${tokens(n.tokens)}</span>` : ""}
       ${kids ? `<button class="drill" data-scope="${esc(t.id)}" title="Show what is under it">${kids} ▸</button>` : ""}
@@ -323,6 +330,8 @@ async function openDetail(id) {
       <div><label>&nbsp;</label><label class="inline-check"><input type="checkbox" name="auto_close" ${t.auto_close ? "checked" : ""}> close by itself when everything under it is done</label></div></div>
     <div class="row"><div><label>Project label</label><input type="text" name="project" value="${esc(t.project)}"></div>
       <div><label>Channel</label><select name="channel"><option value="">none</option>${chans.map((n) => `<option ${n === t.channel ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></div></div>
+    <label>Waits for <span class="hint">(task ids, comma-separated: it cannot start until they are done)</span></label><input type="text" name="blocked_by" value="${esc((t.blocked_by || []).join(", "))}">
+    <label>Expects to write <span class="hint">(paths, comma-separated: warns when open tasks overlap, locks nothing)</span></label><input type="text" name="writes" value="${esc((t.writes || []).join(", "))}">
     <label>Deadline <span class="hint">(e.g. 3d, or 2026-11-01T17:00:00-07:00)</span></label><input type="text" name="deadline" value="${esc(t.deadline || "")}">
     <label>Note</label><textarea name="note" rows="5">${esc(t.note || "")}</textarea>
     <label>Links <span class="hint">(one per line: title | link — a web address, go link or path)</span></label>
@@ -415,6 +424,10 @@ async function saveDetail(t, fd) {
   const prioNow = fd.get("priority");
   if ((prioNow === "" ? null : Number(prioNow)) !== (t.priority ?? null)) change.priority = prioNow;
   if (!!fd.get("auto_close") !== !!t.auto_close) change.auto_close = !!fd.get("auto_close");
+  for (const k of ["blocked_by", "writes"]) {
+    const v = String(fd.get(k) || "").split(",").map((x) => x.trim()).filter(Boolean);
+    if (v.join() !== (t[k] || []).join()) change[k] = v;
+  }
   for (const k of ["title", "status", "owner", "project", "channel", "deadline", "note"]) {
     const v = (fd.get(k) ?? "").toString();
     if (v !== (t[k] || "")) change[k] = v;

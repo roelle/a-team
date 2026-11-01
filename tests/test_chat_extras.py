@@ -6,6 +6,7 @@ import json
 import time
 from pathlib import Path
 
+from agyteam.transport_file import FileTransport
 from test_api import call, server, team  # noqa: F401  (fixtures)
 
 
@@ -102,3 +103,26 @@ def test_state_says_which_version_is_serving(server):
     app, port, *_ = server
     _, st = call(port, "GET", "/api/state?team=demo", token=app.token)
     assert st["app_version"] == agychat.__version__
+
+
+
+def test_state_lists_what_is_waiting_on_a_person(server):
+    app, _, td, _ = server
+    FileTransport("coder", {"team_dir": str(td)}).send("user", "Which database?", kind="question")
+    row = app.state("demo")["needs_you"][0]
+    assert row["kind"] == "question" and row["from"] == "coder" and row["dm"] == "coder"
+
+
+def test_nothing_waiting_is_an_empty_list(server):
+    assert server[0].state("demo")["needs_you"] == []
+
+
+def test_the_board_sets_what_a_task_waits_for_and_writes(server):
+    app, *_ = server
+    first = app.task_action("demo", {"action": "create", "title": "first"})
+    second = app.task_action("demo", {"action": "create", "title": "second"})
+    done = app.task_action("demo", {"action": "update", "id": second["id"],
+                                    "blocked_by": [first["id"]], "writes": ["src/"]})
+    assert done["blocked_by"] == [first["id"]] and done["writes"] == ["src"]
+    row = next(t for t in app.tasks("demo") if t["id"] == second["id"])
+    assert row["blocked_by"] == [first["id"]] and row["writes"] == ["src"]

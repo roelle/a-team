@@ -7,6 +7,16 @@ break; the public surface is the command line and the HTTP API under /api.
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-01
+
+### Added
+- **Waiting on you.** The top of the sidebar lists what needs you: a stopped
+  team, questions and blockers from agents with no reply yet, tasks you own,
+  and tasks an agent marked blocked. It takes no space when nothing is waiting.
+  `/api/state` returns it as `needs_you`. Requires agy-team 3.22.0.
+- **Task dependencies on the board.** A card shows what it waits for, and a
+  task's detail sets **Waits for** and **Expects to write**.
+
 ## [0.16.0] - 2026-10-31
 
 ### Added
@@ -376,7 +386,8 @@ break; the public surface is the command line and the HTTP API under /api.
   changes.
 - Requires agy-team 3.0.0.
 
-[Unreleased]: https://github.com/roelle/agy-chat/compare/v0.16.0...HEAD
+[Unreleased]: https://github.com/roelle/agy-chat/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/roelle/agy-chat/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/roelle/agy-chat/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/roelle/agy-chat/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/roelle/agy-chat/compare/v0.13.0...v0.14.0

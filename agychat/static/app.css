@@ -210,6 +210,12 @@ body.dragging.col { cursor: col-resize; } body.dragging.row { cursor: row-resize
 .mention.me { background: var(--accent); color: #fff; }
 .msg.mentions-me { border-left: 3px solid var(--accent); background: rgba(58,111,247,.05); }
 /* Addressed to you: louder than unread (bold) -- yellow, with a red @. */
+.nav.needs li { align-items: baseline; gap: 6px; font-size: 13px; }
+.nav.needs li a { color: inherit; text-decoration: none; }
+.nav.needs li .what { font-weight: 700; color: #f6c744; }
+.nav.needs li.bad .what { color: #ff9b8e; }
+.nav.needs { margin-bottom: 8px; }
+.needs-head .count { margin-left: auto; font-size: 11px; }
 .nav li.mentioned { font-weight: 700; color: #f6c744; }
 .nav li .at { margin-left: auto; font-size: 11px; font-weight: 700; color: #fff; background: var(--bad); border-radius: 999px; padding: 0 6px; }
 /* A thread with replies since you last opened it. */

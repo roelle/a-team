@@ -216,8 +216,32 @@ function navItem(v, label, extra = "", opts) {
   return `<li class="${active ? "active" : ""} ${unread ? "unread" : ""} ${mentioned ? "mentioned" : ""} ${opts?.cls || ""}" data-view='${esc(JSON.stringify(v))}'>${label}${at}${extra}</li>`;
 }
 
+// What needs a person, first and only when there is something: agy-team decides
+// what counts, and a reply or a closed task clears it.
+function needsItem(n) {
+  const text = (s) => esc(String(s || "").replace(/\s+/g, " ").slice(0, 90));
+  const row = (cls, label, title, attrs) => `<li class="need ${cls}" title="${esc(title || "")}" ${attrs}>${label}</li>`;
+  if (n.kind === "stopped") return row("bad", `<span class="what">Team stopped</span> ${text(n.reason)}`, n.reason, "");
+  if (n.kind === "question" || n.kind === "blocker") {
+    const v = n.channel ? { type: "channel", id: n.channel } : { type: "dm", pair: ["user", n.dm] };
+    return row(n.kind === "blocker" ? "bad" : "", `<span class="what">${esc(nameOf(n.from))}</span> ${text(n.content)}`,
+      `${n.kind} from ${n.from}: ${n.content}`, `data-view='${esc(JSON.stringify(v))}'`);
+  }
+  const what = n.kind === "stuck" ? `${esc(nameOf(n.owner))} is blocked` : "Your task";
+  return row(n.kind === "stuck" ? "bad" : "", `<a href="${esc(boardURL(n.id))}"><span class="what">${what}</span> ${text(n.title)}</a>`, n.title, "");
+}
+
+function renderNeeds() {
+  const rows = S.state.needs_you || [];
+  $("#needs-head").classList.toggle("hidden", !rows.length);
+  $("#needs").classList.toggle("hidden", !rows.length);
+  $("#needs-count").textContent = rows.length;
+  $("#needs").innerHTML = rows.map(needsItem).join("");
+}
+
 function renderSidebar() {
   const st = S.state;
+  renderNeeds();
   const chans = Object.entries(st.channels || {}).sort();
   const open = chans.filter(([, c]) => !c.archived);
   const shut = chans.filter(([, c]) => c.archived);
