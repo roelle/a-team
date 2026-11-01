@@ -1,7 +1,7 @@
 """Build the recall bench's data: real memories as targets, test prompts for
 each, unrelated prompts, distractor memories, and triggers for all of them.
 
-    python bench/recall/build.py [--distractors 10000] [--teams-root ~/agy-teams]
+    python bench/recall/build.py [--distractors 10000] [--teams-root ~/a-teams]
 
 Everything lands in RECALL_BENCH_DIR (default ~/agy-lab-notes/recall-bench),
 outside the repository: the targets are a person's real agent memories.
@@ -27,8 +27,8 @@ CACHE = DATA / "cache"
 
 
 def real_memories(root: Path) -> list[dict]:
-    from agyteam.memory import extract_provenance
-    from agyteam.memory_file import FileMemory
+    from ateam.memory import extract_provenance
+    from ateam.memory_file import FileMemory
     out = []
     for team in sorted(root.iterdir()):
         agents = team / "agents"
@@ -87,7 +87,7 @@ DOMAINS = [
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("--teams-root", default="~/agy-teams")
+    ap.add_argument("--teams-root", default="~/a-teams")
     ap.add_argument("--distractors", type=int, default=10000)
     ap.add_argument("--unrelated", type=int, default=300)
     ap.add_argument("--workers", type=int, default=12)

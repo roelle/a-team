@@ -21,10 +21,10 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "evals"))
 
-from agyteam import config, mcp_bus, models  # noqa: E402
-from agyteam.supervisor import Supervisor  # noqa: E402
-from agyteam.transport import load as load_transport  # noqa: E402
-from agyteam.transport_file import FileTransport  # noqa: E402
+from ateam import config, mcp_bus, models  # noqa: E402
+from ateam.supervisor import Supervisor  # noqa: E402
+from ateam.transport import load as load_transport  # noqa: E402
+from ateam.transport_file import FileTransport  # noqa: E402
 from fixture_runner import ScriptedRunner  # noqa: E402
 
 AGENTS = ["manager", "coder", "qa"]
@@ -37,8 +37,8 @@ def team(tmp_path, monkeypatch):
     (td / "roster.json").write_text(json.dumps({"agents": [
         {"name": "manager", "role": "gates"}, {"name": "coder", "role": "implements"},
         {"name": "qa", "role": "reviews"}]}))
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(td))
-    monkeypatch.delenv("AGYTEAM_AGENT", raising=False)
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(td))
+    monkeypatch.delenv("ATEAM_AGENT", raising=False)
     monkeypatch.setattr(config, "WAKE_BACKOFF_BASE_S", 0.0)
     monkeypatch.setattr(config, "WAKE_BACKOFF_MAX_S", 0.0)
     return td
@@ -51,7 +51,7 @@ def inbox(name):
 # --- inbox_pull --------------------------------------------------------------------
 
 def test_inbox_pull_leaves_unread_pages_unread(team, monkeypatch):
-    from agyteam import mcp_base
+    from ateam import mcp_base
     monkeypatch.setattr(mcp_base, "OUTPUT_BYTES", 600)
 
     class ReadsOnePage(ScriptedRunner):
@@ -128,10 +128,10 @@ def test_a_runtime_that_switches_in_place_keeps_the_conversation(team):
 
 
 def test_the_cli_runner_declares_it_switches_in_place_and_the_sdk_does_not():
-    from agyteam.runner_agy import AgyRunner
+    from ateam.runner_agy import AgyRunner
     assert AgyRunner.switches_model_in_conversation is True
     pytest.importorskip("google.antigravity")
-    from agyteam.runner_sdk import SdkRunner
+    from ateam.runner_sdk import SdkRunner
     assert SdkRunner.switches_model_in_conversation is False
 
 
@@ -140,8 +140,8 @@ def test_the_cli_runner_declares_it_switches_in_place_and_the_sdk_does_not():
 HOLD = textwrap.dedent("""
     import sys, time, json, os
     sys.path.insert(0, {root!r}); sys.path.insert(0, {evals!r})
-    os.environ["AGYTEAM_TEAM_DIR"] = {td!r}
-    from agyteam.supervisor import Supervisor
+    os.environ["ATEAM_TEAM_DIR"] = {td!r}
+    from ateam.supervisor import Supervisor
     from fixture_runner import ScriptedRunner
     sup = Supervisor(["manager", "coder", "qa"], ScriptedRunner({{}}), quiet=True)
     assert sup._claim_team()

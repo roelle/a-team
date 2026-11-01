@@ -12,8 +12,8 @@ if str(ROOT) not in sys.path:
 
 from google.antigravity.types import BuiltinTools, ToolCall, ToolResult
 
-from agyteam.observer_file import FileObserver
-from agyteam.runner_sdk import SdkRunner
+from ateam.observer_file import FileObserver
+from ateam.runner_sdk import SdkRunner
 
 def test_correlation_map_memory_leak():
     td = tempfile.mkdtemp(prefix="test-adapter-qa3-")
@@ -22,8 +22,8 @@ def test_correlation_map_memory_leak():
     with open(os.path.join(team_dir, "roster.json"), "w") as f:
         json.dump({"agents": [{"name": "coder", "role": "implements"}]}, f)
 
-    saved_team_dir = os.environ.get("AGYTEAM_TEAM_DIR")
-    os.environ["AGYTEAM_TEAM_DIR"] = team_dir
+    saved_team_dir = os.environ.get("ATEAM_TEAM_DIR")
+    os.environ["ATEAM_TEAM_DIR"] = team_dir
 
     try:
         obs = FileObserver({"team_dir": team_dir})
@@ -55,9 +55,9 @@ def test_correlation_map_memory_leak():
 
     finally:
         if saved_team_dir is not None:
-            os.environ["AGYTEAM_TEAM_DIR"] = saved_team_dir
+            os.environ["ATEAM_TEAM_DIR"] = saved_team_dir
         else:
-            os.environ.pop("AGYTEAM_TEAM_DIR", None)
+            os.environ.pop("ATEAM_TEAM_DIR", None)
         shutil.rmtree(td, ignore_errors=True)
 
 if __name__ == "__main__":

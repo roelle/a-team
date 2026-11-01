@@ -20,8 +20,8 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from agyteam import actions, channels, mcp_bus, persona, roster, tasks  # noqa: E402
-from agyteam.transport_file import FileTransport  # noqa: E402
+from ateam import actions, channels, mcp_bus, persona, roster, tasks  # noqa: E402
+from ateam.transport_file import FileTransport  # noqa: E402
 
 
 @pytest.fixture
@@ -33,9 +33,9 @@ def team(tmp_path, monkeypatch):
         "agents": [{"name": "manager", "role": "coordinates"},
                    {"name": "at-Ada", "role": "implements", "alias": "Ada"},
                    {"name": "qa", "role": "reviews", "alias": "Grace"}]}))
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(td))
-    monkeypatch.delenv("AGYTEAM_AGENT", raising=False)
-    monkeypatch.delenv("AGYTEAM_BUS_TRANSPORT", raising=False)
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(td))
+    monkeypatch.delenv("ATEAM_AGENT", raising=False)
+    monkeypatch.delenv("ATEAM_BUS_TRANSPORT", raising=False)
     channels.create(td, "billing", ["manager", "at-Ada"], "money")
     return td
 
@@ -68,7 +68,7 @@ def test_an_archived_channel_takes_no_posts_and_leaves_every_list(team):
 def test_deleting_hides_a_channel_but_keeps_the_record(team):
     actions.post(team, "billing", "the invoice total is wrong", author="matt")
     actions.delete_channel(team, "billing")
-    from agyteam.record import Record
+    from ateam.record import Record
     rec = Record(team)
     assert rec.channels()["billing"]["deleted"]
     assert rec.search("invoice") == [], "a deleted channel's history surfaced in search"

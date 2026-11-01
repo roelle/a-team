@@ -11,9 +11,9 @@ up".
 
 1. `README.md` — Quick Start through "The four seams". Stop there on day one.
 2. This file.
-3. `python -m agyteam.doctor` — before the first run on any host that is not
+3. `python -m ateam.doctor` — before the first run on any host that is not
    the SDK. It is offline and takes seconds.
-4. `agyteam/persona.py` — the briefs are the product as much as the code is.
+4. `ateam/persona.py` — the briefs are the product as much as the code is.
 5. `bench/README.md` — then run the bench against your own freshly started
    team before you trust it with anything.
 
@@ -50,7 +50,7 @@ the persona and consider it done.
 carries two briefs. The gatekeeper who reads the same teammate brief as the
 people she gates gets socialised into the group she is meant to hold to
 account — we watched it happen. If you add a second gatekeeping role, set
-the flag (`--principal` / `--gatekeeper` on `agyteam.lifecycle add`); do not
+the flag (`--principal` / `--gatekeeper` on `ateam.lifecycle add`); do not
 rely on the name-sniffing fallback, which exists only for old rosters.
 
 **The accountable role leads the retrospective, and the report says why that
@@ -109,11 +109,11 @@ test. `evals/conftest.py` now fails any test whose returned score is short.
 
 The suite also has to leave real teams alone, and it did not. A runner built
 with no arguments resolves its team from the environment; one test recycled
-`coder` and `tpm` on such a runner, so `pytest evals/` with `AGYTEAM_TEAM`
+`coder` and `tpm` on such a runner, so `pytest evals/` with `ATEAM_TEAM`
 exported retired that team's live conversations. It was found because a live
 delivery eval running beside the suite scored 7 of 8: `tpm` had been reset
 mid-episode and came back with a fresh brief. `evals/test_delivery.py` made
-it worse by setting `AGYTEAM_TEAM` at import, which pytest triggers by
+it worse by setting `ATEAM_TEAM` at import, which pytest triggers by
 collecting the file. `conftest.py` now sandboxes the ambient team before
 every test and `evals/test_suite_sandbox.py` holds it there. **A test that
 needs a team directory names one; nothing may rely on the environment's.**
@@ -127,18 +127,18 @@ pytest", went to a stderr nobody reads. An agent seeing that rewrites a proof
 that was already correct, and a team that can never record a review looks
 exactly like a team that never reviews. It now resolves an interpreter that
 can actually import pytest, and says plainly that the gate did not run when
-none can be found, recording nothing. `AGYTEAM_PROOF_PYTHON` is the override.
+none can be found, recording nothing. `ATEAM_PROOF_PYTHON` is the override.
 
 **What the team ran is recorded where the team cannot reach it —
 on a runner that supports it.** The pre-tool-call hook appends every command
-to an audit log outside all agent workspaces (`AGYTEAM_AUDIT_LOG`). Grading,
+to an audit log outside all agent workspaces (`ATEAM_AUDIT_LOG`). Grading,
 succession scoring, and any "did they actually check?" question reads that log
 against the bus. Never grade a team on its own account of what it did.
 
 The hook is installed by the SDK session builder, so this holds on
 `SdkRunner` and **not** on runners that drive an external host. Check before
 relying on it — `Runner.supports_audit`, surfaced by
-`agyteam.lifecycle status`. When it is False, a tool that cannot see evidence
+`ateam.lifecycle status`. When it is False, a tool that cannot see evidence
 must report that it could not look, never that the team produced nothing: a
 silent zero and a real zero must not look alike. `bench/grade.py` refuses to
 score its evidence section rather than scoring it zero, for exactly this
@@ -155,7 +155,7 @@ anything the team is being measured on.
 
 **The team directory is the record, and no agent is ever granted write
 access to it.** `bus.jsonl`, `reviews.jsonl`, `retro_inbox.jsonl`, `tasks.jsonl`,
-`NORMS.md`, `roster.json` and `conversations.json` are written by agyteam processes and
+`NORMS.md`, `roster.json` and `conversations.json` are written by ateam processes and
 read back as the account of what the team did. Agents reach them through the
 MCP servers, which are *separate processes* with their own filesystem access —
 so no agent needs a grant there to do anything it is supposed to do, and a
@@ -165,15 +165,15 @@ self-review check together; one that can append to `retro_inbox.jsonl` can put
 words in a teammate's retrospective; one that can edit `roster.json` can grant
 itself the rest. This closes retro-inbox forgery by construction rather than by
 validation, which is the cheaper kind of closed. `lifecycle.grant_workspace`
-refuses a path containing the team directory, and `agyteam.doctor` fails on one
+refuses a path containing the team directory, and `ateam.doctor` fails on one
 already in the roster. For a while that was a rule enforced at the front door
 only: the SDK session builder appended the team directory to every agent's
 workspaces itself, a leftover from when agents wrote `NORMS.md`, on the one
 runner where workspaces mean anything. It no longer does, and a test holds it. Keep the team directory out of every working tree — if
-they are co-located, move it with `AGYTEAM_DURABLE_DIR`, because a record
+they are co-located, move it with `ATEAM_DURABLE_DIR`, because a record
 inside the workspace is a record its subject can edit.
 
-**A due task is mail, not a second wake path.** Before `agyteam/tasks.py`
+**A due task is mail, not a second wake path.** Before `ateam/tasks.py`
 existed, the pattern for "check on this sim in an hour" was an agent
 scheduling an external cron job to poke itself — a schedule this codebase
 could not see, that a restart forgot, and that a teammate asking "is anything
@@ -189,10 +189,10 @@ What sweep() cannot do is call itself, and the first version hid that.
 `--say` run exits when the team idles, a push transport bypasses the
 supervisor, and a host that drives agents its own way never runs it. Those
 are the hosts where a reminder silently never arrives, the exact failure the
-feature exists to remove. So `python -m agyteam.tasks sweep` exists for any
+feature exists to remove. So `python -m ateam.tasks sweep` exists for any
 scheduler a host already has, and the gap is loud in three places: the idle
 exit counts what it leaves behind, the tool that sets a reminder says what
-delivers it, and `agyteam.doctor` warns on overdue reminders, a symptom that
+delivers it, and `ateam.doctor` warns on overdue reminders, a symptom that
 needs no knowledge of how the host schedules anything.
 
 The first version also stored `check_after` verbatim and compared strings, so
@@ -202,7 +202,7 @@ would work, because a reminder that is accepted and never fires is worse than
 one that is refused. And "only the owner may update" was checked before the
 write rather than with it: eight agents claiming one task produced several
 winners in every trial. Decisions on shared records now happen under
-`agyteam/filelock.py`. **If you add a read-then-write on any file in the team
+`ateam/filelock.py`. **If you add a read-then-write on any file in the team
 directory, take that lock; appending alone does not need it, deciding does.**
 
 **Role policy is one function, asked from three places.** `tools_off` was
@@ -210,7 +210,7 @@ enforced in exactly one of them, the SDK runner; everywhere else the roster
 entry was a description, and on a host runtime the manager had every native
 tool, assigned work to implementers directly, and could message anyone. An
 integrator wrote six hundred lines of host hook to get back what the roster
-already said. `agyteam/policy.py` holds the rule once; the SDK hook, the
+already said. `ateam/policy.py` holds the rule once; the SDK hook, the
 generic `hook_pre_tool_use`, and the bus and task servers all ask it, and
 `evals/test_tool_policy.py` checks the three answers are the same words. The
 servers asking it is the part that matters: it means who an agent may message
@@ -232,7 +232,7 @@ covers shell commands that name the path.
 member, but only a mentioned member's copy wakes them (`Message.quiet`); the
 rest wait and arrive with whatever wakes that agent next. The supervisor's
 waking check is `m.wakes`, which is the kind's rule unless the copy is quiet.
-The record (`agyteam.record`) and the operator's actions (`agyteam.actions`)
+The record (`ateam.record`) and the operator's actions (`ateam.actions`)
 are the whole interface a client needs; a UI that reaches past them is
 depending on a file format, and should not.
 
@@ -249,7 +249,7 @@ disk, so a restart does not fire them again. Deliberately not done: one
 global cooldown across all alarms, which would hide a second agent's failure
 behind the first's.
 
-Model choice is the operator's, by hand (`agyteam.models`): an override per
+Model choice is the operator's, by hand (`ateam.models`): an override per
 agent or for everyone, with an expiry, applied by the supervisor as a cycle
 at the agent's next idle moment so the change never strands a conversation
 on the wrong model or throws away what it learned. Weekly usage per model is
@@ -291,9 +291,9 @@ bench checkout and read the answer key. It used to declare
 `supports_containment = True`; no runner now does, because an agent with a
 shell is contained only by what contains the process. Runners that drive an external host have no
 workspace mechanism at all — no grants, no confinement — and agents are
-bounded only by whatever permission model that host applies, which agyteam
+bounded only by whatever permission model that host applies, which ateam
 neither configures nor can observe. `Runner.supports_containment` declares
-this and `agyteam.lifecycle status` prints it beside the grant list,
+this and `ateam.lifecycle status` prints it beside the grant list,
 because a list of granted directories otherwise reads as a boundary that is
 not there.
 
@@ -328,14 +328,14 @@ account with no write access to the team directory. Until a deployment does
 that, treat a review's integrity as resting on the reviewer's role, not on the
 gate.
 
-Containment belongs to whoever owns the process, and agyteam should say so
+Containment belongs to whoever owns the process, and ateam should say so
 rather than imply a guarantee it is not making. A denylist of dangerous
 commands is not containment either: structured write tools can be gated
 because their target is an explicit argument, but a shell cannot, since
 deciding what an arbitrary command writes requires running it. If you need
 an agent to be *unable* to read something on such a runner, enforce it where
 the process actually lives — filesystem permissions, a container, a separate
-account — and treat anything agyteam says about grants as advisory.
+account — and treat anything ateam says about grants as advisory.
 
 **Memory is files, and the write path is the read path.** Both prior
 attempts at a learning agent failed on the same broken link: learnings were
@@ -360,7 +360,7 @@ operating.
 
 ## Before a run, on a host that is not the SDK
 
-Run `python -m agyteam.doctor`. It exercises the join between agyteam and
+Run `python -m ateam.doctor`. It exercises the join between ateam and
 whatever is driving the agents — the seam this repo's tests cannot reach —
 and prints what is actually wired: the resolved runner and its three
 capability flags, every bus tool called end to end with real arguments, a
@@ -375,7 +375,7 @@ Two host behaviours it exists to catch, both of which cost a day:
   A host with ambient rules about where notes go will send the agent there,
   and the brief does not say otherwise. Ours was stopped only by an external
   clamp, after which the agent recovered on its own. State the agent's memory
-  root in its brief and expect to enforce it outside agyteam.
+  root in its brief and expect to enforce it outside ateam.
 
 - **A live MCP bus server never rebinds, and the failure is silent.** Where
   the bus is mounted as an MCP server, the team directory reaches it as an
@@ -392,24 +392,24 @@ Two host behaviours it exists to catch, both of which cost a day:
 
   **The rule: after changing which team the mounts point at, kill the bus
   server processes.** Verified — killing all five brought each back bound to
-  the new team; no host restart needed. `agyteam.doctor` reads
+  the new team; no host restart needed. `ateam.doctor` reads
   `/proc/<pid>/environ` for every running bus server and fails if any is bound
   elsewhere, and `bench/convergence.py` now refuses to grade an episode with
   one turn and an empty bus.
 
 **The installed plugin is a second copy of this code, and it is the one the
 agents run.** Where agents run inside the CLI, the MCP tools are served by
-`~/.gemini/antigravity-cli/plugins/agy-team/agyteam/`, not by this repo.
+`~/.gemini/antigravity-cli/plugins/a-team/ateam/`, not by this repo.
 Nothing in this suite can see that copy. We found one pinned to a commit from
 before the review gate checked authorship at all — it recorded a self-review,
 with no `author` field, as approved — while every test here asserted the gate
 held. Its proof gate also pointed at an absolute venv path from a machine it
-had been built on, so it rejected every proof it was given. `agyteam.doctor`
+had been built on, so it rejected every proof it was given. `ateam.doctor`
 now compares the install byte for byte with the repo and fails on drift, and
 `plugin/install.sh` derives its file list from the source instead of a
 hand-written one: the list had already gone stale, missing two modules that
 `mcp_bus` imports *inside a function*, so those tools raised ImportError on the
-installed copy alone. **After changing anything in `agyteam/`, reinstall before
+installed copy alone. **After changing anything in `ateam/`, reinstall before
 you measure anything.**
 
 ## Known sharp edges
@@ -425,17 +425,17 @@ you measure anything.**
   policy, not a blocked team; check stderr the first time.
 
 - **`python -m` puts the current directory ahead of `PYTHONPATH`.** Launched
-  from the wrong directory, you will import a different checkout's `agyteam`
+  from the wrong directory, you will import a different checkout's `ateam`
   than you think, and your fix will silently not be running. Always launch
   from the repo you mean.
 - **An editable install beats both.** `pip install -e` works through a
   `sys.meta_path` finder, and meta_path is consulted before `sys.path` — so
-  inside a second checkout, `import agyteam.x` can resolve to the *first*
+  inside a second checkout, `import ateam.x` can resolve to the *first*
   one even with the second at the front of the path. It bites exactly when you
   are being careful: checking that a new test fails against an unpatched tree.
   Confirm with `print(module.__file__)` rather than by reasoning about paths.
 - The cost display is an estimate from a pricing table in
-  `agyteam/config.py`; it has never matched the real balance. Reconcile
+  `ateam/config.py`; it has never matched the real balance. Reconcile
   against your billing page, not the display.
 - Headless agy auto-denies tools that would prompt, then exits 0 with empty
   stdout. Set `toolPermission: "always-proceed"` before any unattended run,
@@ -444,8 +444,8 @@ you measure anything.**
   degeneration and missed it (7.0x observed vs 8.0x threshold). Volume
   caught it. Treat both signals as necessary; if you retune, tune against a
   captured real spew, not synthetic text.
-- `agyteam_self` is mounted for the agy CLI plugin path only;
-  `agyteam/sdk_agent.py` never lists it. (`agyteam_tasks` had the same gap and
+- `ateam_self` is mounted for the agy CLI plugin path only;
+  `ateam/sdk_agent.py` never lists it. (`ateam_tasks` had the same gap and
   now travels with the bus, because the brief lists task tools and an agent
   must not be told about tools it does not have.)
 

@@ -7,8 +7,8 @@ import asyncio
 import tempfile
 import pathlib
 import time
-from agyteam.transport_file import FileTransport
-from agyteam.runner_sdk import SdkRunner
+from ateam.transport_file import FileTransport
+from ateam.runner_sdk import SdkRunner
 import pytest
 
 def test_qa_defect2_mail_not_lost():

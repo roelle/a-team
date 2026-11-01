@@ -20,7 +20,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from agyteam.runner_agy import AgyRunner  # noqa: E402
+from ateam.runner_agy import AgyRunner  # noqa: E402
 
 FAKE_AGY = """#!{python}
 import json, os, sys
@@ -48,7 +48,7 @@ def team(tmp_path, monkeypatch):
     binary.write_text(FAKE_AGY.format(python=sys.executable))
     binary.chmod(binary.stat().st_mode | stat.S_IEXEC)
     log = tmp_path / "calls.jsonl"
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(td))
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(td))
     monkeypatch.setenv("FAKE_AGY_LOG", str(log))
     return td, binary, log
 

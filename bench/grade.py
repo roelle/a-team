@@ -71,7 +71,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("task", help="key name under bench/keys/, e.g. audit_telemetry")
     ap.add_argument("--since", required=True, help='"YYYY-MM-DD HH:MM"')
-    ap.add_argument("--team-dir", default=str(Path.home() / "agy-teams/build/team"))
+    ap.add_argument("--team-dir", default=str(Path.home() / "a-teams/build/team"))
     ap.add_argument("--audit", default=str(Path.home() / "agy-lab-notes/audit.jsonl"))
     ap.add_argument("--team", help="only count audit rows tagged with this team "
                     "(rows written before the tag existed are kept)")
@@ -94,7 +94,7 @@ def main() -> int:
     # Can evidence be observed AT ALL on this run? Three ways it cannot, and
     # none of them mean the team failed to check anything:
     #   - the runner does not record tool calls (supports_audit = False)
-    #   - AGYTEAM_AUDIT_LOG was never set, so the hook never installed
+    #   - ATEAM_AUDIT_LOG was never set, so the hook never installed
     #   - the audit file does not exist
     # Scoring zero in those cases prints exactly the wrong finding. It happened:
     # a team ran 33 shell commands including a correct mechanical reproduction
@@ -102,22 +102,22 @@ def main() -> int:
     # nothing and warned the answer key may have leaked.
     audit_path = Path(a.audit)
     blind = None
-    if not os.environ.get("AGYTEAM_AUDIT_LOG") and not audit_path.exists():
-        blind = ("no audit log: AGYTEAM_AUDIT_LOG was not set for this run "
+    if not os.environ.get("ATEAM_AUDIT_LOG") and not audit_path.exists():
+        blind = ("no audit log: ATEAM_AUDIT_LOG was not set for this run "
                  "and no file exists at the path given")
     elif not audit_path.exists():
         blind = f"no audit log at {audit_path}"
     else:
-        runner_spec = os.environ.get("AGYTEAM_RUNNER", "")
+        runner_spec = os.environ.get("ATEAM_RUNNER", "")
         if runner_spec:
             # Read the declaration off the class. Constructing the runner
             # inside `except Exception` was a regression introduced by the
-            # commit that added this very handling: agyteam.runner.load()
+            # commit that added this very handling: ateam.runner.load()
             # signals every misconfiguration with SystemExit, a BaseException,
-            # which passes straight through. One bad AGYTEAM_RUNNER turned the
+            # which passes straight through. One bad ATEAM_RUNNER turned the
             # grader from "reports blindness honestly" into "exit 1, no score
             # at all" -- a worse failure than the one it was written to fix.
-            from agyteam.runner import capabilities
+            from ateam.runner import capabilities
             caps = capabilities(runner_spec)
             if caps["supports_audit"] is False:
                 blind = (f"runner {runner_spec} declares supports_audit = "

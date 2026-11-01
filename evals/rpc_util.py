@@ -21,16 +21,16 @@ if not PY.exists():
     PY = Path(sys.executable)
 
 
-AMBIENT_TEAM_VARS = ("AGYTEAM_TEAM", "AGYTEAM_TEAM_DIR", "AGYTEAM_DURABLE_DIR",
-                     "AGYTEAM_TEAMS_ROOT")
+AMBIENT_TEAM_VARS = ("ATEAM_TEAM", "ATEAM_TEAM_DIR", "ATEAM_DURABLE_DIR",
+                     "ATEAM_TEAMS_ROOT")
 
 
 def forget_ambient_team() -> None:
     """Drop whatever team the operator's shell names.
 
     A live eval builds a team of its own and writes a roster into it.
-    AGYTEAM_TEAM_DIR outranks every other way of naming a team, so an eval
-    that set only AGYTEAM_DURABLE_DIR wrote its roster over the exported
+    ATEAM_TEAM_DIR outranks every other way of naming a team, so an eval
+    that set only ATEAM_DURABLE_DIR wrote its roster over the exported
     team's. Call this before resolving scopes; conftest.py does the same job
     for pytest, and does not load when an eval is run as a script.
     """

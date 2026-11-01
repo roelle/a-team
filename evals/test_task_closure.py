@@ -16,7 +16,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from agyteam import mcp_tasks, persona, tasks  # noqa: E402
+from ateam import mcp_tasks, persona, tasks  # noqa: E402
 
 PAST = "2000-01-01T00:00:00Z"
 
@@ -29,9 +29,9 @@ def team(tmp_path, monkeypatch):
         {"name": "manager", "role": "gates"},
         {"name": "coder", "role": "implements"},
         {"name": "qa", "role": "reviews"}]}))
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(td))
-    monkeypatch.delenv("AGYTEAM_AUDIT_LOG", raising=False)
-    monkeypatch.delenv("AGYTEAM_AGENT", raising=False)
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(td))
+    monkeypatch.delenv("ATEAM_AUDIT_LOG", raising=False)
+    monkeypatch.delenv("ATEAM_AGENT", raising=False)
     tasks._quiet.clear()
     return td
 
@@ -93,20 +93,20 @@ def test_the_operator_can_waive_a_review_and_it_is_never_counted_as_one(team):
     entry = tasks.waive_review(team, t["id"], by="user", reason="demo deadline")
     assert entry["kind"] == "waiver" and entry["verdict"] == "waived"
     assert tasks.complete(team, t["id"], "coder", "shipped")["status"] == "done"
-    from agyteam.supervisor import generate_report
+    from ateam.supervisor import generate_report
     rep = generate_report(team)
     assert all(r["kind"] != "work" for r in rep.get("reviews", [])), rep.get("reviews")
 
 
 def test_the_waiver_is_a_command_only_the_operator_runs(team):
     t = tasks.create(team, "p", "x", owner="coder", requires_review=True)
-    env = {**os.environ, "PYTHONPATH": str(ROOT), "AGYTEAM_TEAM_DIR": str(team)}
-    r = subprocess.run([sys.executable, "-m", "agyteam.supervisor", "--waive-review",
+    env = {**os.environ, "PYTHONPATH": str(ROOT), "ATEAM_TEAM_DIR": str(team)}
+    r = subprocess.run([sys.executable, "-m", "ateam.supervisor", "--waive-review",
                         t["id"], "--by", "user", "--reason", "known good"],
                        capture_output=True, text=True, env=env, timeout=120)
     assert r.returncode == 0 and "review waived" in r.stdout, r.stderr
     assert tasks.approved_review_for(team, t["id"])["kind"] == "waiver"
-    r = subprocess.run([sys.executable, "-m", "agyteam.tasks", "waive", "task_nope"],
+    r = subprocess.run([sys.executable, "-m", "ateam.tasks", "waive", "task_nope"],
                        capture_output=True, text=True, env=env, timeout=120)
     assert r.returncode == 1 and "no task" in r.stderr
 
@@ -122,13 +122,13 @@ def test_a_teammate_cannot_sign_a_waiver(team):
 
 
 def test_a_waiver_issued_from_inside_an_agents_session_is_refused(team):
-    """Runners export AGYTEAM_AGENT to everything an agent starts. A speed
+    """Runners export ATEAM_AGENT to everything an agent starts. A speed
     bump, not a boundary: an agent that unsets it gets through, and the
     docs say so."""
     t = tasks.create(team, "p", "x", owner="coder", requires_review=True)
-    env = {**os.environ, "PYTHONPATH": str(ROOT), "AGYTEAM_TEAM_DIR": str(team),
-           "AGYTEAM_AGENT": "coder"}
-    r = subprocess.run([sys.executable, "-m", "agyteam.supervisor", "--waive-review",
+    env = {**os.environ, "PYTHONPATH": str(ROOT), "ATEAM_TEAM_DIR": str(team),
+           "ATEAM_AGENT": "coder"}
+    r = subprocess.run([sys.executable, "-m", "ateam.supervisor", "--waive-review",
                         t["id"], "--by", "user", "--reason", "trust me"],
                        capture_output=True, text=True, env=env, timeout=120)
     assert r.returncode != 0 and "coder's session" in (r.stderr + r.stdout)

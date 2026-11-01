@@ -15,12 +15,12 @@ from rpc_util import ROOT, check, rpc, text_of
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "evals"))
 
-from agyteam.supervisor import Supervisor          # noqa: E402
-from agyteam.transport import load as load_transport  # noqa: E402
+from ateam.supervisor import Supervisor          # noqa: E402
+from ateam.transport import load as load_transport  # noqa: E402
 from fixture_runner import ScriptedRunner          # noqa: E402
 
 
-def make_team(prefix="agyteam-rev-") -> Path:
+def make_team(prefix="ateam-rev-") -> Path:
     td = Path(tempfile.mkdtemp(prefix=prefix)) / "team"
     (td / "inbox").mkdir(parents=True)
     (td / "roster.json").write_text(json.dumps({"agents": [
@@ -33,7 +33,7 @@ def make_team(prefix="agyteam-rev-") -> Path:
 def test_mcp_review_tools() -> tuple[int, int]:
     """Test record_review and list_reviews over real MCP JSON-RPC."""
     print("\n== MCP review tools (record_review, list_reviews) ==")
-    td = make_team("agyteam-mcp-rev-")
+    td = make_team("ateam-mcp-rev-")
 
     # Fixture test files for verification gate
     pass_file = td / "test_pass.py"
@@ -52,8 +52,8 @@ def test_mcp_review_tools() -> tuple[int, int]:
     import_err_file.write_text("import nonexistent_module_xyz\n", encoding="utf-8")
 
     def call(agent, calls):
-        return rpc("agyteam.mcp_bus", [], calls,
-                   env={"AGYTEAM_AGENT": agent, "AGYTEAM_TEAM_DIR": str(td)})
+        return rpc("ateam.mcp_bus", [], calls,
+                   env={"ATEAM_AGENT": agent, "ATEAM_TEAM_DIR": str(td)})
 
     # 1. Missing reviews.jsonl is normal, not an error
     r_empty = call("syseng", [("list_reviews", {})])[2:]
@@ -125,9 +125,9 @@ def test_mcp_review_tools() -> tuple[int, int]:
     )
 
     # 5. Team directory isolation
-    td2 = make_team("agyteam-mcp-rev2-")
-    r_iso = rpc("agyteam.mcp_bus", [], [("list_reviews", {})],
-                env={"AGYTEAM_AGENT": "syseng", "AGYTEAM_TEAM_DIR": str(td2)})[2:]
+    td2 = make_team("ateam-mcp-rev2-")
+    r_iso = rpc("ateam.mcp_bus", [], [("list_reviews", {})],
+                env={"ATEAM_AGENT": "syseng", "ATEAM_TEAM_DIR": str(td2)})[2:]
     out_iso = text_of(r_iso[0])
 
     # 6. Self-review is refused: the reviewer's identity comes from the
@@ -217,8 +217,8 @@ def test_supervisor_review_gate() -> tuple[int, int]:
     agents = ["tpm", "coder", "syseng"]
 
     # 1. Unreviewed answer: agent messages user directly without any review
-    td1 = make_team("agyteam-sup-gate1-")
-    os.environ["AGYTEAM_TEAM_DIR"] = str(td1)
+    td1 = make_team("ateam-sup-gate1-")
+    os.environ["ATEAM_TEAM_DIR"] = str(td1)
     runner1 = ScriptedRunner({"script": {
         "tpm": [["user", "here is your feature, all done!"]]
     }})
@@ -229,8 +229,8 @@ def test_supervisor_review_gate() -> tuple[int, int]:
     sup1.close()
 
     # 2. changes_requested review: review was recorded, but NOT approved
-    td2 = make_team("agyteam-sup-gate2-")
-    os.environ["AGYTEAM_TEAM_DIR"] = str(td2)
+    td2 = make_team("ateam-sup-gate2-")
+    os.environ["ATEAM_TEAM_DIR"] = str(td2)
     with (td2 / "reviews.jsonl").open("w") as f:
         f.write(json.dumps({
             "ts": "2026-09-10 10:00:00",
@@ -251,8 +251,8 @@ def test_supervisor_review_gate() -> tuple[int, int]:
     sup2.close()
 
     # 3. Approved review recorded during episode: answer is marked reviewed
-    td3 = make_team("agyteam-sup-gate3-")
-    os.environ["AGYTEAM_TEAM_DIR"] = str(td3)
+    td3 = make_team("ateam-sup-gate3-")
+    os.environ["ATEAM_TEAM_DIR"] = str(td3)
 
     class ReviewingRunner(ScriptedRunner):
         def wake(self, agent: str, message: str) -> str:

@@ -26,8 +26,8 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from agyteam import mcp_bus  # noqa: E402
-from agyteam.transport_file import FileTransport  # noqa: E402
+from ateam import mcp_bus  # noqa: E402
+from ateam.transport_file import FileTransport  # noqa: E402
 
 TS = "2026-09-15 05:00:00"
 
@@ -36,15 +36,15 @@ TS = "2026-09-15 05:00:00"
 def no_cached_interpreter(monkeypatch):
     """The resolved interpreter is cached; tests must not inherit each other's."""
     monkeypatch.setattr(mcp_bus, "_PROOF_PY", ())
-    monkeypatch.delenv("AGYTEAM_PROOF_PYTHON", raising=False)
+    monkeypatch.delenv("ATEAM_PROOF_PYTHON", raising=False)
 
 
 @pytest.fixture
 def team(tmp_path, monkeypatch):
     d = tmp_path / "team"
     d.mkdir()
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(d))
-    monkeypatch.delenv("AGYTEAM_AUDIT_LOG", raising=False)
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(d))
+    monkeypatch.delenv("ATEAM_AUDIT_LOG", raising=False)
     (d / "roster.json").write_text(json.dumps({"agents": [
         {"name": "manager", "role": "gates"},
         {"name": "coder", "role": "implements"}]}))
@@ -101,7 +101,7 @@ def test_it_names_what_it_tried_and_how_to_fix_it(team, tmp_path, monkeypatch):
     fake = strand(monkeypatch, tmp_path)
     out = review(team)
     assert str(fake) in out, "name the interpreters, or the operator guesses"
-    assert "AGYTEAM_PROOF_PYTHON" in out
+    assert "ATEAM_PROOF_PYTHON" in out
 
 
 def test_a_changes_requested_verdict_cannot_be_manufactured_by_a_broken_env(
@@ -127,7 +127,7 @@ def test_the_env_override_is_honoured(team, tmp_path, monkeypatch):
     """The escape hatch has to work on a host where nothing is discoverable."""
     monkeypatch.setattr(mcp_bus, "_REPO_ROOT", tmp_path / "nowhere")
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("AGYTEAM_PROOF_PYTHON", sys.executable)
+    monkeypatch.setenv("ATEAM_PROOF_PYTHON", sys.executable)
     assert review(team).startswith("[review recorded:")
 
 

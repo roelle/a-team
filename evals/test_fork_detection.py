@@ -17,7 +17,7 @@ import subprocess
 import sys
 import pytest
 
-from agyteam.git_hygiene import (
+from ateam.git_hygiene import (
     check_git_hygiene,
     find_git_root,
     format_hygiene_report,
@@ -262,7 +262,7 @@ def test_git_hygiene_error_handling(tmp_path: Path, capsys: pytest.CaptureFixtur
     def _exploding_branch(*args, **kwargs):
         raise RuntimeError("git execution failed with segfault")
 
-    monkeypatch.setattr("agyteam.git_hygiene.get_current_branch", _exploding_branch)
+    monkeypatch.setattr("ateam.git_hygiene.get_current_branch", _exploding_branch)
 
     status = check_git_hygiene(local_dir)
     assert status["is_git"] is False

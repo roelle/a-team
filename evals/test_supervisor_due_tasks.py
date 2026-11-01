@@ -2,7 +2,7 @@
 
 Supervisor._sweep_due_tasks() turns a task whose check_after has passed into
 a bus message and lets step()'s existing per-agent fetch loop deliver it --
-see agyteam/tasks.py's module docstring for why that beats a second wake
+see ateam/tasks.py's module docstring for why that beats a second wake
 mechanism. These tests exercise the sweep the same way step() actually calls
 it, not the tasks.due() query in isolation (that is evals/test_tasks.py's job).
 """
@@ -16,9 +16,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "evals"))
 
-from agyteam import tasks  # noqa: E402
-from agyteam.supervisor import Supervisor  # noqa: E402
-from agyteam.transport import load as load_transport  # noqa: E402
+from ateam import tasks  # noqa: E402
+from ateam.supervisor import Supervisor  # noqa: E402
+from ateam.transport import load as load_transport  # noqa: E402
 from fixture_runner import ScriptedRunner  # noqa: E402
 
 AGENTS = ["tpm", "coder"]
@@ -31,7 +31,7 @@ def team(tmp_path, monkeypatch):
     (td / "roster.json").write_text(json.dumps({"agents": [
         {"name": "tpm", "role": "coordinates"},
         {"name": "coder", "role": "implements"}]}))
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(td))
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(td))
     return td
 
 
@@ -113,7 +113,7 @@ def test_two_due_tasks_for_the_same_owner_arrive_as_one_wake(team):
 def test_a_due_task_owned_by_nobody_on_the_roster_is_skipped(team):
     """An owner who is not a live transport gets no message -- there is
     nowhere to send it -- and the task is left due rather than silently
-    swept, so `agyteam.doctor` can still find it."""
+    swept, so `ateam.doctor` can still find it."""
     t = tasks.create(team, project="p", title="x", owner="ex-teammate",
                      created_by="coder")
     tasks.update(team, t["id"], "ex-teammate", status="blocked",
@@ -144,7 +144,7 @@ def test_going_idle_with_reminders_set_says_so(team, capsys):
         sup.close()
     out = capsys.readouterr().out
     assert "1 task reminder(s) still set" in out
-    assert "python -m agyteam.tasks sweep" in out
+    assert "python -m ateam.tasks sweep" in out
 
 
 def test_run_until_idle_completes_after_delivering_one_due_task(team):

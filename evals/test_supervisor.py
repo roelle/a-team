@@ -14,22 +14,22 @@ from rpc_util import ROOT, check
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "evals"))
 
-from agyteam.supervisor import Supervisor          # noqa: E402
-from agyteam.transport import load as load_transport  # noqa: E402
+from ateam.supervisor import Supervisor          # noqa: E402
+from ateam.transport import load as load_transport  # noqa: E402
 from fixture_runner import ScriptedRunner          # noqa: E402
 
 AGENTS = ["tpm", "coder", "syseng"]
 
 
 def make_team() -> Path:
-    td = Path(tempfile.mkdtemp(prefix="agyteam-sup-")) / "team"
+    td = Path(tempfile.mkdtemp(prefix="ateam-sup-")) / "team"
     (td / "inbox").mkdir(parents=True)
     (td / "roster.json").write_text(json.dumps({"agents": [
         {"name": "tpm", "role": "coordinates"},
         {"name": "coder", "role": "implements"},
         {"name": "syseng", "role": "verifies"}]}))
     import os
-    os.environ["AGYTEAM_TEAM_DIR"] = str(td)
+    os.environ["ATEAM_TEAM_DIR"] = str(td)
     return td
 
 
@@ -193,17 +193,17 @@ def test_loader() -> tuple[int, int]:
 
     def run(env):
         p = subprocess.run(
-            [str(PY), "-c", "from agyteam.runner import load; load()"],
+            [str(PY), "-c", "from ateam.runner import load; load()"],
             cwd=ROOT, capture_output=True, text=True, timeout=30,
             env={**os.environ, "PYTHONPATH": str(ROOT), **env})
         return p.returncode, (p.stderr or "") + (p.stdout or "")
 
-    rc1, o1 = run({"AGYTEAM_RUNNER": "nosuchmodule:Thing"})
-    rc2, o2 = run({"AGYTEAM_RUNNER": "agyteam.runner_agy"})
-    rc3, o3 = run({"AGYTEAM_RUNNER": "agyteam.scope:Scopes"})
+    rc1, o1 = run({"ATEAM_RUNNER": "nosuchmodule:Thing"})
+    rc2, o2 = run({"ATEAM_RUNNER": "ateam.runner_agy"})
+    rc3, o3 = run({"ATEAM_RUNNER": "ateam.scope:Scopes"})
     # the default runner must load even where the agy binary is absent, and
     # report that clearly rather than crashing the supervisor
-    from agyteam.runner_agy import AgyRunner
+    from ateam.runner_agy import AgyRunner
     missing = AgyRunner({"binary": "definitely-not-installed-xyz"})
     msg = missing.wake("tpm", "hello")
     return sum([
@@ -222,7 +222,7 @@ def test_anomaly_detection_and_context_purge() -> tuple[int, int]:
     # default. The fixture below used to be chosen to exceed whatever config
     # said, so retuning the production constant broke the test -- which is
     # backwards: a test of the mechanism should not depend on the tuning.
-    from agyteam import config as _cfg
+    from ateam import config as _cfg
     _saved_threshold = _cfg.ANOMALY_OUTPUT_TOKENS_THRESHOLD
     _cfg.ANOMALY_OUTPUT_TOKENS_THRESHOLD = 4_000
     make_team()
@@ -402,12 +402,12 @@ def test_turn_failure_requeues_mail() -> tuple[int, int]:
     turn3_prompt = runner1.woken_bodies[2] if len(runner1.woken_bodies) >= 3 else ""
 
     # 2. SqliteTransport (independent fixture)
-    sqlite_db = Path(tempfile.mkdtemp(prefix="agyteam-fixture-sqlsup-")) / "bus.db"
+    sqlite_db = Path(tempfile.mkdtemp(prefix="ateam-fixture-sqlsup-")) / "bus.db"
     sql_cfg = json.dumps({"db": str(sqlite_db), "roster": [{"name": "coder", "role": "implements"}]})
-    saved_trans = os.environ.get("AGYTEAM_BUS_TRANSPORT")
-    saved_cfg = os.environ.get("AGYTEAM_BUS_CONFIG")
-    os.environ["AGYTEAM_BUS_TRANSPORT"] = "fixture_transport:SqliteTransport"
-    os.environ["AGYTEAM_BUS_CONFIG"] = sql_cfg
+    saved_trans = os.environ.get("ATEAM_BUS_TRANSPORT")
+    saved_cfg = os.environ.get("ATEAM_BUS_CONFIG")
+    os.environ["ATEAM_BUS_TRANSPORT"] = "fixture_transport:SqliteTransport"
+    os.environ["ATEAM_BUS_CONFIG"] = sql_cfg
     try:
         sql_user_trans = load_transport("user")
         sql_user_trans.send("coder", "urgent sqlite user instruction")
@@ -430,13 +430,13 @@ def test_turn_failure_requeues_mail() -> tuple[int, int]:
         sql_turn3_prompt = runner2.woken_bodies[2] if len(runner2.woken_bodies) >= 3 else ""
     finally:
         if saved_trans is not None:
-            os.environ["AGYTEAM_BUS_TRANSPORT"] = saved_trans
+            os.environ["ATEAM_BUS_TRANSPORT"] = saved_trans
         else:
-            os.environ.pop("AGYTEAM_BUS_TRANSPORT", None)
+            os.environ.pop("ATEAM_BUS_TRANSPORT", None)
         if saved_cfg is not None:
-            os.environ["AGYTEAM_BUS_CONFIG"] = saved_cfg
+            os.environ["ATEAM_BUS_CONFIG"] = saved_cfg
         else:
-            os.environ.pop("AGYTEAM_BUS_CONFIG", None)
+            os.environ.pop("ATEAM_BUS_CONFIG", None)
         shutil.rmtree(sqlite_db.parent, ignore_errors=True)
 
     return sum([
@@ -468,16 +468,16 @@ def test_sdk_runner_close_timeout() -> tuple[int, int]:
     import os
     import threading
     import time
-    from agyteam.runner_sdk import SdkRunner
+    from ateam.runner_sdk import SdkRunner
 
-    td = Path(tempfile.mkdtemp(prefix="agyteam-sdkclose-")) / "team"
+    td = Path(tempfile.mkdtemp(prefix="ateam-sdkclose-")) / "team"
     td.mkdir(parents=True)
     (td / "roster.json").write_text(json.dumps({"agents": [
         {"name": "coder", "role": "implements"},
         {"name": "syseng", "role": "verifies"},
     ]}))
-    saved_team_dir = os.environ.get("AGYTEAM_TEAM_DIR")
-    os.environ["AGYTEAM_TEAM_DIR"] = str(td)
+    saved_team_dir = os.environ.get("ATEAM_TEAM_DIR")
+    os.environ["ATEAM_TEAM_DIR"] = str(td)
 
     class StuckCM:
         async def __aenter__(self):
@@ -512,9 +512,9 @@ def test_sdk_runner_close_timeout() -> tuple[int, int]:
         thread_alive = runner._thread.is_alive()
     finally:
         if saved_team_dir is not None:
-            os.environ["AGYTEAM_TEAM_DIR"] = saved_team_dir
+            os.environ["ATEAM_TEAM_DIR"] = saved_team_dir
         else:
-            os.environ.pop("AGYTEAM_TEAM_DIR", None)
+            os.environ.pop("ATEAM_TEAM_DIR", None)
         shutil.rmtree(td.parent, ignore_errors=True)
 
     return sum([
@@ -538,7 +538,7 @@ def test_busy_turn_is_not_an_anomaly() -> tuple[int, int]:
     work survived only because it was already on disk.
     """
     print("\n== a busy turn is not a sick turn ==")
-    from agyteam import config as _cfg
+    from ateam import config as _cfg
     saved = _cfg.ANOMALY_OUTPUT_TOKENS_THRESHOLD
     _cfg.ANOMALY_OUTPUT_TOKENS_THRESHOLD = 4_000
     make_team()
@@ -570,7 +570,7 @@ def test_busy_turn_is_not_an_anomaly() -> tuple[int, int]:
     sup.close()
     _cfg.ANOMALY_OUTPUT_TOKENS_THRESHOLD = saved
 
-    from agyteam.supervisor import repetition_ratio
+    from ateam.supervisor import repetition_ratio
     healthy = repetition_ratio("\n".join(
         f"step {i}: ran sweep_{i}.py --alpha {i/997:.6f}" for i in range(600)))
     spew = repetition_ratio("the quick brown fox. " * 8000)

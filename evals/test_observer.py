@@ -24,17 +24,17 @@ from rpc_util import PY, ROOT, check
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "evals"))
 
-from agyteam.observer import format_summary, load as load_observer  # noqa: E402
-from agyteam.supervisor import Supervisor  # noqa: E402
-from agyteam.transport import load as load_transport  # noqa: E402
+from ateam.observer import format_summary, load as load_observer  # noqa: E402
+from ateam.supervisor import Supervisor  # noqa: E402
+from ateam.transport import load as load_transport  # noqa: E402
 from fixture_runner import ScriptedRunner  # noqa: E402
 
 
 def contract(label: str, env_for) -> tuple[int, int]:
     print(f"\n== observer contract: {label} ==")
     env = env_for()
-    obs = load_observer(env.get("AGYTEAM_OBSERVER"),
-                        json.loads(env["AGYTEAM_OBSERVER_CONFIG"]) if "AGYTEAM_OBSERVER_CONFIG" in env else None)
+    obs = load_observer(env.get("ATEAM_OBSERVER"),
+                        json.loads(env["ATEAM_OBSERVER_CONFIG"]) if "ATEAM_OBSERVER_CONFIG" in env else None)
 
     # 1. Missing / empty state is normal
     empty_events = obs.events()
@@ -112,25 +112,25 @@ def contract(label: str, env_for) -> tuple[int, int]:
 
 
 def file_env():
-    td = Path(tempfile.mkdtemp(prefix="agyteam-obs-file-"))
-    os.environ["AGYTEAM_TEAM_DIR"] = str(td)
+    td = Path(tempfile.mkdtemp(prefix="ateam-obs-file-"))
+    os.environ["ATEAM_TEAM_DIR"] = str(td)
 
     def get_env():
         return {
-            "AGYTEAM_TEAM_DIR": str(td),
-            "AGYTEAM_OBSERVER": "agyteam.observer_file:FileObserver",
+            "ATEAM_TEAM_DIR": str(td),
+            "ATEAM_OBSERVER": "ateam.observer_file:FileObserver",
         }
     return get_env
 
 
 def sqlite_env():
-    db = Path(tempfile.mkdtemp(prefix="agyteam-obs-sqlite-")) / "events.db"
+    db = Path(tempfile.mkdtemp(prefix="ateam-obs-sqlite-")) / "events.db"
     cfg = json.dumps({"db": str(db)})
 
     def get_env():
         return {
-            "AGYTEAM_OBSERVER": "fixture_observer:SqliteObserver",
-            "AGYTEAM_OBSERVER_CONFIG": cfg,
+            "ATEAM_OBSERVER": "fixture_observer:SqliteObserver",
+            "ATEAM_OBSERVER_CONFIG": cfg,
         }
     return get_env
 
@@ -139,16 +139,16 @@ def test_loader_failures() -> tuple[int, int]:
     print("\n== observer loader safety ==")
 
     def run(env):
-        p = subprocess.run([str(PY), "-c", "from agyteam.observer import load; load()"],
+        p = subprocess.run([str(PY), "-c", "from ateam.observer import load; load()"],
                            cwd=ROOT, capture_output=True, text=True, timeout=30,
                            env={**os.environ, "PYTHONPATH": str(ROOT), **env})
         return p.returncode, (p.stderr or "") + (p.stdout or "")
 
-    rc1, o1 = run({"AGYTEAM_OBSERVER": "nosuchmodule:Thing"})
-    rc2, o2 = run({"AGYTEAM_OBSERVER": "agyteam.observer_file"})
-    rc3, o3 = run({"AGYTEAM_OBSERVER": "agyteam.observer_file:FileObserver",
-                   "AGYTEAM_OBSERVER_CONFIG": "{not json"})
-    rc4, o4 = run({"AGYTEAM_OBSERVER": "agyteam.scope:Scopes"})
+    rc1, o1 = run({"ATEAM_OBSERVER": "nosuchmodule:Thing"})
+    rc2, o2 = run({"ATEAM_OBSERVER": "ateam.observer_file"})
+    rc3, o3 = run({"ATEAM_OBSERVER": "ateam.observer_file:FileObserver",
+                   "ATEAM_OBSERVER_CONFIG": "{not json"})
+    rc4, o4 = run({"ATEAM_OBSERVER": "ateam.scope:Scopes"})
 
     return sum([
         check("missing module fails loudly", rc1 != 0 and "cannot load" in o1, o1),
@@ -161,13 +161,13 @@ def test_loader_failures() -> tuple[int, int]:
 def test_supervisor_observability() -> tuple[int, int]:
     """Supervisor runs with ScriptedRunner offline, emitting turn & episode records."""
     print("\n== supervisor observability with ScriptedRunner (offline, no models) ==")
-    td = Path(tempfile.mkdtemp(prefix="agyteam-sup-obs-")) / "team"
+    td = Path(tempfile.mkdtemp(prefix="ateam-sup-obs-")) / "team"
     (td / "inbox").mkdir(parents=True)
     (td / "roster.json").write_text(json.dumps({"agents": [
         {"name": "tpm", "role": "coordinates"},
         {"name": "coder", "role": "implements"},
         {"name": "syseng", "role": "verifies"}]}))
-    os.environ["AGYTEAM_TEAM_DIR"] = str(td)
+    os.environ["ATEAM_TEAM_DIR"] = str(td)
 
     runner = ScriptedRunner({
         "script": {
@@ -218,10 +218,10 @@ def test_supervisor_observability() -> tuple[int, int]:
 def test_file_observer_usage_jsonl_compat() -> tuple[int, int]:
     """FileObserver subsumes usage.jsonl without breaking mcp_self:my_activity."""
     print("\n== usage.jsonl backward compatibility ==")
-    td = Path(tempfile.mkdtemp(prefix="agyteam-usage-compat-"))
-    os.environ["AGYTEAM_TEAM_DIR"] = str(td)
+    td = Path(tempfile.mkdtemp(prefix="ateam-usage-compat-"))
+    os.environ["ATEAM_TEAM_DIR"] = str(td)
 
-    from agyteam.observer_file import FileObserver
+    from ateam.observer_file import FileObserver
     obs = FileObserver({"team_dir": str(td)})
 
     # Record turn with full token metrics
@@ -251,18 +251,18 @@ def test_file_observer_usage_jsonl_compat() -> tuple[int, int]:
 
 
 def test_observer_cli() -> tuple[int, int]:
-    """Test running agyteam.observer directly via python -m."""
-    print("\n== observer CLI entrypoint (python -m agyteam.observer) ==")
-    td = Path(tempfile.mkdtemp(prefix="agyteam-cli-obs-"))
-    from agyteam.observer_file import FileObserver
+    """Test running ateam.observer directly via python -m."""
+    print("\n== observer CLI entrypoint (python -m ateam.observer) ==")
+    td = Path(tempfile.mkdtemp(prefix="ateam-cli-obs-"))
+    from ateam.observer_file import FileObserver
     obs = FileObserver({"team_dir": str(td)})
     obs.record_turn("coder", "c1", 2.0, input_tokens=1000, output_tokens=200, total_tokens=1200)
     obs.record_tool_call("coder", "c1", tool="edit_file", args={"path": "foo.py"}, result="ok", duration_s=0.1)
 
-    p1 = subprocess.run([str(PY), "-m", "agyteam.observer", "--team-dir", str(td)],
+    p1 = subprocess.run([str(PY), "-m", "ateam.observer", "--team-dir", str(td)],
                         cwd=ROOT, capture_output=True, text=True, timeout=30,
                         env={**os.environ, "PYTHONPATH": str(ROOT)})
-    p2 = subprocess.run([str(PY), "-m", "agyteam.observer", "--team-dir", str(td), "--json"],
+    p2 = subprocess.run([str(PY), "-m", "ateam.observer", "--team-dir", str(td), "--json"],
                         cwd=ROOT, capture_output=True, text=True, timeout=30,
                         env={**os.environ, "PYTHONPATH": str(ROOT)})
 
@@ -270,7 +270,7 @@ def test_observer_cli() -> tuple[int, int]:
     p3_rc = 0
     p3_out = ""
     if Path(sys_py).exists():
-        p3 = subprocess.run([sys_py, "-m", "agyteam.observer", "--team-dir", str(td)],
+        p3 = subprocess.run([sys_py, "-m", "ateam.observer", "--team-dir", str(td)],
                             cwd=ROOT, capture_output=True, text=True, timeout=30,
                             env={"PYTHONPATH": str(ROOT), "PATH": os.environ.get("PATH", "")})
         p3_rc = p3.returncode
@@ -283,13 +283,13 @@ def test_observer_cli() -> tuple[int, int]:
         pass
 
     return sum([
-        check("python -m agyteam.observer exits 0", p1.returncode == 0, p1.stderr),
+        check("python -m ateam.observer exits 0", p1.returncode == 0, p1.stderr),
         check("CLI output contains agent name", "coder" in p1.stdout, p1.stdout),
         check("CLI human-readable table contains Tools column header", "Tools" in p1.stdout, p1.stdout),
-        check("python -m agyteam.observer --json exits 0", p2.returncode == 0, p2.stderr),
+        check("python -m ateam.observer --json exits 0", p2.returncode == 0, p2.stderr),
         check("CLI --json produces valid JSON summary with tool calls",
               parsed_json.get("totals", {}).get("turns") == 1 and parsed_json.get("totals", {}).get("tool_calls") == 1, p2.stdout),
-        check("system python -m agyteam.observer exits 0 (stdlib purity)", p3_rc == 0, p3_out),
+        check("system python -m ateam.observer exits 0 (stdlib purity)", p3_rc == 0, p3_out),
     ]), 6
 
 
@@ -297,17 +297,17 @@ def test_sdk_runner_tool_tracing() -> tuple[int, int]:
     """SdkRunner traces tool calls with args and duration_s using real ToolCall and ToolResult types."""
     print("\n== sdk runner tool tracing ==")
     from google.antigravity.types import ToolCall, ToolResult
-    from agyteam.runner_sdk import SdkRunner
-    from agyteam.observer_file import FileObserver
+    from ateam.runner_sdk import SdkRunner
+    from ateam.observer_file import FileObserver
     import time
 
-    td = Path(tempfile.mkdtemp(prefix="agyteam-trace-")) / "team"
+    td = Path(tempfile.mkdtemp(prefix="ateam-trace-")) / "team"
     td.mkdir(parents=True)
     (td / "roster.json").write_text(json.dumps({"agents": [
         {"name": "coder", "role": "implements"},
     ]}))
-    saved_team_dir = os.environ.get("AGYTEAM_TEAM_DIR")
-    os.environ["AGYTEAM_TEAM_DIR"] = str(td)
+    saved_team_dir = os.environ.get("ATEAM_TEAM_DIR")
+    os.environ["ATEAM_TEAM_DIR"] = str(td)
     try:
         obs = FileObserver({"team_dir": str(td)})
         runner = SdkRunner(observer=obs)
@@ -335,9 +335,9 @@ def test_sdk_runner_tool_tracing() -> tuple[int, int]:
         runner.close()
     finally:
         if saved_team_dir is not None:
-            os.environ["AGYTEAM_TEAM_DIR"] = saved_team_dir
+            os.environ["ATEAM_TEAM_DIR"] = saved_team_dir
         else:
-            os.environ.pop("AGYTEAM_TEAM_DIR", None)
+            os.environ.pop("ATEAM_TEAM_DIR", None)
         shutil.rmtree(td.parent, ignore_errors=True)
 
     e1 = evs[0] if len(evs) > 0 else {}

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Board — a-team</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/board.css">
+</head>
+<body class="board-page">
+<header class="top">
+  <div class="brand">agy<span>board</span></div>
+  <label class="team-label" for="team">Team</label>
+  <select id="team"></select>
+  <input id="filter" type="search" placeholder="Filter cards" autocomplete="off">
+  <select id="owner" title="Owner"><option value="">every owner</option></select>
+  <select id="level" title="Which level of the work to show"></select>
+  <select id="lanes" title="Swimlanes">
+    <option value="">no swimlanes</option>
+    <option value="owner">lanes by owner</option>
+    <option value="parent">lanes by parent</option>
+  </select>
+  <label class="toggle top-toggle"><input id="show-archived" type="checkbox"> archived</label>
+  <label class="toggle top-toggle"><input id="show-closed" type="checkbox"> failed / cancelled</label>
+  <button id="new-task" class="btn small">+ Task</button>
+  <nav id="app-nav" class="app-nav"></nav>
+</header>
+
+<div id="scope" class="scope hidden"></div>
+<div class="board-main">
+  <div id="board" class="board"></div>
+  <div class="splitter v hidden" id="detail-split" data-split="detail"></div>
+  <aside id="detail" class="drawer detail hidden">
+    <div class="drawer-head">
+      <div id="detail-id" class="detail-id"></div>
+      <button id="detail-close" class="icon" title="Close">×</button>
+    </div>
+    <div id="detail-body" class="drawer-body"></div>
+  </aside>
+</div>
+
+<div id="modal" class="modal hidden"><div class="modal-card" id="modal-card"></div></div>
+<div id="toast" class="toast hidden"></div>
+<script src="/static/common.js"></script>
+<script src="/static/board.js"></script>
+</body>
+</html>

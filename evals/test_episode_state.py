@@ -16,8 +16,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "evals"))
 
-from agyteam.supervisor import Supervisor  # noqa: E402
-from agyteam.transport import load as load_transport  # noqa: E402
+from ateam.supervisor import Supervisor  # noqa: E402
+from ateam.transport import load as load_transport  # noqa: E402
 from fixture_runner import ScriptedRunner  # noqa: E402
 
 
@@ -28,7 +28,7 @@ def team(tmp_path, monkeypatch):
     (td / "roster.json").write_text(json.dumps({"agents": [
         {"name": "tpm", "role": "coordinates", "is_principal": True},
         {"name": "coder", "role": "implements"}]}))
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(td))
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(td))
     return td
 
 

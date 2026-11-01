@@ -29,14 +29,14 @@ def main() -> int:
     SANDBOX.mkdir(parents=True)
     from rpc_util import forget_ambient_team
     forget_ambient_team()
-    os.environ.update({"AGYTEAM_DURABLE_DIR": str(DURABLE),
-                       "AGYTEAM_PROJECT_DIR": str(ROOT),
-                       "AGYTEAM_SHARED_DIR": str(SANDBOX)})
+    os.environ.update({"ATEAM_DURABLE_DIR": str(DURABLE),
+                       "ATEAM_PROJECT_DIR": str(ROOT),
+                       "ATEAM_SHARED_DIR": str(SANDBOX)})
 
-    from agyteam import scope
+    from ateam import scope
     scopes = scope.load()
     team_dir = scopes.team_dir()
-    os.environ["AGYTEAM_TEAM_DIR"] = str(team_dir)
+    os.environ["ATEAM_TEAM_DIR"] = str(team_dir)
     (team_dir / "inbox").mkdir(parents=True, exist_ok=True)
     (team_dir / "roster.json").write_text(json.dumps({"agents": [
         {"name": "tpm", "role": "Coordinates. Decomposes work, delegates by "
@@ -47,9 +47,9 @@ def main() -> int:
         {"name": "syseng", "role": "Owns the environment; independently "
          "verifies other agents' work by running it."}]}))
 
-    from agyteam.runner_sdk import SdkRunner
-    from agyteam.supervisor import Supervisor
-    from agyteam.transport import load as load_transport
+    from ateam.runner_sdk import SdkRunner
+    from ateam.supervisor import Supervisor
+    from ateam.transport import load as load_transport
 
     runner = SdkRunner({})
     sup = Supervisor(["tpm", "coder", "syseng"], runner, team_dir=team_dir,

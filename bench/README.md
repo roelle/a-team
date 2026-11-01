@@ -22,7 +22,7 @@ python3 bench/verify_fixtures.py         # confirm the bench itself is intact
 Then give the team the task, verbatim, and note the time:
 
 ```bash
-python -m agyteam.supervisor --say "manager: $(cat bench/tasks/audit_telemetry.md)"
+python -m ateam.supervisor --say "manager: $(cat bench/tasks/audit_telemetry.md)"
 ```
 
 When it finishes, score it against the key:
@@ -45,7 +45,7 @@ A team that names every defect while its audit log shows nothing but `cat` and
 
 **But only when it can see.** The audit hook is installed by the SDK session
 builder, so on a runner that drives an external host there is no tool-call
-record at all (`Runner.supports_audit`, printed by `agyteam.lifecycle
+record at all (`Runner.supports_audit`, printed by `ateam.lifecycle
 status`). When the log is missing, unset, or the runner declares it cannot
 audit, `grade.py` marks the audit-dependent checks `N/A`, drops them from the
 denominator, and says which runner could not report — rather than scoring them
@@ -89,9 +89,9 @@ Either launch the team from somewhere else, or point its roster `workspaces`
 at a staging directory holding only the fixtures.
 
 An earlier version of this file documented
-`agyteam.lifecycle status --json | grep -c bench`. That check could not work:
+`ateam.lifecycle status --json | grep -c bench`. That check could not work:
 `status --json` reports team-level grants plus each agent's name and role, so
-per-agent `workspaces`, `AGYTEAM_EXTRA_WORKSPACES` and the working directory
+per-agent `workspaces`, `ATEAM_EXTRA_WORKSPACES` and the working directory
 never appear in it. It printed 0 whether or not the keys were reachable — a
 check that passed because it was blind, which is precisely the defect class
 this bench exists to measure. It is kept here as a reminder that the
@@ -167,7 +167,7 @@ invented outputs and false alarms are counted beside the score.
         --model gemini-3.1-pro-preview --team scale-$(date +%m%d) \
         --audit ~/agy-lab-notes/scale-$(date +%m%d)/audit.jsonl
 
-`--docker` runs the team in a container built from `agyteam/` alone, with
+`--docker` runs the team in a container built from `ateam/` alone, with
 only the staged trees, the team directory and the audit log mounted. It is
 required in practice: no runner contains an agent's shell, and in one run an
 agent used `find /tmp -type f` to reach this checkout and read a key. Both

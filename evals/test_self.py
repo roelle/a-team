@@ -1,4 +1,4 @@
-"""Tests for agyteam.mcp_self (agent introspection server).
+"""Tests for ateam.mcp_self (agent introspection server).
 
 Exercises the server over real MCP JSON-RPC stdio.
 """
@@ -15,7 +15,7 @@ from rpc_util import PY, ROOT, check, rpc, text_of, tool_names
 
 def test_self_server() -> tuple[int, int]:
     print("\n== self server: tool functionality and robustness ==")
-    td = Path(tempfile.mkdtemp(prefix="agyteam-self-test-"))
+    td = Path(tempfile.mkdtemp(prefix="ateam-self-test-"))
     durable_dir = td / "alpha"
     team_dir = durable_dir / "team"
     team_dir.mkdir(parents=True)
@@ -32,15 +32,15 @@ def test_self_server() -> tuple[int, int]:
     (team_dir / "roster.json").write_text(json.dumps(roster_data))
 
     env = {
-        "AGYTEAM_AGENT": "alice",
-        "AGYTEAM_TEAM_DIR": str(team_dir),
-        "AGYTEAM_DURABLE_DIR": str(durable_dir),
-        "AGYTEAM_SHARED_DIR": str(shared_dir),
-        "AGYTEAM_TEAM": "alpha",
+        "ATEAM_AGENT": "alice",
+        "ATEAM_TEAM_DIR": str(team_dir),
+        "ATEAM_DURABLE_DIR": str(durable_dir),
+        "ATEAM_SHARED_DIR": str(shared_dir),
+        "ATEAM_TEAM": "alpha",
     }
 
     # 1. Test when bus.jsonl and usage.jsonl are missing
-    r_empty = rpc("agyteam.mcp_self", [], [
+    r_empty = rpc("ateam.mcp_self", [], [
         ("whoami", {}),
         ("my_capabilities", {}),
         ("my_activity", {}),
@@ -72,22 +72,22 @@ def test_self_server() -> tuple[int, int]:
         for u in usage_entries:
             f.write(json.dumps(u) + "\n")
 
-    r_populated = rpc("agyteam.mcp_self", [], [
+    r_populated = rpc("ateam.mcp_self", [], [
         ("my_activity", {}),
     ], env=env)
     t_act_pop = text_of(r_populated[2])
 
     # 3. Test with positional CLI args (<team_dir> <agent_name>)
-    r_cli = rpc("agyteam.mcp_self", [str(team_dir), "bob"], [
+    r_cli = rpc("ateam.mcp_self", [str(team_dir), "bob"], [
         ("whoami", {}),
         ("my_capabilities", {}),
-    ], env={"AGYTEAM_DURABLE_DIR": str(durable_dir), "AGYTEAM_SHARED_DIR": str(shared_dir)})
+    ], env={"ATEAM_DURABLE_DIR": str(durable_dir), "ATEAM_SHARED_DIR": str(shared_dir)})
     t_cli_whoami = text_of(r_cli[2])
     t_cli_cap = text_of(r_cli[3])
 
     checks = [
-        check("server name matches agy-team-self:<agent>",
-              s_name == "agy-team-self:alice", s_name),
+        check("server name matches a-team-self:<agent>",
+              s_name == "a-team-self:alice", s_name),
         check("exposes exactly 3 tools",
               sorted(t_list) == ["my_activity", "my_capabilities", "whoami"], str(t_list)),
         check("whoami reports agent name and role",
@@ -121,8 +121,8 @@ def test_self_server() -> tuple[int, int]:
 
 
 def test_team_dir_override() -> tuple[int, int]:
-    print("\n== self server: AGYTEAM_TEAM_DIR resolution ==")
-    td = Path(tempfile.mkdtemp(prefix="agyteam-custom-team-"))
+    print("\n== self server: ATEAM_TEAM_DIR resolution ==")
+    td = Path(tempfile.mkdtemp(prefix="ateam-custom-team-"))
     custom_team_dir = td / "custom-team" / "team"
     custom_team_dir.mkdir(parents=True)
     custom_roster = {
@@ -135,30 +135,30 @@ def test_team_dir_override() -> tuple[int, int]:
     (custom_team_dir / "roster.json").write_text(json.dumps(custom_roster))
 
     base = {k: v for k, v in os.environ.items()
-            if k not in ("AGYTEAM_AGENT", "AGYTEAM_TEAM_DIR", "AGYTEAM_TEAM", "AGYTEAM_DURABLE_DIR")}
+            if k not in ("ATEAM_AGENT", "ATEAM_TEAM_DIR", "ATEAM_TEAM", "ATEAM_DURABLE_DIR")}
 
-    # Test with ONLY AGYTEAM_TEAM_DIR and AGYTEAM_AGENT set (no AGYTEAM_TEAM)
+    # Test with ONLY ATEAM_TEAM_DIR and ATEAM_AGENT set (no ATEAM_TEAM)
     env = {
         **base,
-        "AGYTEAM_AGENT": "lead",
-        "AGYTEAM_TEAM_DIR": str(custom_team_dir),
+        "ATEAM_AGENT": "lead",
+        "ATEAM_TEAM_DIR": str(custom_team_dir),
     }
 
-    r = rpc("agyteam.mcp_self", [], [
+    r = rpc("ateam.mcp_self", [], [
         ("whoami", {}),
     ], env=env)
     t_whoami = text_of(r[2])
 
     # Also test CLI positional invocation: <team_dir> <agent_name>
-    r_cli = rpc("agyteam.mcp_self", [str(custom_team_dir), "worker"], [
+    r_cli = rpc("ateam.mcp_self", [str(custom_team_dir), "worker"], [
         ("whoami", {}),
     ], env=base)
     t_cli_whoami = text_of(r_cli[2])
 
     checks = [
-        check("AGYTEAM_TEAM_DIR alone selects custom team name",
+        check("ATEAM_TEAM_DIR alone selects custom team name",
               "Team:     custom-team" in t_whoami, t_whoami),
-        check("AGYTEAM_TEAM_DIR alone loads custom roster",
+        check("ATEAM_TEAM_DIR alone loads custom roster",
               "Directs custom team" in t_whoami and "worker" in t_whoami, t_whoami),
         check("paths reflect custom team directory",
               str(custom_team_dir) in t_whoami and str(custom_team_dir.parent) in t_whoami, t_whoami),
@@ -173,21 +173,21 @@ def test_team_dir_override() -> tuple[int, int]:
 def test_failure_modes() -> tuple[int, int]:
     print("\n== self server: failure modes ==")
     base = {k: v for k, v in os.environ.items()
-            if k not in ("AGYTEAM_AGENT", "AGYTEAM_TEAM_DIR")}
+            if k not in ("ATEAM_AGENT", "ATEAM_TEAM_DIR")}
 
     def run(args, env):
-        p = subprocess.run([str(PY), "-m", "agyteam.mcp_self", *args], cwd=ROOT,
+        p = subprocess.run([str(PY), "-m", "ateam.mcp_self", *args], cwd=ROOT,
                            input="", capture_output=True, text=True, timeout=30,
                            env={**base, "PYTHONPATH": str(ROOT), **env})
         return p.returncode, (p.stderr or "") + (p.stdout or "")
 
-    rc1, o1 = run([], {"AGYTEAM_AGENT": ""})
+    rc1, o1 = run([], {"ATEAM_AGENT": ""})
     rc2, o2 = run([], {})
 
     checks = [
-        check("empty AGYTEAM_AGENT fails loudly",
+        check("empty ATEAM_AGENT fails loudly",
               rc1 != 0 and "no agent identity" in o1, o1),
-        check("missing AGYTEAM_AGENT and args fails loudly",
+        check("missing ATEAM_AGENT and args fails loudly",
               rc2 != 0 and "no agent identity" in o2, o2),
     ]
     return sum(checks), len(checks)

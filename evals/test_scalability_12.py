@@ -1,4 +1,4 @@
-"""Scripted scalability test suite for 12-agent agyteam configurations.
+"""Scripted scalability test suite for 12-agent ateam configurations.
 
 Probes and evaluates:
 1. Retro participation:
@@ -36,9 +36,9 @@ if str(EVALS_DIR) not in sys.path:
     sys.path.insert(0, str(EVALS_DIR))
 
 from rpc_util import check
-from agyteam import config, persona, supervisor
-from agyteam.runner import Runner
-from agyteam.transport import load as load_transport
+from ateam import config, persona, supervisor
+from ateam.runner import Runner
+from ateam.transport import load as load_transport
 
 
 # ---------------------------------------------------------------------------
@@ -156,13 +156,13 @@ class MultiPassDaisyRunner(Runner):
 # Test Helpers
 # ---------------------------------------------------------------------------
 
-def make_12_agent_team(prefix="agyteam-scale12-") -> tuple[Path, list[str], list[dict]]:
+def make_12_agent_team(prefix="ateam-scale12-") -> tuple[Path, list[str], list[dict]]:
     """Create a temporary team directory with 12 agents."""
     tmp = Path(tempfile.mkdtemp(prefix=prefix))
     td = tmp / "team"
     (td / "inbox").mkdir(parents=True, exist_ok=True)
-    os.environ["AGYTEAM_TEAM_DIR"] = str(td)
-    os.environ["AGYTEAM_DURABLE_DIR"] = str(tmp)
+    os.environ["ATEAM_TEAM_DIR"] = str(td)
+    os.environ["ATEAM_DURABLE_DIR"] = str(tmp)
 
     agents = [
         {"name": "tpm", "role": "Coordinates and facilitates retros. Faces inward."},
@@ -191,7 +191,7 @@ def test_retro_12_participant_cutoff() -> tuple[int, int]:
     """Verify that RETRO_MAX_PARTICIPANTS=4 cuts off 7 out of 11 candidate peers."""
     print("\n== 1. Retro Participation: 12-Agent Default Cutoff ==")
     checks = []
-    td, agent_names, agents = make_12_agent_team(prefix="agyteam-retro-cut-")
+    td, agent_names, agents = make_12_agent_team(prefix="ateam-retro-cut-")
     try:
         # Generate activity in events.jsonl so all 11 peers have non-zero score.
         # leader is tpm. 11 candidate peers: manager + 10 specialists.
@@ -264,7 +264,7 @@ def test_retro_12_full_participation_transcript_overflow() -> tuple[int, int]:
     """Verify that lifting participant cap to 11 hits RETRO_MAX_TRANSCRIPT_CHARS ceiling."""
     print("\n== 2. Retro Participation: Full 11-Peer Reflection Transcript Bounding ==")
     checks = []
-    td, agent_names, agents = make_12_agent_team(prefix="agyteam-retro-bound-")
+    td, agent_names, agents = make_12_agent_team(prefix="ateam-retro-bound-")
     try:
         candidates = [a for a in agent_names if a != "tpm"]
         events_lines = [json.dumps({"ts": f"2026-09-12 10:00:{i:02d}", "event": "turn", "agent": c})
@@ -314,7 +314,7 @@ def test_daisy_chain_12_hop_consumption() -> tuple[int, int]:
     """Measure hop consumption for a sequential forward pass through all 12 agents."""
     print("\n== 3. Hop Budget: 12-Agent Daisy-Chain Sequential Cascade ==")
     checks = []
-    td, agent_names, agents = make_12_agent_team(prefix="agyteam-daisy-")
+    td, agent_names, agents = make_12_agent_team(prefix="ateam-daisy-")
     try:
         # Seed initial prompt to first agent
         t_user = load_transport("user")
@@ -359,7 +359,7 @@ def test_fanout_cascade_and_hop_budget() -> tuple[int, int]:
     """Measure hop consumption for 1 manager fanning out to 11 workers simultaneously."""
     print("\n== 4. Hop Budget: 12-Agent Broadcast / Fan-Out Tree ==")
     checks = []
-    td, agent_names, agents = make_12_agent_team(prefix="agyteam-fanout-")
+    td, agent_names, agents = make_12_agent_team(prefix="ateam-fanout-")
     try:
         manager = "manager"
         workers = [a for a in agent_names if a != manager]
@@ -405,7 +405,7 @@ def test_hop_budget_exhaustion_on_12_agent_cycle() -> tuple[int, int]:
     """Prove that a multi-pass or remediation cycle across 12 agents depletes MAX_HOPS=32."""
     print("\n== 5. Hop Budget: Exhaustion on Multi-Pass Cascade ==")
     checks = []
-    td, agent_names, agents = make_12_agent_team(prefix="agyteam-exhaust-")
+    td, agent_names, agents = make_12_agent_team(prefix="ateam-exhaust-")
     try:
         t_user = load_transport("user")
         t_user.send(agent_names[0], "execute multi-phase rollout across 12 agents")
@@ -459,7 +459,7 @@ def test_brief_token_scaling_12_agents() -> tuple[int, int]:
         {"name": "syseng", "role": "Owns environment and tooling, runs offline eval board, checks stdlib purity."},
     ]
 
-    _, _, agents_12 = make_12_agent_team(prefix="agyteam-token-")
+    _, _, agents_12 = make_12_agent_team(prefix="ateam-token-")
     try:
         r5 = persona.roster_lines("manager", agents_5)
         r12 = persona.roster_lines("manager", agents_12)
@@ -510,7 +510,7 @@ def test_role_collision_and_ambiguity_detection() -> tuple[int, int]:
     """Detect domain/keyword collisions and ambiguous routing across 12 specialized roles."""
     print("\n== 7. Role Collisions & Routing Ambiguity in 12-Agent Roster ==")
     checks = []
-    _, _, agents_12 = make_12_agent_team(prefix="agyteam-roles-")
+    _, _, agents_12 = make_12_agent_team(prefix="ateam-roles-")
 
     # Stopwords to filter out generic terms
     stopwords = {"and", "the", "for", "from", "with", "of", "in", "to", "a", "an", "is", "faces", "takes"}

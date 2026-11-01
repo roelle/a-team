@@ -34,7 +34,7 @@ def argval(args, flag, default=""):
 
 
 def registered(conversation):
-    td = os.environ.get("AGYTEAM_TEAM_DIR", "")
+    td = os.environ.get("ATEAM_TEAM_DIR", "")
     try:
         return conversation in json.loads(Path(td, "conversations.json").read_text()).values()
     except (OSError, ValueError):
@@ -57,14 +57,14 @@ def main(argv):
         conv = f"conv-{n}"
         log(call="start", conversation=conv, agent=argval(args, "--agent"),
             model=argval(args, "--model"), prompt=argval(args, "--prompt"),
-            agent_env=os.environ.get("AGYTEAM_AGENT"))
+            agent_env=os.environ.get("ATEAM_AGENT"))
         print(json.dumps({"conversation_id": conv, "status": "created"}))
         end_turn_later(conv)
     elif cmd == "send":
         conv = argval(args, "--conversation")
         message = argval(args, "--message") or sys.stdin.read()
         log(call="send", conversation=conv, message=message,
-            registered=registered(conv), agent_env=os.environ.get("AGYTEAM_AGENT"))
+            registered=registered(conv), agent_env=os.environ.get("ATEAM_AGENT"))
         if os.environ.get("FAKE_HOST_FAIL"):
             sys.stderr.write("session not found\n")
             return 1

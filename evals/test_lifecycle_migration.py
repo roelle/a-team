@@ -16,9 +16,9 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from agyteam import lifecycle, manager_seed, persona, roster as roster_lib
-from agyteam.supervisor import Supervisor, _find_principal
-from agyteam.transport import load as load_transport
+from ateam import lifecycle, manager_seed, persona, roster as roster_lib
+from ateam.supervisor import Supervisor, _find_principal
+from ateam.transport import load as load_transport
 from fixture_runner import ScriptedRunner
 
 
@@ -412,13 +412,13 @@ def test_run_script_export_import():
         (src / "roster.json").write_text(json.dumps({"agents": [{"name": "run_agent"}]}))
 
         # Run export
-        env = dict(os.environ, AGYTEAM_TEAM_DIR=str(src))
+        env = dict(os.environ, ATEAM_TEAM_DIR=str(src))
         proc_exp = subprocess.run([str(run_bin), "export", str(bundle)], env=env, capture_output=True, text=True)
         assert proc_exp.returncode == 0, f"export failed: {proc_exp.stderr}"
         assert bundle.is_file()
 
         # Run import
-        env_dst = dict(os.environ, AGYTEAM_TEAM_DIR=str(dst))
+        env_dst = dict(os.environ, ATEAM_TEAM_DIR=str(dst))
         proc_imp = subprocess.run([str(run_bin), "import", str(bundle)], env=env_dst, capture_output=True, text=True)
         assert proc_imp.returncode == 0, f"import failed: {proc_imp.stderr}"
         assert (dst / "roster.json").exists()
@@ -427,7 +427,7 @@ def test_run_script_export_import():
 def test_import_agent_memory_silent_overwrite_vulnerability(tmp_path):
     """Prove that import_team silently writes over existing agents outside the team dir."""
     import tarfile, json
-    import agyteam.lifecycle as lifecycle
+    import ateam.lifecycle as lifecycle
     
     # Pre-existing standard 'agents' directory with data
     base = tmp_path / "workspace"
@@ -460,7 +460,7 @@ def test_import_agent_memory_silent_overwrite_vulnerability(tmp_path):
 def test_import_agent_memory_overwrite_allowed(tmp_path):
     """Verify that when overwrite=True, agent memories can be updated and new files are copied."""
     import tarfile, json
-    import agyteam.lifecycle as lifecycle
+    import ateam.lifecycle as lifecycle
 
     base = tmp_path / "workspace"
     base.mkdir()

@@ -16,9 +16,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "evals"))
 
-from agyteam import mcp_memory, memory_log, recall  # noqa: E402
-from agyteam.supervisor import Supervisor  # noqa: E402
-from agyteam.transport import load as load_transport  # noqa: E402
+from ateam import mcp_memory, memory_log, recall  # noqa: E402
+from ateam.supervisor import Supervisor  # noqa: E402
+from ateam.transport import load as load_transport  # noqa: E402
 from fixture_runner import ScriptedRunner  # noqa: E402
 
 AGENTS = ["tpm", "coder", "qa"]
@@ -67,9 +67,9 @@ def team(tmp_path, monkeypatch):
     td = tmp_path / "teams" / "demo" / "team"
     (td / "inbox").mkdir(parents=True)
     (td / "roster.json").write_text(json.dumps({"agents": [{"name": a} for a in AGENTS]}))
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(td))
-    monkeypatch.setenv("AGYTEAM_DURABLE_DIR", str(td.parent))
-    monkeypatch.delenv("AGYTEAM_AGENT", raising=False)
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(td))
+    monkeypatch.setenv("ATEAM_DURABLE_DIR", str(td.parent))
+    monkeypatch.delenv("ATEAM_AGENT", raising=False)
     return td
 
 
@@ -297,7 +297,7 @@ def test_more_memories_get_more_candidates_unless_the_roster_says_how_many(team)
 
 def test_the_record_sums_recall_per_day_and_per_memory(team):
     import time as _time
-    from agyteam.record import Record
+    from ateam.record import Record
     now = _time.strftime("%Y-%m-%d %H:%M:%S")
     rows = [{"event": "recall", "agent": "coder", "picked": ["stats-ab"], "hints": []},
             {"event": "recall", "agent": "coder", "picked": [], "hints": []},

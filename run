@@ -40,11 +40,11 @@ fi
 if [ ! -f "$VENV_DIR/bin/python" ]; then
     echo "Creating virtual environment at .venv..."
     python3 -m venv "$VENV_DIR"
-    echo "Upgrading pip and installing agyteam..."
+    echo "Upgrading pip and installing ateam..."
     "$VENV_DIR/bin/python" -m pip install --upgrade pip --quiet 2>/dev/null || true
     "$VENV_DIR/bin/pip" install -e ".[dev]" --quiet
-elif ! "$VENV_DIR/bin/python" -c "import agyteam" 2>/dev/null; then
-    echo "Installing agyteam in editable mode..."
+elif ! "$VENV_DIR/bin/python" -c "import ateam" 2>/dev/null; then
+    echo "Installing ateam in editable mode..."
     "$VENV_DIR/bin/pip" install -e ".[dev]" --quiet
 fi
 
@@ -63,20 +63,20 @@ ensure_api_key() {
     # organisation the models usually arrive through an internal endpoint,
     # application-default credentials, or a custom runner -- all of which make
     # demanding a key here a wall in front of the people best placed to use
-    # this. AGYTEAM_NO_API_KEY=1 (env or .env) means "I supply credentials
+    # this. ATEAM_NO_API_KEY=1 (env or .env) means "I supply credentials
     # another way": get out of the way and let a real call fail with a real
     # error if they were wrong.
-    if [ -z "${AGYTEAM_NO_API_KEY:-}" ] && [ -f "$REPO_DIR/.env" ] \
-       && grep -qE '^[[:space:]]*AGYTEAM_NO_API_KEY=1' "$REPO_DIR/.env" 2>/dev/null; then
-        export AGYTEAM_NO_API_KEY=1
+    if [ -z "${ATEAM_NO_API_KEY:-}" ] && [ -f "$REPO_DIR/.env" ] \
+       && grep -qE '^[[:space:]]*ATEAM_NO_API_KEY=1' "$REPO_DIR/.env" 2>/dev/null; then
+        export ATEAM_NO_API_KEY=1
     fi
-    if [ -n "${AGYTEAM_NO_API_KEY:-}" ]; then
+    if [ -n "${ATEAM_NO_API_KEY:-}" ]; then
         return 0
     fi
 
     # A non-SDK runner is the operator saying they own model access entirely.
-    if [ -n "${AGYTEAM_RUNNER:-}" ] && \
-       ! printf '%s' "${AGYTEAM_RUNNER:-}" | grep -q "runner_sdk"; then
+    if [ -n "${ATEAM_RUNNER:-}" ] && \
+       ! printf '%s' "${ATEAM_RUNNER:-}" | grep -q "runner_sdk"; then
         return 0
     fi
 
@@ -91,14 +91,14 @@ cmd_setup() {
     # than something you discover by reading the shell script.
     if [ "$force" = "--no-key" ]; then
         if [ -f "$REPO_DIR/.env" ]; then
-            grep -v '^[[:space:]]*AGYTEAM_NO_API_KEY=' "$REPO_DIR/.env" > "$REPO_DIR/.env.tmp" 2>/dev/null || true
+            grep -v '^[[:space:]]*ATEAM_NO_API_KEY=' "$REPO_DIR/.env" > "$REPO_DIR/.env.tmp" 2>/dev/null || true
             mv "$REPO_DIR/.env.tmp" "$REPO_DIR/.env"
         fi
-        printf "AGYTEAM_NO_API_KEY=1\n" >> "$REPO_DIR/.env"
+        printf "ATEAM_NO_API_KEY=1\n" >> "$REPO_DIR/.env"
         chmod 600 "$REPO_DIR/.env"
         echo "Recorded: this checkout does not need a GEMINI_API_KEY."
         echo "Model access is yours to supply (internal endpoint, ADC, or a"
-        echo "custom AGYTEAM_RUNNER). Offline suites already need no key:"
+        echo "custom ATEAM_RUNNER). Offline suites already need no key:"
         echo "    ./run test"
         return 0
     fi
@@ -149,7 +149,7 @@ except Exception as e:
     fi
 
     echo "If you reach models another way (internal endpoint, application"
-    echo "default credentials, or your own AGYTEAM_RUNNER), press Enter on an"
+    echo "default credentials, or your own ATEAM_RUNNER), press Enter on an"
     echo "empty line and we will stop asking."
     read -r -p "Enter your GEMINI_API_KEY (or Enter to skip): " user_key
     user_key="$(echo "$user_key" | tr -d '[:space:]')"
@@ -194,11 +194,11 @@ except Exception as e:
 # this launcher a Gemini API key has chosen the other one: the SDK runner is
 # the only runner that uses that key. Without this, the launcher asked for a
 # key and then started a runner that ignored it and wanted the agy binary.
-# An explicit AGYTEAM_RUNNER, or `setup --no-key`, is left alone.
+# An explicit ATEAM_RUNNER, or `setup --no-key`, is left alone.
 select_runner() {
-    if [ -z "${AGYTEAM_RUNNER:-}" ] && [ -z "${AGYTEAM_NO_API_KEY:-}" ] \
+    if [ -z "${ATEAM_RUNNER:-}" ] && [ -z "${ATEAM_NO_API_KEY:-}" ] \
        && [ -n "${GEMINI_API_KEY:-}" ]; then
-        export AGYTEAM_RUNNER="agyteam.runner_sdk:SdkRunner"
+        export ATEAM_RUNNER="ateam.runner_sdk:SdkRunner"
     fi
 }
 
@@ -208,12 +208,12 @@ select_runner() {
 # copy of it -- plugin/starter_roster.json -- so the two cannot drift.
 ensure_roster() {
     local team_dir roster team
-    team_dir="$("$PYTHON_BIN" -c 'from agyteam import scope; print(scope.team_dir())')"
+    team_dir="$("$PYTHON_BIN" -c 'from ateam import scope; print(scope.team_dir())')"
     roster="$team_dir/roster.json"
     if [ -f "$roster" ]; then
         return 0
     fi
-    team="${AGYTEAM_TEAM:-default}"
+    team="${ATEAM_TEAM:-default}"
     mkdir -p "$team_dir/inbox"
     sed "s/(\$TEAM)/($team)/" "$REPO_DIR/plugin/starter_roster.json" > "$roster"
     if ! "$PYTHON_BIN" -c 'import json,sys; json.load(open(sys.argv[1]))' "$roster" 2>/dev/null; then
@@ -229,7 +229,7 @@ cmd_chat() {
     ensure_api_key
     select_runner
     ensure_roster
-    exec "$PYTHON_BIN" -m agyteam.supervisor --chat "$@"
+    exec "$PYTHON_BIN" -m ateam.supervisor --chat "$@"
 }
 
 cmd_ask() {
@@ -241,31 +241,31 @@ cmd_ask() {
     fi
     select_runner
     ensure_roster
-    exec "$PYTHON_BIN" -m agyteam.supervisor --say "$*"
+    exec "$PYTHON_BIN" -m ateam.supervisor --say "$*"
 }
 
 cmd_status() {
-    exec "$PYTHON_BIN" -m agyteam.lifecycle status "$@"
+    exec "$PYTHON_BIN" -m ateam.lifecycle status "$@"
 }
 
 cmd_stop() {
-    exec "$PYTHON_BIN" -m agyteam.lifecycle stop "$@"
+    exec "$PYTHON_BIN" -m ateam.lifecycle stop "$@"
 }
 
 cmd_start() {
-    exec "$PYTHON_BIN" -m agyteam.lifecycle start "$@"
+    exec "$PYTHON_BIN" -m ateam.lifecycle start "$@"
 }
 
 cmd_export() {
-    exec "$PYTHON_BIN" -m agyteam.lifecycle export "$@"
+    exec "$PYTHON_BIN" -m ateam.lifecycle export "$@"
 }
 
 cmd_import() {
-    exec "$PYTHON_BIN" -m agyteam.lifecycle import "$@"
+    exec "$PYTHON_BIN" -m ateam.lifecycle import "$@"
 }
 
 cmd_test() {
-    "$PYTHON_BIN" -m agyteam.git_hygiene --quiet 2>/dev/null || true
+    "$PYTHON_BIN" -m ateam.git_hygiene --quiet 2>/dev/null || true
     if [ "${1:-}" = "--live" ] || [ "${1:-}" = "evals/run_evals.py" ]; then
         shift || true
         ensure_api_key
@@ -291,7 +291,7 @@ Commands:
   status           Show current team roster, workspaces, and running status
   stop             Stop the team by writing the lifecycle stop sentinel
   start            Resume/unpause team execution
-  update [args]    Update agy-team, reinstall the plugin, and restart running teams
+  update [args]    Update a-team, reinstall the plugin, and restart running teams
                    gracefully (turns in flight finish first); --check, --now, --help
   restart [--now]  Restart this team's supervisor gracefully on the installed code
   export <bundle>  Export team configuration, state, and memory to archive (.tar.gz)
@@ -336,11 +336,11 @@ case "$SUBCMD" in
         ;;
     update)
         shift || true
-        exec "$PYTHON_BIN" -m agyteam.update "$@"
+        exec "$PYTHON_BIN" -m ateam.update "$@"
         ;;
     restart)
         shift || true
-        exec "$PYTHON_BIN" -m agyteam.supervisor --restart "$@"
+        exec "$PYTHON_BIN" -m ateam.supervisor --restart "$@"
         ;;
     export)
         shift || true

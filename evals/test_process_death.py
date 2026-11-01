@@ -25,9 +25,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "evals"))
 
-from agyteam.runner import Runner
-from agyteam.supervisor import Supervisor
-from agyteam.transport import load as load_transport
+from ateam.runner import Runner
+from ateam.supervisor import Supervisor
+from ateam.transport import load as load_transport
 
 CHILD_SCRIPT = """
 import sys
@@ -39,8 +39,8 @@ root = Path(sys.argv[1]).resolve()
 sys.path.insert(0, str(root))
 sys.path.insert(0, str(root / "evals"))
 
-from agyteam.supervisor import Supervisor
-from agyteam.runner import Runner
+from ateam.supervisor import Supervisor
+from ateam.runner import Runner
 
 class MidTurnBlockRunner(Runner):
     label = "midturn-blocker"
@@ -95,18 +95,18 @@ def wait_for_sentinel(proc: subprocess.Popen, sentinel: str = "MID_TURN_ACTIVE",
 def check_process_death_file_transport() -> tuple[int, int]:
     """Test mid-turn SIGKILL survival with FileTransport."""
     print("\n== mid-turn SIGKILL process death: FileTransport ==")
-    td = Path(tempfile.mkdtemp(prefix="agyteam-sigkill-file-")) / "team"
+    td = Path(tempfile.mkdtemp(prefix="ateam-sigkill-file-")) / "team"
     (td / "inbox").mkdir(parents=True)
     (td / "roster.json").write_text(json.dumps({"agents": [{"name": "coder", "role": "implements"}]}))
 
     saved_env = {
-        "AGYTEAM_TEAM_DIR": os.environ.get("AGYTEAM_TEAM_DIR"),
-        "AGYTEAM_BUS_TRANSPORT": os.environ.get("AGYTEAM_BUS_TRANSPORT"),
-        "AGYTEAM_BUS_CONFIG": os.environ.get("AGYTEAM_BUS_CONFIG"),
+        "ATEAM_TEAM_DIR": os.environ.get("ATEAM_TEAM_DIR"),
+        "ATEAM_BUS_TRANSPORT": os.environ.get("ATEAM_BUS_TRANSPORT"),
+        "ATEAM_BUS_CONFIG": os.environ.get("ATEAM_BUS_CONFIG"),
     }
-    os.environ["AGYTEAM_TEAM_DIR"] = str(td)
-    os.environ.pop("AGYTEAM_BUS_TRANSPORT", None)
-    os.environ.pop("AGYTEAM_BUS_CONFIG", None)
+    os.environ["ATEAM_TEAM_DIR"] = str(td)
+    os.environ.pop("ATEAM_BUS_TRANSPORT", None)
+    os.environ.pop("ATEAM_BUS_CONFIG", None)
 
     try:
         # 1. Enqueue in-flight test messages
@@ -199,17 +199,17 @@ def check_process_death_file_transport() -> tuple[int, int]:
 def check_process_death_sqlite_transport() -> tuple[int, int]:
     """Test mid-turn SIGKILL survival with SqliteTransport."""
     print("\n== mid-turn SIGKILL process death: SqliteTransport ==")
-    sqlite_db = Path(tempfile.mkdtemp(prefix="agyteam-sigkill-sql-")) / "bus.db"
+    sqlite_db = Path(tempfile.mkdtemp(prefix="ateam-sigkill-sql-")) / "bus.db"
     sql_cfg = json.dumps({"db": str(sqlite_db), "roster": [{"name": "coder", "role": "implements"}]})
 
     saved_env = {
-        "AGYTEAM_TEAM_DIR": os.environ.get("AGYTEAM_TEAM_DIR"),
-        "AGYTEAM_BUS_TRANSPORT": os.environ.get("AGYTEAM_BUS_TRANSPORT"),
-        "AGYTEAM_BUS_CONFIG": os.environ.get("AGYTEAM_BUS_CONFIG"),
+        "ATEAM_TEAM_DIR": os.environ.get("ATEAM_TEAM_DIR"),
+        "ATEAM_BUS_TRANSPORT": os.environ.get("ATEAM_BUS_TRANSPORT"),
+        "ATEAM_BUS_CONFIG": os.environ.get("ATEAM_BUS_CONFIG"),
     }
-    os.environ["AGYTEAM_BUS_TRANSPORT"] = "fixture_transport:SqliteTransport"
-    os.environ["AGYTEAM_BUS_CONFIG"] = sql_cfg
-    os.environ.pop("AGYTEAM_TEAM_DIR", None)
+    os.environ["ATEAM_BUS_TRANSPORT"] = "fixture_transport:SqliteTransport"
+    os.environ["ATEAM_BUS_CONFIG"] = sql_cfg
+    os.environ.pop("ATEAM_TEAM_DIR", None)
 
     try:
         # 1. Enqueue in-flight test messages
@@ -365,17 +365,17 @@ sys.stdout.flush()
 def check_concurrent_process_kill_and_immediate_restart_sqlite() -> tuple[int, int]:
     """Test edge case: concurrent process kill and immediate restart does not cause database is locked."""
     print("\n== edge case: concurrent SIGKILL & immediate restart (SQLite) ==")
-    sqlite_db = Path(tempfile.mkdtemp(prefix="agyteam-sigkill-concurrent-")) / "bus.db"
+    sqlite_db = Path(tempfile.mkdtemp(prefix="ateam-sigkill-concurrent-")) / "bus.db"
     sql_cfg = json.dumps({"db": str(sqlite_db), "roster": [{"name": "coder", "role": "implements"}]})
 
     saved_env = {
-        "AGYTEAM_TEAM_DIR": os.environ.get("AGYTEAM_TEAM_DIR"),
-        "AGYTEAM_BUS_TRANSPORT": os.environ.get("AGYTEAM_BUS_TRANSPORT"),
-        "AGYTEAM_BUS_CONFIG": os.environ.get("AGYTEAM_BUS_CONFIG"),
+        "ATEAM_TEAM_DIR": os.environ.get("ATEAM_TEAM_DIR"),
+        "ATEAM_BUS_TRANSPORT": os.environ.get("ATEAM_BUS_TRANSPORT"),
+        "ATEAM_BUS_CONFIG": os.environ.get("ATEAM_BUS_CONFIG"),
     }
-    os.environ["AGYTEAM_BUS_TRANSPORT"] = "fixture_transport:SqliteTransport"
-    os.environ["AGYTEAM_BUS_CONFIG"] = sql_cfg
-    os.environ.pop("AGYTEAM_TEAM_DIR", None)
+    os.environ["ATEAM_BUS_TRANSPORT"] = "fixture_transport:SqliteTransport"
+    os.environ["ATEAM_BUS_CONFIG"] = sql_cfg
+    os.environ.pop("ATEAM_TEAM_DIR", None)
 
     try:
         # 1. Seed messages

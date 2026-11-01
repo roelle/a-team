@@ -37,15 +37,15 @@ def setup() -> Path:
     SCRATCH.mkdir(parents=True)
     from rpc_util import forget_ambient_team
     forget_ambient_team()
-    os.environ.update({"AGYTEAM_DURABLE_DIR": str(SCRATCH),
-                       "AGYTEAM_PROJECT_DIR": str(ROOT),
-                       "AGYTEAM_SHARED_DIR": str(SCRATCH)})
-    from agyteam import scope
+    os.environ.update({"ATEAM_DURABLE_DIR": str(SCRATCH),
+                       "ATEAM_PROJECT_DIR": str(ROOT),
+                       "ATEAM_SHARED_DIR": str(SCRATCH)})
+    from ateam import scope
     team_dir = scope.load().team_dir()
     (team_dir / "inbox").mkdir(parents=True, exist_ok=True)
     (team_dir / "roster.json").write_text(json.dumps({"agents": [
         {"name": AGENT, "role": "Implements and verifies code changes."}]}))
-    os.environ["AGYTEAM_TEAM_DIR"] = str(team_dir)
+    os.environ["ATEAM_TEAM_DIR"] = str(team_dir)
     return team_dir
 
 
@@ -81,12 +81,12 @@ def main() -> int:
     total = 0
 
     setup()
-    from agyteam.runner_sdk import SdkRunner
+    from ateam.runner_sdk import SdkRunner
     s, t, remembered = probe(SdkRunner({}), "sdk")
     scores, total, results["sdk"] = scores + s, total + t, remembered
 
     setup()
-    from agyteam.runner_agy import AgyRunner
+    from ateam.runner_agy import AgyRunner
     agy = AgyRunner({})
     if agy.available():
         s, t, remembered = probe(agy, "agy-cli")

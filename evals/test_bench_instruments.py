@@ -47,9 +47,9 @@ def review(ts, reviewer, author, verdict="approved", **extra):
 
 def test_runner_is_taken_from_the_environment(monkeypatch):
     """Hardcoded in the same commit that made runners pluggable."""
-    monkeypatch.delenv("AGYTEAM_RUNNER", raising=False)
+    monkeypatch.delenv("ATEAM_RUNNER", raising=False)
     assert conv.runner_spec() == conv.DEFAULT_RUNNER
-    monkeypatch.setenv("AGYTEAM_RUNNER", "some.module:OtherRunner")
+    monkeypatch.setenv("ATEAM_RUNNER", "some.module:OtherRunner")
     assert conv.runner_spec() == "some.module:OtherRunner"
 
 
@@ -64,7 +64,7 @@ def test_refuses_to_stage_a_key_behind_a_disclaimed_guarantee(tmp_path,
     nothing, the keys sit readable in the repo, and the run produces a perfect
     score that means nothing.
     """
-    monkeypatch.setenv("AGYTEAM_RUNNER", "agyteam.runner_agy:AgyRunner")
+    monkeypatch.setenv("ATEAM_RUNNER", "ateam.runner_agy:AgyRunner")
     with pytest.raises(SystemExit) as e:
         conv.check_containment(tmp_path)
     msg = str(e.value)
@@ -73,7 +73,7 @@ def test_refuses_to_stage_a_key_behind_a_disclaimed_guarantee(tmp_path,
 
 
 def test_refuses_when_containment_cannot_be_determined(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGYTEAM_RUNNER", "no.such.module:Nope")
+    monkeypatch.setenv("ATEAM_RUNNER", "no.such.module:Nope")
     with pytest.raises(SystemExit) as e:
         conv.check_containment(tmp_path)
     assert "could not be inspected" in str(e.value)
@@ -83,7 +83,7 @@ def test_refuses_the_sdk_runner_too_since_its_shell_is_not_contained(tmp_path, m
     """It was allowed, and in a measured run an agent used run_command to find
     the bench checkout and read keys/audit_sessions.json."""
     pytest.importorskip("google.antigravity")
-    monkeypatch.setenv("AGYTEAM_RUNNER", "agyteam.runner_sdk:SdkRunner")
+    monkeypatch.setenv("ATEAM_RUNNER", "ateam.runner_sdk:SdkRunner")
     with pytest.raises(SystemExit) as e:
         conv.check_containment(tmp_path)
     assert "--docker" in str(e.value)
@@ -91,7 +91,7 @@ def test_refuses_the_sdk_runner_too_since_its_shell_is_not_contained(tmp_path, m
 
 def test_a_runner_that_declares_containment_is_allowed(tmp_path, monkeypatch):
     monkeypatch.setattr(conv, "runner_spec", lambda: "x:Y")
-    import agyteam.runner as runner_mod
+    import ateam.runner as runner_mod
     monkeypatch.setattr(runner_mod, "capabilities", lambda spec: {
         "spec": spec, "supports_containment": True, "error": None})
     conv.check_containment(tmp_path)        # must not raise

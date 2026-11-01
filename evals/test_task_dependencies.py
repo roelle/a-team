@@ -13,10 +13,10 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from agyteam import actions, mcp_tasks  # noqa: E402
-from agyteam import tasks as tl  # noqa: E402
-from agyteam.record import Record  # noqa: E402
-from agyteam.transport import load as load_transport  # noqa: E402
+from ateam import actions, mcp_tasks  # noqa: E402
+from ateam import tasks as tl  # noqa: E402
+from ateam.record import Record  # noqa: E402
+from ateam.transport import load as load_transport  # noqa: E402
 
 
 @pytest.fixture
@@ -25,8 +25,8 @@ def team(tmp_path, monkeypatch):
     (td / "inbox").mkdir(parents=True)
     (td / "roster.json").write_text(json.dumps({"agents": [
         {"name": "coder", "role": "builds"}, {"name": "qa", "role": "reviews"}]}))
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(td))
-    monkeypatch.delenv("AGYTEAM_AGENT", raising=False)
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(td))
+    monkeypatch.delenv("ATEAM_AGENT", raising=False)
     return td
 
 

@@ -22,8 +22,8 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from agyteam import activity, mcp_base, mcp_bus, mcp_tasks, policy, tasks  # noqa: E402
-from agyteam.transport_file import FileTransport  # noqa: E402
+from ateam import activity, mcp_base, mcp_bus, mcp_tasks, policy, tasks  # noqa: E402
+from ateam.transport_file import FileTransport  # noqa: E402
 
 
 @pytest.fixture
@@ -34,9 +34,9 @@ def team(tmp_path, monkeypatch):
         {"name": "manager", "role": "gates"},
         {"name": "coder", "role": "implements"},
         {"name": "qa", "role": "reviews"}]}))
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(td))
-    for k in ("AGYTEAM_AGENT", "AGYTEAM_AUDIT_LOG", "AGYTEAM_SIGNAL_DIR",
-              "AGYTEAM_RUNNER_CONFIG", "AGYTEAM_STOP_IDLE_KEY"):
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(td))
+    for k in ("ATEAM_AGENT", "ATEAM_AUDIT_LOG", "ATEAM_SIGNAL_DIR",
+              "ATEAM_RUNNER_CONFIG", "ATEAM_STOP_IDLE_KEY"):
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setattr(mcp_base, "OUTPUT_BYTES", 3800)
     tasks._quiet.clear()
@@ -64,12 +64,12 @@ def test_fit_cuts_an_oversized_first_item_on_a_character_boundary():
 
 
 def test_a_message_too_long_to_show_is_saved_where_its_agent_can_read_it(team, tmp_path, monkeypatch):
-    monkeypatch.setenv("AGYTEAM_DURABLE_DIR", str(tmp_path / "durable"))
+    monkeypatch.setenv("ATEAM_DURABLE_DIR", str(tmp_path / "durable"))
     FileTransport("manager").send("coder", "start " + "x" * 9000 + " end")
     out = mcp_bus._check_inbox(FileTransport("coder"))
     assert size(out) <= 3800 and "cut at the" in out
     path = Path(out.split("full text is in ", 1)[1].split("]", 1)[0])
-    from agyteam import scope
+    from ateam import scope
     assert scope.load().agent_workspace("coder") in path.parents
     assert path.read_text().rstrip().endswith(" end")
     assert mcp_bus._check_inbox(FileTransport("coder")) == "[inbox empty]"
@@ -191,7 +191,7 @@ def test_a_command_that_only_resembles_it_is_not(team, cmd):
 # --- the hooks ------------------------------------------------------------------
 
 def hook(module, payload, env):
-    return subprocess.run([sys.executable, "-m", f"agyteam.{module}"],
+    return subprocess.run([sys.executable, "-m", f"ateam.{module}"],
                           input=json.dumps(payload), capture_output=True, text=True,
                           env={**os.environ, "PYTHONPATH": str(ROOT), **env}, timeout=60)
 
@@ -199,8 +199,8 @@ def hook(module, payload, env):
 def test_the_pre_tool_hook_writes_the_audit_line_the_gate_reads(team, tmp_path, monkeypatch):
     set_roster(team, tools_off=["run_command"])
     log = tmp_path / "audit.jsonl"
-    env = {"AGYTEAM_TEAM_DIR": str(team), "AGYTEAM_AUDIT_LOG": str(log),
-           "AGYTEAM_AGENT": "coder", "AGYTEAM_TEAM": "t1"}
+    env = {"ATEAM_TEAM_DIR": str(team), "ATEAM_AUDIT_LOG": str(log),
+           "ATEAM_AGENT": "coder", "ATEAM_TEAM": "t1"}
     assert hook("hook_pre_tool_use", {"tool_name": "view_file",
                                       "tool_input": {"path": "/x", "blob": "b" * 5000}},
                 env).returncode == 0
@@ -212,17 +212,17 @@ def test_the_pre_tool_hook_writes_the_audit_line_the_gate_reads(team, tmp_path, 
     assert len(rows[0]["args"]["blob"]) == 2000 and "refused" not in rows[0]
     assert "not available" in rows[1]["refused"]
 
-    monkeypatch.setenv("AGYTEAM_AUDIT_LOG", str(log))
-    monkeypatch.setenv("AGYTEAM_TEAM", "t1")
+    monkeypatch.setenv("ATEAM_AUDIT_LOG", str(log))
+    monkeypatch.setenv("ATEAM_TEAM", "t1")
     worked, evidence = activity.author_activity(team, "coder", "2000-01-01 00:00:00")
     assert worked and "1 tool call(s)" in evidence, "a refused call counted as work"
 
 
 def test_the_stop_hook_writes_the_line_host_runner_counts(team, tmp_path):
-    from agyteam.runner_host import HostRunner
+    from ateam.runner_host import HostRunner
     sig = tmp_path / "signals"
     config = {"start": ["x"], "deliver": ["y"], "signal_dir": str(sig)}
-    env = {"AGYTEAM_RUNNER_CONFIG": json.dumps(config)}
+    env = {"ATEAM_RUNNER_CONFIG": json.dumps(config)}
     r = hook("hook_stop", {"conversationId": "conv-9",
                            "usage": {"inputTokens": 120, "outputTokens": 7}}, env)
     assert r.returncode == 0, r.stderr
@@ -236,7 +236,7 @@ def test_the_stop_hook_writes_the_line_host_runner_counts(team, tmp_path):
 
 def test_the_stop_hook_skips_a_pause_that_is_not_a_turn_end(team, tmp_path):
     sig = tmp_path / "signals"
-    env = {"AGYTEAM_SIGNAL_DIR": str(sig), "AGYTEAM_STOP_IDLE_KEY": "fullyIdle"}
+    env = {"ATEAM_SIGNAL_DIR": str(sig), "ATEAM_STOP_IDLE_KEY": "fullyIdle"}
     hook("hook_stop", {"conversationId": "c1", "fullyIdle": False}, env)
     assert not (sig / "c1.jsonl").exists()
     hook("hook_stop", {"conversationId": "c1", "fullyIdle": False, "error": "boom"}, env)
@@ -246,8 +246,8 @@ def test_the_stop_hook_skips_a_pause_that_is_not_a_turn_end(team, tmp_path):
 
 def test_the_stop_hook_never_fails_the_host(team, tmp_path):
     for payload, env in [({"conversationId": "c"}, {}),               # nowhere to write
-                         ({}, {"AGYTEAM_SIGNAL_DIR": str(tmp_path)}),  # no id
-                         ({"conversationId": "../escape"}, {"AGYTEAM_SIGNAL_DIR": str(tmp_path)})]:
+                         ({}, {"ATEAM_SIGNAL_DIR": str(tmp_path)}),  # no id
+                         ({"conversationId": "../escape"}, {"ATEAM_SIGNAL_DIR": str(tmp_path)})]:
         r = hook("hook_stop", payload, env)
         assert r.returncode == 0 and r.stderr
     assert not (tmp_path.parent / "escape.jsonl").exists()
@@ -258,8 +258,8 @@ def test_the_stop_hook_never_fails_the_host(team, tmp_path):
 @pytest.fixture
 def workspaces(team, tmp_path, monkeypatch):
     durable = tmp_path / "durable"
-    monkeypatch.setenv("AGYTEAM_DURABLE_DIR", str(durable))
-    from agyteam import scope
+    monkeypatch.setenv("ATEAM_DURABLE_DIR", str(durable))
+    from ateam import scope
     qa = scope.load().agent_workspace("qa")
     (qa / "reviews").mkdir(parents=True, exist_ok=True)
     return team, qa, scope.load().agent_workspace("coder")
@@ -311,7 +311,7 @@ def test_the_hook_trusts_the_conversation_over_a_leaked_environment(team):
     set_roster(team, tools_off=["run_command"])          # coder may not
     r = hook("hook_pre_tool_use", {"conversationId": "conv-qa", "tool_name": "run_command",
                                    "tool_input": {"command": "ls"}},
-             {"AGYTEAM_TEAM_DIR": str(team), "AGYTEAM_AGENT": "coder"})
+             {"ATEAM_TEAM_DIR": str(team), "ATEAM_AGENT": "coder"})
     assert r.returncode == 0, "qa's call was judged as coder's"
 
 
@@ -329,7 +329,7 @@ def test_a_recipient_can_cap_what_it_is_sent(team):
 
 def test_the_turn_records_the_model_the_host_says_ran_it(team, tmp_path):
     sig = tmp_path / "signals"
-    env = {"AGYTEAM_SIGNAL_DIR": str(sig)}
+    env = {"ATEAM_SIGNAL_DIR": str(sig)}
     hook("hook_stop", {"conversationId": "c1", "model": "fallback-model",
                        "usage": {"contextTokens": 99}}, env)
     line = json.loads((sig / "c1.jsonl").read_text())

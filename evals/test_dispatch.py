@@ -19,10 +19,10 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "evals"))
 
-from agyteam import config  # noqa: E402
-from agyteam.runner import Runner  # noqa: E402
-from agyteam.supervisor import Supervisor, supervisor_running  # noqa: E402
-from agyteam.transport import load as load_transport  # noqa: E402
+from ateam import config  # noqa: E402
+from ateam.runner import Runner  # noqa: E402
+from ateam.supervisor import Supervisor, supervisor_running  # noqa: E402
+from ateam.transport import load as load_transport  # noqa: E402
 from fixture_runner import ScriptedRunner  # noqa: E402
 
 AGENTS = ["tpm", "coder", "qa", "syseng"]
@@ -35,7 +35,7 @@ def team(tmp_path, monkeypatch):
     (td / "roster.json").write_text(json.dumps({"agents": [
         {"name": a, "role": "works", **({"is_principal": True} if a == "tpm" else {})}
         for a in AGENTS]}))
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(td))
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(td))
     monkeypatch.setattr(config, "WAKE_BACKOFF_BASE_S", 0.2)
     monkeypatch.setattr(config, "WAKE_BACKOFF_MAX_S", 0.5)
     return td
@@ -263,7 +263,7 @@ class HostLike(Runner):
 
     def begin(self, agent, message):
         self.begun.append(agent)
-        signal = Path(os.environ["AGYTEAM_TEAM_DIR"]) / f"signal-{agent}"
+        signal = Path(os.environ["ATEAM_TEAM_DIR"]) / f"signal-{agent}"
         return {"agent": agent, "signal": str(signal)}
 
     def poll(self, handle):

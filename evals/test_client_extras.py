@@ -10,8 +10,8 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from agyteam import actions, channels, tasks  # noqa: E402
-from agyteam.record import Record  # noqa: E402
+from ateam import actions, channels, tasks  # noqa: E402
+from ateam.record import Record  # noqa: E402
 
 AGENTS = ["tpm", "coder", "qa"]
 
@@ -21,8 +21,8 @@ def team(tmp_path, monkeypatch):
     td = tmp_path / "teams" / "demo" / "team"
     (td / "inbox").mkdir(parents=True)
     (td / "roster.json").write_text(json.dumps({"agents": [{"name": a} for a in AGENTS]}))
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(td))
-    monkeypatch.delenv("AGYTEAM_AGENT", raising=False)
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(td))
+    monkeypatch.delenv("ATEAM_AGENT", raising=False)
     return td
 
 
@@ -65,7 +65,7 @@ def test_tokens_go_to_the_task_a_turn_was_for(team):
 
 
 def test_both_kinds_of_timestamp_are_the_same_instant():
-    from agyteam.record import instant
+    from ateam.record import instant
     assert instant(utc("2026-10-27 12:01:18")) == instant("2026-10-27 12:01:18")
     assert instant("garbage") is None
 

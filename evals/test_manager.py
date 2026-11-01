@@ -22,17 +22,17 @@ from rpc_util import ROOT, check
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "evals"))
 
-from agyteam.supervisor import (  # noqa: E402
+from ateam.supervisor import (  # noqa: E402
     Supervisor,
     format_report,
     generate_report,
     main,
 )
-from agyteam.transport import load as load_transport  # noqa: E402
+from ateam.transport import load as load_transport  # noqa: E402
 from fixture_runner import ScriptedRunner  # noqa: E402
 
 
-def make_team(agents=None, prefix="agyteam-mgr-") -> Path:
+def make_team(agents=None, prefix="ateam-mgr-") -> Path:
     td = Path(tempfile.mkdtemp(prefix=prefix)) / "team"
     (td / "inbox").mkdir(parents=True)
     agents = agents or [
@@ -72,7 +72,7 @@ def test_manager_gate_loop() -> tuple[int, int]:
 
     # 1. Unreviewed answer bounces once and allows recovery
     td1 = make_team()
-    os.environ["AGYTEAM_TEAM_DIR"] = str(td1)
+    os.environ["ATEAM_TEAM_DIR"] = str(td1)
 
     def on_wake1(agent: str, msg: str):
         if agent == "qa":
@@ -121,7 +121,7 @@ def test_manager_gate_loop() -> tuple[int, int]:
 
     # 2. Second unreviewed answer ends the episode (bounce exactly once)
     td2 = make_team()
-    os.environ["AGYTEAM_TEAM_DIR"] = str(td2)
+    os.environ["ATEAM_TEAM_DIR"] = str(td2)
     runner2 = MultiTurnRunner(
         turns={
             "tpm": [
@@ -145,7 +145,7 @@ def test_manager_gate_loop() -> tuple[int, int]:
 
     # 3. Approved review before user answer -> no bounce
     td3 = make_team()
-    os.environ["AGYTEAM_TEAM_DIR"] = str(td3)
+    os.environ["ATEAM_TEAM_DIR"] = str(td3)
     def on_wake3(agent: str, msg: str):
         if agent == "qa":
             with (td3 / "reviews.jsonl").open("a") as f:
@@ -187,7 +187,7 @@ def test_manager_gate_loop() -> tuple[int, int]:
 
     # 4. require_review=False restores old behaviour (no bounce)
     td4 = make_team()
-    os.environ["AGYTEAM_TEAM_DIR"] = str(td4)
+    os.environ["ATEAM_TEAM_DIR"] = str(td4)
     runner4 = MultiTurnRunner(
         turns={
             "tpm": [
@@ -212,7 +212,7 @@ def test_manager_gate_loop() -> tuple[int, int]:
         {"name": "lead", "role": "coordinator"},
         {"name": "coder", "role": "implements"},
     ])
-    os.environ["AGYTEAM_TEAM_DIR"] = str(td5)
+    os.environ["ATEAM_TEAM_DIR"] = str(td5)
     runner5 = MultiTurnRunner(
         turns={
             "lead": [
@@ -238,7 +238,7 @@ def test_manager_gate_loop() -> tuple[int, int]:
         {"name": "coder", "role": "implements"},
         {"name": "syseng", "role": "verifies"},
     ])
-    os.environ["AGYTEAM_TEAM_DIR"] = str(td6)
+    os.environ["ATEAM_TEAM_DIR"] = str(td6)
     runner6 = MultiTurnRunner(
         turns={
             "coder": [
@@ -264,7 +264,7 @@ def test_supervisor_report() -> tuple[int, int]:
 
     # 1. Populated team directory
     td = make_team()
-    os.environ["AGYTEAM_TEAM_DIR"] = str(td)
+    os.environ["ATEAM_TEAM_DIR"] = str(td)
 
     # Populate reviews.jsonl
     (td / "reviews.jsonl").write_text(json.dumps({
@@ -382,7 +382,7 @@ def test_supervisor_report() -> tuple[int, int]:
                         text_rep))
 
     # 2. Empty team / no history
-    td_empty = Path(tempfile.mkdtemp(prefix="agyteam-empty-")) / "team"
+    td_empty = Path(tempfile.mkdtemp(prefix="ateam-empty-")) / "team"
     td_empty.mkdir(parents=True)
     rep_empty = generate_report(td_empty)
     text_empty = format_report(rep_empty)
@@ -445,7 +445,7 @@ def test_manager_persona_and_roster() -> tuple[int, int]:
     print("\n== Step 3: manager persona and seeded roster ==")
     checks = []
 
-    from agyteam.persona import ACCOUNTABILITY, brief
+    from ateam.persona import ACCOUNTABILITY, brief
 
     # 1. Check ACCOUNTABILITY tenets
     checks.append(check(
@@ -525,9 +525,9 @@ def test_manager_persona_and_roster() -> tuple[int, int]:
                             boots.get("tools_off") == ["run_command", "create_file", "edit_file"]
                             and boots.get("workers") is False,
                             f"tools_off={boots.get('tools_off')}, workers={boots.get('workers')}"))
-        checks.append(check("install.sh self-test isolates AGYTEAM_RUNNER with env -u",
-                            "env -u AGYTEAM_RUNNER" in (ROOT / "plugin" / "install.sh").read_text(),
-                            "env -u AGYTEAM_RUNNER check"))
+        checks.append(check("install.sh self-test isolates ATEAM_RUNNER with env -u",
+                            "env -u ATEAM_RUNNER" in (ROOT / "plugin" / "install.sh").read_text(),
+                            "env -u ATEAM_RUNNER check"))
 
     return sum(checks), len(checks)
 

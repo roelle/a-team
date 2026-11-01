@@ -1,0 +1,400 @@
+"""Agy on the official google-antigravity SDK (Go localharness backend).
+
+The harness assembles the prompt and runs the loop; our levers are:
+- TemplatedSystemInstructions at session start (identity + contract + memory index)
+- custom memory tools, whose RESULTS carry fresh memory state into context
+  mid-session (the harness never re-reads system instructions)
+- hooks for tracing and a destructive-command gate
+"""
+import datetime
+import json
+import os
+import platform
+import re
+import sys
+from pathlib import Path
+
+from google.antigravity import (CapabilitiesConfig, LocalAgentConfig, types)
+from google.antigravity.models import (GeminiAPIEndpoint, GeminiModelOptions,
+                                       ModelTarget)
+from google.antigravity.hooks import (on_compaction, policy, post_tool_call,
+                                      pre_tool_call_decide)
+
+from . import config as cfg
+from . import scope, steer
+from .persona import CONTRACT
+from .store import Toolbox
+
+# Commands an agent has no business running. The venv entries are here because
+# one was destroyed mid-run -- replaced by a symlink to itself, which cost the
+# whole task and the environment with it. The interpreter an agent runs its
+# tests with is not a file it should ever be editing.
+DANGEROUS = ["rm -rf /", "git push -f", "git push --force", "mkfs", "> /dev/sd",
+             "rm -rf .venv", "ln -s", "ln -sfn"]
+
+
+def make_memory_tools(box: Toolbox):
+    """Memory tools as plain callables (SDK builds schemas from signatures/docstrings).
+
+    Unlike prior attempts, every write returns the updated index so the model's
+    in-context view of memory never goes stale.
+    """
+
+    def save_memory(name: str, description: str, content: str) -> str:
+        """Save a durable memory so future sessions of you know it. Use for user
+        preferences, corrections, facts about systems/projects, lessons learned.
+        Saving under an existing name overwrites it — read first and merge if unsure.
+
+        Args:
+            name: Short kebab-case topic name, e.g. 'user-preferences'.
+            description: One line describing the memory, shown in your index.
+            content: The memory content in markdown.
+        """
+        out = box.save_memory(name, description, content)
+        return f"{out}\nYour current memory index:\n{(box.workspace / 'MEMORY.md').read_text()}"
+
+    def read_memory(name: str) -> str:
+        """Read one of your memory files by name (see your memory index).
+
+        Args:
+            name: Memory name from your index.
+        """
+        return box.read_memory(name)
+
+    def delete_memory(name: str) -> str:
+        """Delete a memory that is wrong or obsolete.
+
+        Args:
+            name: Memory name from your index.
+        """
+        out = box.delete_memory(name)
+        return f"{out}\nYour current memory index:\n{(box.workspace / 'MEMORY.md').read_text()}"
+
+    return [save_memory, read_memory, delete_memory]
+
+
+class SessionFlags:
+    """Mutable state shared between hooks and the driving CLI/orchestrator."""
+
+    def __init__(self):
+        self.compaction_pending = False
+
+
+# The agy CLI encodes reasoning effort in the model name ("gemini-3.8-flash-high"),
+# but those aliases exist only in the CLI — the SDK talks to the Gemini API,
+# which rejects them. Effort lives in GeminiModelOptions instead. Without this,
+# moving a roster from the CLI runner to the SDK silently drops the team from
+# high effort to the default, which is a quality change nobody would see.
+EFFORT = {"minimal": types.ThinkingLevel.MINIMAL, "low": types.ThinkingLevel.LOW,
+          "medium": types.ThinkingLevel.MEDIUM, "high": types.ThinkingLevel.HIGH,
+          "extra_high": types.ThinkingLevel.EXTRA_HIGH}
+
+
+def _model_target(model: str, effort: str = ""):
+    """A plain model name, or a ModelTarget carrying the requested effort."""
+    base, _, suffix = model.rpartition("-")
+    if not effort and suffix in EFFORT and base:
+        model, effort = base, suffix     # accept CLI-style names too
+    if not effort:
+        return model
+    level = EFFORT.get(effort.lower())
+    if level is None:
+        raise SystemExit(f"unknown effort {effort!r}; use one of "
+                         f"{', '.join(sorted(EFFORT))}")
+    return ModelTarget(name=model, endpoint=GeminiAPIEndpoint(
+        api_key=cfg.api_key(), options=GeminiModelOptions(thinking_level=level)))
+
+
+def _workspaces(workspace: Path, extra: list[str | Path] | None = None) -> list[str]:
+    """Directories an agent may touch: its own, the repo, and what it is granted.
+
+    `extra` is the roster's per-agent "workspaces" list. It exists because
+    reach is not uniform across roles: the manager has to read teammate
+    memories and transcripts to diagnose the team, and giving every agent that
+    reach would let an implementer read the reviewer's defect patterns and
+    write code shaped to dodge them. Grant per role, not per team.
+    """
+    paths = [str(workspace), str(Path.cwd())]
+    # Extra directories an agent legitimately needs but does not live in -- a
+    # toolchain, a reference repo, an interpreter. Without this, telling an
+    # agent to "use /some/other/venv/bin/python" hands it a path it is
+    # forbidden to touch, and it burns a turn discovering that.
+    #
+    # Grant the narrowest path that works. Granting the enclosing DIRECTORY to
+    # reach one interpreter once handed the team a folder that also held the
+    # finished answer to the problem they were working on, and nothing in the
+    # system noticed for two hours.
+    env_extra = os.environ.get("ATEAM_EXTRA_WORKSPACES", "").split(os.pathsep)
+    for src in (env_extra, extra or []):
+        for path in src:
+            path = str(path).strip()
+            if path and path not in paths:
+                paths.append(path)
+    # Not the team directory. It used to be appended here, from when agents
+    # wrote NORMS.md themselves; the supervisor writes it now, and every
+    # other file there is the record -- reviews, the bus, the roster, the
+    # task log -- which agents reach through the MCP servers and must not be
+    # able to edit. lifecycle.grant_workspace refuses that grant and doctor
+    # fails on it, while this line handed it to every SDK agent regardless.
+    if extra:
+        for p in extra:
+            resolved = str(Path(p).expanduser().resolve())
+            if resolved not in paths:
+                paths.append(resolved)
+    return paths
+
+
+def build_config(workspace: Path, model: str = cfg.DEFAULT_MODEL,
+                 name: str = "Agy", interactive: bool = False, effort: str = "",
+                 trace=None, pre_trace=None, extra_tools=None, extra_sections=None,
+                 subagents=None, identity_default: str | None = None,
+                 disabled_tools: list[str] | None = None,
+                 use_mcp: bool = False, with_bus: bool = False,
+                 flags: SessionFlags | None = None,
+                 workspaces: list[str | Path] | None = None,
+                 extra_workspaces: list[str | Path] | None = None) -> LocalAgentConfig:
+    workspace = Path(workspace)
+    box = Toolbox(workspace)  # creates workspace/memory/
+    ident_file = workspace / "IDENTITY.md"
+    if not ident_file.exists():
+        ident_file.write_text(identity_default or (
+            f"# {name}\n\nYou are {name}, a persistent, learning agent on the "
+            "Antigravity backend. Practical, direct, honest about uncertainty. "
+            "You may edit this file to evolve your own identity.\n"))
+    index = workspace / "MEMORY.md"
+    if not index.exists():
+        index.write_text("# Memory index\n")
+
+    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    sections = [
+        types.SystemInstructionSection(title="grounding_and_learning_contract",
+                                       content=CONTRACT),
+        types.SystemInstructionSection(
+            title="memory_index",
+            content=("Your memory files live in "
+                     f"{box.memory_dir}. Index (use read_memory for content; "
+                     "save_memory results include the refreshed index):\n"
+                     + index.read_text())),
+        types.SystemInstructionSection(
+            title="session_context",
+            content=(f"Date/time: {now}\nHost: {platform.node()} "
+                     f"({platform.system()})\nWorkspace: {workspace}\n"
+                     "Builtin file/shell tools are your ground truth for "
+                     "anything about this machine.")),
+    ]
+    sections.extend(extra_sections or [])
+
+    hooks = []
+
+    @pre_tool_call_decide
+    def block_dangerous(tool_call):
+        cmd = str(tool_call.args.get("command", ""))
+        if str(tool_call.name) == "run_command" and any(d in cmd for d in DANGEROUS):
+            return types.HookResult(allow=False, message="Blocked: destructive command.")
+        return types.HookResult(allow=True)
+
+    hooks.append(block_dangerous)
+
+    # The roster's policy, applied here as it is applied by the generic hook
+    # and inside the servers -- one rule, three askers. Paths are left to the
+    # SDK's own workspace enforcement, whose list is wider than the roster's.
+    from . import policy as policy_lib
+    _team_dir = os.environ.get("ATEAM_TEAM_DIR")
+
+    @pre_tool_call_decide
+    def team_policy(tool_call):
+        tname = getattr(tool_call.name, "value", None) or str(tool_call.name)
+        refusal = policy_lib.check_tool_policy(
+            name, tname, dict(tool_call.args or {}), team_dir=_team_dir,
+            check_paths=False)
+        if refusal:
+            return types.HookResult(allow=False, message=refusal)
+        return types.HookResult(allow=True)
+
+    hooks.append(team_policy)
+
+    # ATEAM_EXTRA_WORKSPACES is an OBSERVATION grant -- transcripts, a
+    # toolchain, a reference tree -- and observation must not come with a
+    # pen. The one time it did, the risk was an agent "correcting" the
+    # record it was asked to read. Roster per-agent `workspaces` stay
+    # writable (teams author proof files there); only the env grant is
+    # read-only. Enforced for the file tools; run_command can still write
+    # anywhere the OS allows, which is the same knowing trade as the
+    # manager's shell -- the audit log is the check on that path.
+    ro_paths = [Path(p).expanduser().resolve()
+                for p in os.environ.get("ATEAM_EXTRA_WORKSPACES", "")
+                .split(os.pathsep) if p.strip()]
+    if ro_paths:
+        _WRITE_TOOLS = re.compile(r"create|edit|write|delete|remove|move|"
+                                  r"rename|replace|append", re.I)
+
+        @pre_tool_call_decide
+        def readonly_extra_workspaces(tool_call):
+            tname = getattr(tool_call.name, "value", None) or str(tool_call.name)
+            if not _WRITE_TOOLS.search(tname):
+                return types.HookResult(allow=True)
+            cwd = str((tool_call.args or {}).get("Cwd", "") or "")
+            for v in (tool_call.args or {}).values():
+                if not isinstance(v, str) or not v:
+                    continue
+                p = Path(v).expanduser()
+                if not p.is_absolute():
+                    if not cwd:
+                        continue
+                    p = Path(cwd) / p
+                try:
+                    p = p.resolve()
+                except OSError:
+                    continue
+                if any(p == ro or ro in p.parents for ro in ro_paths):
+                    return types.HookResult(
+                        allow=False,
+                        message=f"Blocked: {p} is in a read-only observation "
+                                "grant. You may read it, never change it.")
+            return types.HookResult(allow=True)
+
+        hooks.append(readonly_extra_workspaces)
+
+    if with_bus:
+        # This SDK's post-tool hook can only look, so a note goes out by
+        # refusing one call. Before the audit hook: a refused call did not run.
+        team_dir = scope.team_dir(os.environ.get("ATEAM_TEAM_DIR"))
+
+        @pre_tool_call_decide
+        def steer_turn(tool_call):
+            tool = getattr(tool_call.name, "value", None) or str(tool_call.name)
+            steer.count_call(team_dir, name, tool, tool_call.args)
+            note = "" if "check_inbox" in tool else steer.take_notes(
+                team_dir, name, urgent_only=True)
+            if note:
+                return types.HookResult(allow=False, message=(
+                    f"{note}\n[This call did not run. Make it again if it is "
+                    f"still what you want.]"))
+            return types.HookResult(allow=True)
+
+        hooks.append(steer_turn)
+
+    if pre_trace is not None:
+        @pre_tool_call_decide
+        def pre_trace_tools(call):
+            try:
+                pre_trace(call)
+            except Exception:
+                pass
+            return types.HookResult(allow=True)
+        hooks.append(pre_trace_tools)
+
+    audit = os.environ.get("ATEAM_AUDIT_LOG", "").strip()
+    if audit:
+        # Deliberately NOT the observer. The observer is a seam the team builds
+        # and maintains, and this exists to check the team -- including whether
+        # an agent granted a shell keeps to "check, do not author". An audit
+        # trail produced by the thing it audits is not an audit trail. It also
+        # has to read the PRE hook: types.ToolResult carries no args, so the
+        # post hook can record that a command ran but never which command.
+        audit_path = Path(audit).expanduser()
+        audit_path.parent.mkdir(parents=True, exist_ok=True)
+        audit_path.touch()          # fail here, loudly, not silently per-call
+
+        @pre_tool_call_decide
+        def audit_tool_call(tool_call):
+            try:
+                with audit_path.open("a") as f:
+                    f.write(json.dumps({
+                        "ts": datetime.datetime.now().isoformat(timespec="seconds"),
+                        # Two teams can share one audit file, and their agent
+                        # names can collide; without the team, an auditor
+                        # grading one team counts the other's commands.
+                        "team": os.environ.get("ATEAM_TEAM", ""),
+                        "agent": name,
+                        "tool": getattr(tool_call.name, "value", None)
+                                or str(tool_call.name),
+                        "args": {k: str(v)[:2000]
+                                 for k, v in (tool_call.args or {}).items()},
+                    }) + "\n")
+            except OSError:
+                pass            # a full disk must not stop the team
+            return types.HookResult(allow=True)
+
+        hooks.append(audit_tool_call)
+
+    if flags is not None:
+        @on_compaction
+        def note_compaction(step):
+            flags.compaction_pending = True
+        hooks.append(note_compaction)
+
+    if trace is not None:
+        @post_tool_call
+        def trace_tools(result):
+            trace(result)
+        hooks.append(trace_tools)
+
+    mcp_servers = None
+    if use_mcp:
+        # Same servers the agy plugin mounts, with the same env-derived
+        # identity — so behaviour verified here transfers to the plugin.
+        mcp_env = {"PYTHONPATH": str(cfg.PROJECT_ROOT), "ATEAM_AGENT": name}
+        for k in ("ATEAM_TEAM_DIR", "ATEAM_TEAM", "ATEAM_TEAMS_ROOT",
+                  "ATEAM_DURABLE_DIR", "ATEAM_BUS_TRANSPORT",
+                  "ATEAM_BUS_CONFIG", "ATEAM_MEMORY_STORE",
+                  "ATEAM_MEMORY_CONFIG"):
+            if os.environ.get(k):
+                mcp_env[k] = os.environ[k]
+        mcp_servers = [
+            types.McpStdioServer(
+                name="ateam_memory", type="stdio", command=sys.executable,
+                args=["-m", "ateam.mcp_memory", str(workspace)], env=mcp_env),
+        ]
+        if with_bus:
+            mcp_servers.append(types.McpStdioServer(
+                name="ateam_bus", type="stdio", command=sys.executable,
+                args=["-m", "ateam.mcp_bus"], env=mcp_env))
+            # Task tools travel with the bus: both are team tools, and the
+            # brief lists both, so an agent that has one must have the other.
+            mcp_servers.append(types.McpStdioServer(
+                name="ateam_tasks", type="stdio", command=sys.executable,
+                args=["-m", "ateam.mcp_tasks"], env=mcp_env))
+
+    off = [types.BuiltinTools(t) for t in (disabled_tools or [])]
+
+    # The SDK moved the compaction threshold from CapabilitiesConfig to its
+    # own CompactionConfig and deprecated the old spelling. Use the new one
+    # where it exists; pyproject still allows SDK versions that predate it.
+    if hasattr(types, "CompactionConfig"):
+        compaction = {"compaction_config": types.CompactionConfig(
+            token_threshold=cfg.COMPACT_THRESHOLD_TOKENS)}
+        legacy_compaction = {}
+    else:
+        compaction = {}
+        legacy_compaction = {"compaction_threshold": cfg.COMPACT_THRESHOLD_TOKENS}
+
+    return LocalAgentConfig(
+        **compaction,
+        system_instructions=types.TemplatedSystemInstructions(
+            identity=ident_file.read_text(), sections=sections),
+        tools=([] if use_mcp else make_memory_tools(box)) + list(extra_tools or []),
+        subagents=subagents,
+        mcp_servers=mcp_servers,
+        capabilities=CapabilitiesConfig(
+            enable_subagents=bool(subagents),
+            max_subagent_depth=1 if subagents else None,
+            disabled_tools=off or None,
+            agent_behavior=(types.AgentBehavior.INTERACTIVE if interactive
+                            else types.AgentBehavior.AUTONOMOUS),
+            **legacy_compaction,
+        ),
+        workspaces=_workspaces(workspace, extra=[*(workspaces or []), *(extra_workspaces or [])]),
+        policies=[policy.allow_all()],
+        hooks=hooks,
+        model=_model_target(model, effort),
+        api_key=cfg.api_key(),
+        # Without this the SDK saves each conversation to a throwaway
+        # tempfile.mkdtemp("antigravity_") and abandons it. Writing to the
+        # CLI's store instead means one conversation store, not two: an SDK
+        # agent can be joined with `agy --conversation <id>` and shows up in
+        # Remote Control. cfg.CONVERSATION_DIR picks which surface.
+        save_dir=str(cfg.conversation_dir()),
+        budget_config=(types.BudgetConfig(max_model_calls=cfg.MAX_LOOP_STEPS)
+                       if cfg.MAX_LOOP_STEPS else None),
+    )

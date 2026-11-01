@@ -28,7 +28,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent.parent))
 
-from agyteam import recall  # noqa: E402
+from ateam import recall  # noqa: E402
 
 DATA = Path(os.environ.get("RECALL_BENCH_DIR", "~/agy-lab-notes/recall-bench")).expanduser()
 

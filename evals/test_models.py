@@ -19,10 +19,10 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "evals"))
 
-from agyteam import models  # noqa: E402
-from agyteam.runner import Runner  # noqa: E402
-from agyteam.supervisor import Supervisor  # noqa: E402
-from agyteam.transport import load as load_transport  # noqa: E402
+from ateam import models  # noqa: E402
+from ateam.runner import Runner  # noqa: E402
+from ateam.supervisor import Supervisor  # noqa: E402
+from ateam.transport import load as load_transport  # noqa: E402
 from fixture_runner import ScriptedRunner  # noqa: E402
 
 AGENTS = ["manager", "coder", "qa"]
@@ -36,9 +36,9 @@ def team(tmp_path, monkeypatch):
         {"name": "manager", "role": "gates", "model": "pro"},
         {"name": "coder", "role": "implements", "model": "flash", "effort": "high"},
         {"name": "qa", "role": "reviews", "model": "pro"}]}))
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(td))
-    monkeypatch.setenv("AGYTEAM_DURABLE_DIR", str(tmp_path / "durable"))
-    monkeypatch.delenv("AGYTEAM_AGENT", raising=False)
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(td))
+    monkeypatch.setenv("ATEAM_DURABLE_DIR", str(tmp_path / "durable"))
+    monkeypatch.delenv("ATEAM_AGENT", raising=False)
     return td
 
 
@@ -79,7 +79,7 @@ def test_every_change_is_kept(team):
 
 
 def test_it_is_the_operators_not_an_agents(team, monkeypatch):
-    monkeypatch.setenv("AGYTEAM_AGENT", "coder")
+    monkeypatch.setenv("ATEAM_AGENT", "coder")
     with pytest.raises(models.ModelError, match="coder's session"):
         models.set_model(team, "coder", "opus")
 
@@ -92,9 +92,9 @@ def test_unknown_agents_and_unreadable_times_are_refused(team):
 
 
 def test_the_command_line(team):
-    env = {**os.environ, "PYTHONPATH": str(ROOT), "AGYTEAM_TEAM_DIR": str(team)}
-    env.pop("AGYTEAM_AGENT", None)
-    run = lambda *a: subprocess.run([sys.executable, "-m", "agyteam.models", *a],  # noqa: E731
+    env = {**os.environ, "PYTHONPATH": str(ROOT), "ATEAM_TEAM_DIR": str(team)}
+    env.pop("ATEAM_AGENT", None)
+    run = lambda *a: subprocess.run([sys.executable, "-m", "ateam.models", *a],  # noqa: E731
                                     capture_output=True, text=True, env=env, timeout=60)
     assert run("set", "coder", "opus", "--until", "2d").returncode == 0
     out = run("list").stdout
@@ -113,7 +113,7 @@ def test_runners_resolve_through_the_override(team):
 
 
 def test_the_host_runner_starts_conversations_on_the_override(team):
-    from agyteam.runner_host import HostRunner
+    from ateam.runner_host import HostRunner
     r = HostRunner({"start": ["x"], "deliver": ["y"], "signal_dir": str(team)})
     assert r.model_for("coder") == "flash"
     models.set_model(team, "coder", "opus")
@@ -121,7 +121,7 @@ def test_the_host_runner_starts_conversations_on_the_override(team):
 
 
 def test_the_cli_runner_passes_the_override(team, monkeypatch):
-    from agyteam.runner_agy import AgyRunner
+    from ateam.runner_agy import AgyRunner
     seen = {}
 
     def fake_run(cmd, **kw):

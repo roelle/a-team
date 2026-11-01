@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 import eval as ev  # noqa: E402
-from agyteam import recall  # noqa: E402
+from ateam import recall  # noqa: E402
 
 KS = (1, 3, 5, 10, 20)
 

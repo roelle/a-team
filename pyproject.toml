@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "agyteam"
+name = "a-team"
 dynamic = ["version"]
-description = "Persistent, learning agents and team platform for Google Antigravity"
+description = "A team of persistent, learning agents, and the app you work with them in."
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
@@ -32,23 +32,23 @@ dev = [
 ]
 
 [project.scripts]
-agyteam = "agyteam.supervisor:main"
-agyteam-lifecycle = "agyteam.lifecycle:main"
+a-team = "ateam.cli:main"
 
 [tool.setuptools.dynamic]
-version = {attr = "agyteam.__version__"}
+version = {attr = "ateam.__version__"}
 
-# The plugin ships inside the package, so `python -m agyteam.install_plugin`
+# The plugin ships inside the package, so `python -m ateam.install_plugin`
 # works from a plain install, with no checkout.
 [tool.setuptools]
-packages = ["agyteam", "agyteam.plugin"]
+packages = ["ateam", "ateam.chat", "ateam.plugin"]
 
 [tool.setuptools.package-dir]
-"agyteam.plugin" = "plugin"
+"ateam.plugin" = "plugin"
 
 [tool.setuptools.package-data]
-"agyteam.plugin" = ["*.sh", "*.json", "agy-team/*.json", "agy-team/rules/**/*",
-                    "agy-team/skills/**/*"]
+"ateam.chat" = ["static/*"]
+"ateam.plugin" = ["*.sh", "*.json", "a-team/*.json", "a-team/rules/**/*",
+                    "a-team/skills/**/*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
@@ -59,7 +59,7 @@ testpaths = ["evals"]
 # the count no longer matched a fresh clone's.
 norecursedirs = ["delivery_shared", "direct_shared", "reactive_sandbox", "reactive_durable",
                  "continuity_scratch", "ws_*", "team_*", "a2a_*", "*_unit",
-                 ".agy-team-shared", ".venv", "*.egg-info"]
+                 ".a-team-shared", ".venv", "*.egg-info"]
 filterwarnings = [
     # multiprocessing's own note about fork() in a threaded test process;
     # the race test forks on purpose and joins every child.

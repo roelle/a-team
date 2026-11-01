@@ -2,7 +2,7 @@
 
 The README said each live eval "uses a team or workspace of its own and never
 touches yours". Three of them resolved their team through scope.load() with
-AGYTEAM_TEAM_DIR still set, and AGYTEAM_TEAM_DIR outranks everything else:
+ATEAM_TEAM_DIR still set, and ATEAM_TEAM_DIR outranks everything else:
 run with a team exported, they wrote their roster over that team's. They run
 as scripts, where conftest.py's sandbox never loads.
 
@@ -23,7 +23,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "evals"))
 
 import rpc_util  # noqa: E402
-from agyteam import scope  # noqa: E402
+from ateam import scope  # noqa: E402
 
 LIVE = ["test_delivery.py", "test_reactive.py", "test_continuity.py", "test_a2a.py",
         "test_direct_specialist.py"]
@@ -31,12 +31,12 @@ LIVE = ["test_delivery.py", "test_reactive.py", "test_continuity.py", "test_a2a.
 
 def test_forgetting_the_ambient_team_beats_an_exported_team_dir(tmp_path, monkeypatch):
     theirs = tmp_path / "their-team"
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(theirs))
-    monkeypatch.setenv("AGYTEAM_TEAM", "theirs")
-    monkeypatch.setenv("AGYTEAM_DURABLE_DIR", str(tmp_path / "eval"))
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(theirs))
+    monkeypatch.setenv("ATEAM_TEAM", "theirs")
+    monkeypatch.setenv("ATEAM_DURABLE_DIR", str(tmp_path / "eval"))
     assert scope.load().team_dir() == theirs          # the fault
     rpc_util.forget_ambient_team()
-    monkeypatch.setenv("AGYTEAM_DURABLE_DIR", str(tmp_path / "eval"))
+    monkeypatch.setenv("ATEAM_DURABLE_DIR", str(tmp_path / "eval"))
     assert scope.load().team_dir() == tmp_path / "eval" / "team"
 
 
@@ -66,7 +66,7 @@ def test_the_a2a_eval_can_build_its_agents(tmp_path, monkeypatch):
         {"name": "tpm", "role": "Coordinates and delegates; no shell."}]}))
     conf = test_a2a.agent_config("tpm", tmp_path / "durable", td)
     assert "Coordinates and delegates" in conf.system_instructions.identity
-    assert {s.name for s in conf.mcp_servers} == {"agyteam_memory", "agyteam_bus"}
+    assert {s.name for s in conf.mcp_servers} == {"ateam_memory", "ateam_bus"}
 
 
 if __name__ == "__main__":

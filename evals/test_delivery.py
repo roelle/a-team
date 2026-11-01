@@ -10,7 +10,7 @@ defined via the plugin's agents/ directory have no builtin tools and silently
 cannot write files, and a team told to always reply will ack itself until the
 hop budget stops it.
 
-Usage: AGYTEAM_TEAM=trial .venv/bin/python evals/test_delivery.py   (~15-20c)
+Usage: ATEAM_TEAM=trial .venv/bin/python evals/test_delivery.py   (~15-20c)
 """
 import json
 import os
@@ -23,9 +23,9 @@ from rpc_util import ROOT, check
 sys.path.insert(0, str(ROOT))
 
 # Deliberately an assignment, not setdefault. This eval wipes its team directory
-# to start clean, and inheriting AGYTEAM_TEAM from the environment meant it
+# to start clean, and inheriting ATEAM_TEAM from the environment meant it
 # would wipe *yours* — it once deleted a running team's roster and bus log
-# mid-flight because an agent ran the test board with AGYTEAM_TEAM set.
+# mid-flight because an agent ran the test board with ATEAM_TEAM set.
 # Applied in main(), not at import: pytest imports this file to collect it, and
 # an assignment here pointed every later offline test at this eval's team.
 TEAM = "delivery-eval"
@@ -51,12 +51,12 @@ ASK = (f"get a file created at {TARGET} containing exactly the word kingfisher, 
 def main() -> int:
     from rpc_util import forget_ambient_team
     forget_ambient_team()
-    os.environ["AGYTEAM_TEAM"] = TEAM
+    os.environ["ATEAM_TEAM"] = TEAM
     shutil.rmtree(SHARED, ignore_errors=True)
     SHARED.mkdir(parents=True)
-    os.environ["AGYTEAM_SHARED_DIR"] = str(SHARED)
+    os.environ["ATEAM_SHARED_DIR"] = str(SHARED)
 
-    from agyteam import scope
+    from ateam import scope
     team_dir = scope.load().team_dir()
     # Belt and braces: never delete a directory this eval did not create. If a
     # roster is there without our marker, it belongs to somebody real.
@@ -72,15 +72,15 @@ def main() -> int:
     shutil.rmtree(team_dir, ignore_errors=True)
     (team_dir / "inbox").mkdir(parents=True)
     (team_dir / "roster.json").write_text(json.dumps(ROSTER, indent=2))
-    os.environ["AGYTEAM_TEAM_DIR"] = str(team_dir)
+    os.environ["ATEAM_TEAM_DIR"] = str(team_dir)
 
     # Runner-agnostic on purpose: the same delivery task must pass whichever
     # runtime wakes the agents, which is what makes the two paths comparable
-    # rather than merely both present. AGYTEAM_RUNNER picks one.
-    from agyteam import runner as runner_lib
-    from agyteam.runner_agy import AgyRunner
-    from agyteam.supervisor import Supervisor
-    from agyteam.transport import load as load_transport
+    # rather than merely both present. ATEAM_RUNNER picks one.
+    from ateam import runner as runner_lib
+    from ateam.runner_agy import AgyRunner
+    from ateam.supervisor import Supervisor
+    from ateam.transport import load as load_transport
 
     runner = runner_lib.load()
     if isinstance(runner, AgyRunner) and not runner.available():

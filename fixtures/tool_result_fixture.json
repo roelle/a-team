@@ -42,7 +42,7 @@
           "type": "str | None",
           "required": false,
           "default": null,
-          "description": "MCP server name (e.g. agyteam_bus) or None for builtin tools"
+          "description": "MCP server name (e.g. ateam_bus) or None for builtin tools"
         }
       }
     },
@@ -155,7 +155,7 @@
       }
     },
     {
-      "description": "MCP agyteam_bus call success",
+      "description": "MCP ateam_bus call success",
       "tool_call": {
         "name": "send_to_teammate",
         "args": {
@@ -165,7 +165,7 @@
         "id": "call_mcp_003",
         "step_id": "traj_001:3",
         "canonical_path": null,
-        "server_name": "agyteam_bus"
+        "server_name": "ateam_bus"
       },
       "tool_result": {
         "name": "send_to_teammate",
@@ -174,7 +174,7 @@
         "result": "{\"status\": \"sent\", \"recipient\": \"coder\"}",
         "error": null,
         "exception": null,
-        "server_name": "agyteam_bus"
+        "server_name": "ateam_bus"
       }
     },
     {

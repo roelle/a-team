@@ -34,7 +34,7 @@ vacuous check this project keeps warning about, pointed at its own suite.
 Anything that resolves "the team" from the environment -- a runner built with
 no arguments, a transport loaded by name -- lands in the operator's real team
 directory unless a test says otherwise. One test recycled `coder` and `tpm`
-on exactly such a runner: with AGYTEAM_TEAM exported, `pytest evals/` retired
+on exactly such a runner: with ATEAM_TEAM exported, `pytest evals/` retired
 a live team's conversations, and it did so to a delivery eval running
 alongside it, which then scored 7 of 8 for a fault the suite had caused.
 The ambient team is now a throwaway directory, re-asserted before every test
@@ -53,21 +53,21 @@ import pytest
 
 os.environ.setdefault("GEMINI_API_KEY", "offline-tests-never-call-a-model")
 
-SANDBOX = tempfile.mkdtemp(prefix="agyteam-suite-")
-_AMBIENT = ("AGYTEAM_TEAM", "AGYTEAM_TEAM_DIR", "AGYTEAM_DURABLE_DIR", "AGYTEAM_TEAMS_ROOT")
+SANDBOX = tempfile.mkdtemp(prefix="ateam-suite-")
+_AMBIENT = ("ATEAM_TEAM", "ATEAM_TEAM_DIR", "ATEAM_DURABLE_DIR", "ATEAM_TEAMS_ROOT")
 
 
 def _sandbox_ambient_team():
     for key in _AMBIENT:
         os.environ.pop(key, None)
-    os.environ["AGYTEAM_DURABLE_DIR"] = SANDBOX
-    os.environ["AGYTEAM_TEAMS_ROOT"] = SANDBOX
+    os.environ["ATEAM_DURABLE_DIR"] = SANDBOX
+    os.environ["ATEAM_TEAMS_ROOT"] = SANDBOX
     # Never ask the real runtime what models it has: that is a network call
     # through whatever `agy` is on this machine, and its answer would decide
     # offline tests. Tests of the check turn it back on against a fake.
-    os.environ["AGYTEAM_MODEL_CHECK"] = "0"
+    os.environ["ATEAM_MODEL_CHECK"] = "0"
     try:
-        from agyteam import runner
+        from ateam import runner
         runner._MODEL_CACHE.clear()
     except Exception:
         pass
@@ -105,3 +105,12 @@ def pytest_collection_modifyitems(items):
             return result
 
         item.obj = checked
+
+
+@pytest.fixture(autouse=True)
+def _app_models_stay_offline(request, monkeypatch):
+    """Never ask the machine's real `agy`, a network call, which models it has."""
+    if "chat" in request.node.path.parts:
+        monkeypatch.setenv("ATEAM_MODEL_CHECK", "0")
+        from ateam import runner
+        runner._MODEL_CACHE.clear()

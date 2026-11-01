@@ -1,18 +1,18 @@
 """A second, independent observer implementation — SQLite instead of JSONL.
 
 Deliberately written the way a third party would: it imports only the public
-interface (agyteam.observer) and touches no agyteam internals. Its job is to
+interface (ateam.observer) and touches no ateam internals. Its job is to
 prove the observer seam is real, so swapping in a custom telemetry backend is
 a config change rather than a code rewrite.
 
-Config (AGYTEAM_OBSERVER_CONFIG): {"db": "/path/to/events.db"}
+Config (ATEAM_OBSERVER_CONFIG): {"db": "/path/to/events.db"}
 """
 import json
 import os
 import sqlite3
 import time
 
-from agyteam.observer import Observer
+from ateam.observer import Observer
 
 
 class SqliteObserver(Observer):
@@ -20,7 +20,7 @@ class SqliteObserver(Observer):
 
     def __init__(self, config=None):
         super().__init__(config)
-        db = self.config.get("db") or os.environ.get("AGYTEAM_FIXTURE_OBSERVER_DB")
+        db = self.config.get("db") or os.environ.get("ATEAM_FIXTURE_OBSERVER_DB")
         if not db:
             raise SystemExit("SqliteObserver needs config {'db': ...}")
         self.db_path = db

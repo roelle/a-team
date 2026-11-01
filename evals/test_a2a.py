@@ -1,7 +1,7 @@
 """Behavioral test of the plugin's runtime wiring, using real models.
 
 Mounts the memory and bus MCP servers exactly as plugin/mcp_config.template.json
-does — same modules, same env-derived identity (AGYTEAM_AGENT) — but through the
+does — same modules, same env-derived identity (ATEAM_AGENT) — but through the
 SDK, since the agy CLI is not installed here. What this proves transfers to the
 plugin: env identity resolves, A2A messages cross *separate agent processes*,
 memory lands in durable scope, and the roles behave.
@@ -18,36 +18,36 @@ from google.antigravity import Agent, CapabilitiesConfig, LocalAgentConfig, type
 from google.antigravity.hooks import policy
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from agyteam import config as cfg          # noqa: E402
-from agyteam import scope                  # noqa: E402
+from ateam import config as cfg          # noqa: E402
+from ateam import scope                  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 PY = str(ROOT / ".venv" / "bin" / "python")
 SANDBOX = ROOT / "evals" / "a2a_sandbox"
-RULES = (ROOT / "plugin" / "agy-team" / "rules" / "grounding.md").read_text()
+RULES = (ROOT / "plugin" / "a-team" / "rules" / "grounding.md").read_text()
 
 
 def agent_config(name: str, durable: Path, team_dir: Path) -> LocalAgentConfig:
     """Mirror of the installed plugin: a roster identity + both MCP servers."""
     # The identity the runners give an agent: its roster entry. This used to
-    # read plugin/agy-team/agents/<name>/agent.md, which the plugin stopped
+    # read plugin/a-team/agents/<name>/agent.md, which the plugin stopped
     # shipping, so the eval could not start.
     spec = next(a for a in json.loads((team_dir / "roster.json").read_text())["agents"]
                 if a["name"] == name)
     identity = f"You are '{name}' on a small team. Your role: {spec['role']}"
-    env = {"PYTHONPATH": str(ROOT), "AGYTEAM_AGENT": name,
-           "AGYTEAM_TEAM_DIR": str(team_dir), "AGYTEAM_DURABLE_DIR": str(durable)}
+    env = {"PYTHONPATH": str(ROOT), "ATEAM_AGENT": name,
+           "ATEAM_TEAM_DIR": str(team_dir), "ATEAM_DURABLE_DIR": str(durable)}
     return LocalAgentConfig(
         system_instructions=types.TemplatedSystemInstructions(
             identity=identity,
             sections=[types.SystemInstructionSection(
                 title="grounding_and_collaboration_rules", content=RULES)]),
         mcp_servers=[
-            types.McpStdioServer(name="agyteam_memory", type="stdio",
-                                 command=PY, args=["-m", "agyteam.mcp_memory"],
+            types.McpStdioServer(name="ateam_memory", type="stdio",
+                                 command=PY, args=["-m", "ateam.mcp_memory"],
                                  env=env),
-            types.McpStdioServer(name="agyteam_bus", type="stdio",
-                                 command=PY, args=["-m", "agyteam.mcp_bus"],
+            types.McpStdioServer(name="ateam_bus", type="stdio",
+                                 command=PY, args=["-m", "ateam.mcp_bus"],
                                  env=env),
         ],
         capabilities=CapabilitiesConfig(enable_subagents=False),

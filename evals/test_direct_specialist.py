@@ -94,12 +94,12 @@ def hidden_checks() -> tuple[int, list[str]]:
 def main() -> int:
     from rpc_util import forget_ambient_team
     forget_ambient_team()
-    os.environ["AGYTEAM_TEAM"] = TEAM
+    os.environ["ATEAM_TEAM"] = TEAM
     shutil.rmtree(SHARED, ignore_errors=True)
     SHARED.mkdir(parents=True)
-    os.environ["AGYTEAM_SHARED_DIR"] = str(SHARED)
+    os.environ["ATEAM_SHARED_DIR"] = str(SHARED)
 
-    from agyteam import scope
+    from ateam import scope
     team_dir = scope.load().team_dir()
     # It wipes the whole durable directory -- memories included, or the team
     # would not start cold -- so only one it can prove it made.
@@ -118,13 +118,13 @@ def main() -> int:
     (team_dir / "inbox").mkdir()
     roster = default_roster()
     (team_dir / "roster.json").write_text(json.dumps(roster, indent=2))
-    os.environ["AGYTEAM_TEAM_DIR"] = str(team_dir)
-    os.environ.setdefault("AGYTEAM_AUDIT_LOG", str(durable.parent / f"{TEAM}-audit.jsonl"))
+    os.environ["ATEAM_TEAM_DIR"] = str(team_dir)
+    os.environ.setdefault("ATEAM_AUDIT_LOG", str(durable.parent / f"{TEAM}-audit.jsonl"))
 
-    from agyteam import runner as runner_lib
-    from agyteam.runner_agy import AgyRunner
-    from agyteam.supervisor import Supervisor
-    from agyteam.transport import load as load_transport
+    from ateam import runner as runner_lib
+    from ateam.runner_agy import AgyRunner
+    from ateam.supervisor import Supervisor
+    from ateam.transport import load as load_transport
 
     runner = runner_lib.load()
     if isinstance(runner, AgyRunner) and not runner.available():

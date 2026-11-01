@@ -1,7 +1,7 @@
 """The team directory is the record, and no agent may be granted write access.
 
 bus.jsonl, reviews.jsonl, retro_inbox.jsonl, NORMS.md, roster.json and
-conversations.json are all written by an agyteam process and read back as the
+conversations.json are all written by an ateam process and read back as the
 account of what the team did. Agents reach them through the MCP servers, which
 are separate processes with their own filesystem access, so no agent needs a
 grant there to do anything it is supposed to do.
@@ -26,7 +26,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from agyteam import doctor, lifecycle  # noqa: E402
+from ateam import doctor, lifecycle  # noqa: E402
 
 
 @pytest.fixture
@@ -36,7 +36,7 @@ def team(tmp_path, monkeypatch):
     (td / "roster.json").write_text(json.dumps({"agents": [
         {"name": "manager", "role": "gates"},
         {"name": "coder", "role": "implements"}]}))
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(td))
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(td))
     return td
 
 
@@ -78,7 +78,7 @@ def test_the_refusal_says_what_to_do_instead(team):
         lifecycle.grant_workspace(team.parent, team_dir=team)
     msg = str(e.value)
     assert "separate process" in msg, "explain why no grant is needed"
-    assert "AGYTEAM_DURABLE_DIR" in msg, "and what to do if it is co-located"
+    assert "ATEAM_DURABLE_DIR" in msg, "and what to do if it is co-located"
 
 
 def test_a_refused_grant_is_not_half_applied(team):
@@ -94,8 +94,8 @@ def test_the_sdk_session_does_not_hand_every_agent_the_team_directory(team, tmp_
     the SDK session builder appended the team directory to every agent's
     workspaces, on the one runner that enforces workspaces at all."""
     pytest.importorskip("google.antigravity")
-    from agyteam.sdk_agent import _workspaces
-    monkeypatch.delenv("AGYTEAM_EXTRA_WORKSPACES", raising=False)
+    from ateam.sdk_agent import _workspaces
+    monkeypatch.delenv("ATEAM_EXTRA_WORKSPACES", raising=False)
     granted = tmp_path / "repo"
     granted.mkdir()
     paths = [Path(p).resolve() for p in _workspaces(tmp_path / "agent", extra=[granted])]

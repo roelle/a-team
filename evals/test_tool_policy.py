@@ -17,8 +17,8 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from agyteam import hook_pre_tool_use, mcp_bus, mcp_tasks, policy, tasks  # noqa: E402
-from agyteam.transport_file import FileTransport  # noqa: E402
+from ateam import hook_pre_tool_use, mcp_bus, mcp_tasks, policy, tasks  # noqa: E402
+from ateam.transport_file import FileTransport  # noqa: E402
 
 
 @pytest.fixture
@@ -39,9 +39,9 @@ def team(tmp_path, monkeypatch):
              "workspaces": [str(repo)]},
             {"name": "qa", "role": "reviews"}]}))
     (td / "conversations.json").write_text(json.dumps({"coder": "conv-coder"}))
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(td))
-    monkeypatch.setenv("AGYTEAM_DURABLE_DIR", str(tmp_path / "durable"))
-    monkeypatch.delenv("AGYTEAM_AGENT", raising=False)
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(td))
+    monkeypatch.setenv("ATEAM_DURABLE_DIR", str(tmp_path / "durable"))
+    monkeypatch.delenv("ATEAM_AGENT", raising=False)
     return td, repo
 
 
@@ -126,14 +126,14 @@ def test_the_task_server_applies_it(team):
 
 
 def run_hook(payload, env):
-    return subprocess.run([sys.executable, "-m", "agyteam.hook_pre_tool_use"],
+    return subprocess.run([sys.executable, "-m", "ateam.hook_pre_tool_use"],
                           input=json.dumps(payload), capture_output=True, text=True,
                           env={**os.environ, "PYTHONPATH": str(ROOT), **env}, timeout=60)
 
 
 def test_the_generic_hook_blocks_with_exit_2_and_a_reason(team):
     td, _ = team
-    env = {"AGYTEAM_TEAM_DIR": str(td), "AGYTEAM_AGENT": "manager"}
+    env = {"ATEAM_TEAM_DIR": str(td), "ATEAM_AGENT": "manager"}
     r = run_hook({"tool_name": "run_command", "tool_input": {"command": "ls"}}, env)
     assert r.returncode == 2
     verdict = json.loads(r.stdout)
@@ -150,7 +150,7 @@ def test_the_generic_hook_reads_a_nested_camel_case_payload(team):
     td, _ = team
     r = run_hook({"conversationId": "conv-coder",
                   "toolCall": {"name": "read_file", "args": {"path": "/etc/passwd"}}},
-                 {"AGYTEAM_TEAM_DIR": str(td)})
+                 {"ATEAM_TEAM_DIR": str(td)})
     assert r.returncode == 2
     assert json.loads(r.stdout)["reason"].startswith("[refused:")
 
@@ -158,9 +158,9 @@ def test_the_generic_hook_reads_a_nested_camel_case_payload(team):
 def test_allowed_mcp_servers_on_a_generic_mcp_call(team):
     td, _ = team
     doc = json.loads((td / "roster.json").read_text())
-    doc["agents"][2]["allowed_mcp_servers"] = ["agyteam_bus", "agyteam_tasks"]
+    doc["agents"][2]["allowed_mcp_servers"] = ["ateam_bus", "ateam_tasks"]
     (td / "roster.json").write_text(json.dumps(doc))
-    assert check("coder", "call_mcp_tool", {"ServerName": "agyteam_bus", "ToolName": "check_inbox"}, td) is None
+    assert check("coder", "call_mcp_tool", {"ServerName": "ateam_bus", "ToolName": "check_inbox"}, td) is None
     out = check("coder", "call_mcp_tool", {"ServerName": "browser", "ToolName": "navigate"}, td)
     assert out and "may call only these MCP servers" in out
     assert check("qa", "call_mcp_tool", {"ServerName": "browser"}, td) is None
@@ -199,7 +199,7 @@ def test_detach_patterns_are_regular_expressions_and_forbidden_commands_say_why(
 
 def test_the_generic_hook_finds_the_agent_by_conversation_id(team):
     td, _ = team
-    env = {"AGYTEAM_TEAM_DIR": str(td)}
+    env = {"ATEAM_TEAM_DIR": str(td)}
     r = run_hook({"name": "read_file", "args": {"path": "/etc/passwd"},
                   "conversation_id": "conv-coder"}, env)
     assert r.returncode == 2 and "outside coder's workspaces" in r.stderr
@@ -222,7 +222,7 @@ def test_the_same_refusal_from_every_asker(team):
 def test_the_sdk_session_asks_it_too(team, monkeypatch):
     pytest.importorskip("google.antigravity")
     monkeypatch.setenv("GEMINI_API_KEY", "offline-tests-never-call-a-model")
-    from agyteam.sdk_agent import build_config
+    from ateam.sdk_agent import build_config
     td, repo = team
     conf = build_config(repo / "ws", name="coder", use_mcp=True, with_bus=True)
     hooks = [h for h in conf.hooks if getattr(h, "__name__", "") == "team_policy"]

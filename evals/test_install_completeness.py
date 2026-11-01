@@ -8,7 +8,7 @@ while every test here passed, because tests import from the repo.
 The install's own self-test could not catch it either: importing a module does
 not execute a function-level import inside it. So the check has to read the
 source and follow both kinds of edge -- the `import` statement at any depth, and
-the "agyteam.x:Class" spec strings the pluggable seams resolve at runtime.
+the "ateam.x:Class" spec strings the pluggable seams resolve at runtime.
 """
 import sys
 from pathlib import Path
@@ -18,11 +18,11 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from agyteam import install_check as ic  # noqa: E402
+from ateam import install_check as ic  # noqa: E402
 
 
 def pkg(tmp_path, files: dict) -> Path:
-    d = tmp_path / "agyteam"
+    d = tmp_path / "ateam"
     d.mkdir(exist_ok=True)
     for name, body in files.items():
         (d / f"{name}.py").write_text(body)
@@ -46,7 +46,7 @@ def test_the_derived_list_contains_them():
 def test_a_runtime_spec_string_is_followed(tmp_path):
     """The transport is chosen by config at runtime; no import walk sees it."""
     d = pkg(tmp_path, {
-        "mcp_bus": 'DEFAULT = "agyteam.transport_file:FileTransport"\n',
+        "mcp_bus": 'DEFAULT = "ateam.transport_file:FileTransport"\n',
         "transport_file": "import json\n",
     })
     needed, _ = ic.required(d)
@@ -60,7 +60,7 @@ def test_a_module_that_needs_a_dependency_is_excluded_when_optional(tmp_path):
     run under a bare system python3.
     """
     d = pkg(tmp_path, {
-        "mcp_bus": 'RUNNER = "agyteam.runner_sdk:SdkRunner"\n',
+        "mcp_bus": 'RUNNER = "ateam.runner_sdk:SdkRunner"\n',
         "runner_sdk": "import google.genai\n",
     })
     needed, impure = ic.required(d)
@@ -107,7 +107,7 @@ def test_a_package_attribute_is_not_a_module(tmp_path):
 
 
 def test_a_complete_install_reports_nothing_missing(tmp_path):
-    d = tmp_path / "agyteam"
+    d = tmp_path / "ateam"
     d.mkdir()
     for name in ic.module_list():
         src = ic.SRC / name
@@ -119,7 +119,7 @@ def test_a_complete_install_reports_nothing_missing(tmp_path):
 def test_drift_is_measured_on_bytes_not_on_a_version_string(tmp_path):
     """A version number is a claim; the file contents are the fact. The install
     we found reported nothing at all -- there was nothing to report with."""
-    d = tmp_path / "agyteam"
+    d = tmp_path / "ateam"
     d.mkdir()
     for name in ic.module_list():
         src = ic.SRC / name

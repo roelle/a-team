@@ -1,8 +1,8 @@
-"""What an operator's admin screen does to a team, through agyteam.actions.
+"""What an operator's admin screen does to a team, through ateam.actions.
 
 Agents, norms and memories were edited by hand in files, under the
 supervisor's roster guard, with no check that the result still parsed. A
-client (agy-chat's admin page) now does it through these, and a channel can
+client (a-team's admin page) now does it through these, and a channel can
 follow the roster so a team where everyone hears everything needs no boxes
 ticked when an agent joins.
 """
@@ -15,7 +15,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from agyteam import actions, channels, roster  # noqa: E402
+from ateam import actions, channels, roster  # noqa: E402
 
 
 @pytest.fixture
@@ -24,10 +24,11 @@ def team(tmp_path, monkeypatch):
     (td / "inbox").mkdir(parents=True)
     (td / "roster.json").write_text(json.dumps({"agents": [
         {"name": "tpm", "role": "coordinates"}, {"name": "coder", "role": "implements"}]}))
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(td))
-    monkeypatch.delenv("AGYTEAM_AGENT", raising=False)
-    monkeypatch.delenv("AGYTEAM_MEMORY_STORE", raising=False)
-    monkeypatch.delenv("AGYTEAM_MEMORY_CONFIG", raising=False)
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(td))
+    monkeypatch.setenv("ATEAM_DURABLE_DIR", str(td.parent))
+    monkeypatch.delenv("ATEAM_AGENT", raising=False)
+    monkeypatch.delenv("ATEAM_MEMORY_STORE", raising=False)
+    monkeypatch.delenv("ATEAM_MEMORY_CONFIG", raising=False)
     return td
 
 
@@ -103,7 +104,7 @@ def test_an_agents_memories_can_be_read_written_and_deleted(team):
     mems = actions.memories(team, "coder")
     assert [m["name"] for m in mems] == ["deploy-host"]
     assert "box-2" in mems[0]["content"] and "operator" in mems[0]["content"]
-    from agyteam import memory as memory_lib
+    from ateam import memory as memory_lib
     agents_own = memory_lib.load("coder")          # where the agent's server reads
     assert (Path(agents_own.workspace) / "memory" / "deploy-host.md").exists(), \
         "written somewhere the agent will not read it"
@@ -114,7 +115,7 @@ def test_an_agents_memories_can_be_read_written_and_deleted(team):
 
 
 def test_admin_actions_are_refused_inside_an_agent(team, monkeypatch):
-    monkeypatch.setenv("AGYTEAM_AGENT", "coder")
+    monkeypatch.setenv("ATEAM_AGENT", "coder")
     for call in (lambda: actions.add_agent(team, "qa"), lambda: actions.set_norms(team, "x"),
                  lambda: actions.save_memory(team, "tpm", "a", "b"),
                  lambda: actions.remove_agent(team, "tpm")):
@@ -128,7 +129,7 @@ if __name__ == "__main__":
 
 def test_the_alias_set_from_a_client_is_the_one_mentions_use(team):
     """The admin page used to write an "aliases" list nothing read."""
-    from agyteam import roster as roster_lib
+    from ateam import roster as roster_lib
     actions.update_agent(team, "coder", alias="Ada")
     doc = roster_lib.load(team / "roster.json")
     assert roster_lib.aliases(doc) == {"ada": "coder"}
@@ -138,8 +139,8 @@ def test_the_alias_set_from_a_client_is_the_one_mentions_use(team):
 
 def test_a_mention_in_a_direct_message_reaches_the_agent_mentioned(team):
     """@ada in a DM to tpm (or in a thread under it) reached only tpm."""
-    from agyteam import roster as roster_lib
-    from agyteam.transport import load as load_transport
+    from ateam import roster as roster_lib
+    from ateam.transport import load as load_transport
     actions.update_agent(team, "coder", alias="Ada")
     out = actions.dm(team, "tpm", "@ada can you help with this?", thread="m1")
     assert "and to coder" in out

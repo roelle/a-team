@@ -35,8 +35,8 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from agyteam import retro_store, supervisor  # noqa: E402
-from agyteam.runner import Runner  # noqa: E402
+from ateam import retro_store, supervisor  # noqa: E402
+from ateam.runner import Runner  # noqa: E402
 
 ANSWERS = {
     "coder": ("The proof gate caught two suites that collected no tests.",
@@ -57,7 +57,7 @@ class MinimalRunner(Runner):
 
     Everything the agent produces goes through the bus, which is what the
     contract says the rest of the system depends on. `wake` returns "" for a
-    genuine success, exactly as agyteam/runner_template.py instructs.
+    genuine success, exactly as ateam/runner_template.py instructs.
     """
     label = "minimal"
     supports_audit = False

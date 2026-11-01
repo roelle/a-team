@@ -3,7 +3,7 @@
 Three findings needed a host to discover and cannot be tested from this repo:
 a tool whose signature the agent never receives, a brief missing that index,
 and a bus server bound to a team it was spawned against hours earlier. All
-three are cheap to self-diagnose, and the point of `agyteam.doctor` is that
+three are cheap to self-diagnose, and the point of `ateam.doctor` is that
 the operator never has to discover any of them nine delegations in.
 
 These tests check the preflight has teeth, which matters more than usual: a
@@ -21,7 +21,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from agyteam import doctor  # noqa: E402
+from ateam import doctor  # noqa: E402
 
 
 def make_team(tmp_path, name="team"):
@@ -41,21 +41,21 @@ def _empty_proc(tmp_path):
 
 def run(team_dir, tmp_path, *args, env_extra=None):
     env = dict(os.environ,
-               AGYTEAM_TEAM_DIR=str(team_dir),
-               AGYTEAM_DURABLE_DIR=str(tmp_path / "durable"),
+               ATEAM_TEAM_DIR=str(team_dir),
+               ATEAM_DURABLE_DIR=str(tmp_path / "durable"),
                # Point the install check at a directory with no install in it.
                # Otherwise these tests pass or fail on whether the machine
                # running them happens to have a current plugin installed, which
                # is a property of the machine and not of the preflight.
-               AGYTEAM_PLUGIN_DIR=str(tmp_path / "no-plugin-here"),
+               ATEAM_PLUGIN_DIR=str(tmp_path / "no-plugin-here"),
                # And at an empty process table, for the same reason: with a
                # real team running on this machine its bus servers are bound
                # to a different team, and the preflight is right to fail.
-               AGYTEAM_PROC_ROOT=str(_empty_proc(tmp_path)))
-    env.pop("AGYTEAM_AUDIT_LOG", None)
+               ATEAM_PROC_ROOT=str(_empty_proc(tmp_path)))
+    env.pop("ATEAM_AUDIT_LOG", None)
     env.update(env_extra or {})
     return subprocess.run(
-        [sys.executable, "-m", "agyteam.doctor", "--brief-lines", "6", *args],
+        [sys.executable, "-m", "ateam.doctor", "--brief-lines", "6", *args],
         cwd=ROOT, env=env, capture_output=True, text=True)
 
 
@@ -94,7 +94,7 @@ def test_the_probe_leaves_the_agents_real_mail_unread(tmp_path):
             (td / "inbox" / "manager.jsonl").read_text().splitlines() if x.strip()]
     assert left == [real], left
     sent = [json.loads(x) for x in (td / "bus.jsonl").read_text().splitlines()
-            if "agyteam.doctor probe" in x]
+            if "ateam.doctor probe" in x]
     assert sent and all(m.get("kind") == "fyi" for m in sent), \
         "a probe that wakes the agent costs a live team a turn"
 
@@ -116,8 +116,8 @@ def test_the_probe_names_both_paths_when_it_lands(tmp_path):
 def test_it_prints_the_resolved_runner_and_its_flags(tmp_path):
     td = make_team(tmp_path)
     p = run(td, tmp_path,
-            env_extra={"AGYTEAM_RUNNER": "agyteam.runner_agy:AgyRunner"})
-    assert "runner: agyteam.runner_agy:AgyRunner" in p.stdout
+            env_extra={"ATEAM_RUNNER": "ateam.runner_agy:AgyRunner"})
+    assert "runner: ateam.runner_agy:AgyRunner" in p.stdout
     assert "supports_audit = False" in p.stdout
     assert "supports_capability_scoping = False" in p.stdout
     assert "statement of intent, not a boundary" in p.stdout
@@ -126,7 +126,7 @@ def test_it_prints_the_resolved_runner_and_its_flags(tmp_path):
 def test_an_unloadable_runner_fails_rather_than_crashing(tmp_path):
     """load() raises SystemExit; the preflight must report, not inherit it."""
     td = make_team(tmp_path)
-    p = run(td, tmp_path, env_extra={"AGYTEAM_RUNNER": "no.such:Runner"})
+    p = run(td, tmp_path, env_extra={"ATEAM_RUNNER": "no.such:Runner"})
     assert p.returncode == 1
     assert "could not inspect runner" in p.stdout
     assert "PREFLIGHT FAILED" in p.stdout
@@ -159,8 +159,8 @@ def test_no_roster_exits_without_pretending(tmp_path):
 
 def fake_install(tmp_path, *, complete=True, identical=True):
     """A plugin install, optionally missing a module or holding older code."""
-    from agyteam import install_check
-    pkg = tmp_path / "plugin" / "agyteam"
+    from ateam import install_check
+    pkg = tmp_path / "plugin" / "ateam"
     pkg.mkdir(parents=True)
     names = install_check.module_list()
     if not complete:
@@ -178,7 +178,7 @@ def test_a_missing_module_fails_even_though_the_server_imports(tmp_path):
     lazily imports the missing module raises on first call, mid-run."""
     td = make_team(tmp_path)
     inst = fake_install(tmp_path, complete=False)
-    p = run(td, tmp_path, env_extra={"AGYTEAM_PLUGIN_DIR": str(inst)})
+    p = run(td, tmp_path, env_extra={"ATEAM_PLUGIN_DIR": str(inst)})
     assert p.returncode == 1, p.stdout
     assert "the install is incomplete" in p.stdout
     assert "retro_store.py" in p.stdout
@@ -190,8 +190,8 @@ def test_a_stale_install_is_a_failure_on_the_runner_that_serves_its_tools(tmp_pa
     tests all asserted the gate held."""
     td = make_team(tmp_path)
     inst = fake_install(tmp_path, identical=False)
-    p = run(td, tmp_path, env_extra={"AGYTEAM_PLUGIN_DIR": str(inst),
-                                     "AGYTEAM_RUNNER": "agyteam.runner_agy:AgyRunner"})
+    p = run(td, tmp_path, env_extra={"ATEAM_PLUGIN_DIR": str(inst),
+                                     "ATEAM_RUNNER": "ateam.runner_agy:AgyRunner"})
     assert p.returncode == 1, p.stdout
     assert "is NOT this code" in p.stdout
     assert "mcp_bus.py" in p.stdout
@@ -200,7 +200,7 @@ def test_a_stale_install_is_a_failure_on_the_runner_that_serves_its_tools(tmp_pa
 def test_a_current_install_passes(tmp_path):
     td = make_team(tmp_path)
     inst = fake_install(tmp_path)
-    p = run(td, tmp_path, env_extra={"AGYTEAM_PLUGIN_DIR": str(inst)})
+    p = run(td, tmp_path, env_extra={"ATEAM_PLUGIN_DIR": str(inst)})
     assert p.returncode == 0, p.stdout
     assert "matches this repo" in p.stdout
 
@@ -218,12 +218,12 @@ def test_it_refuses_to_compare_the_install_with_itself(tmp_path, monkeypatch):
     A check that can only pass is not a check, and this one would have passed
     on precisely the machine where the answer mattered.
     """
-    from agyteam import doctor as doc, install_check
+    from ateam import doctor as doc, install_check
     inst = fake_install(tmp_path)
-    monkeypatch.setenv("AGYTEAM_PLUGIN_DIR", str(inst))
-    monkeypatch.setattr(install_check, "SRC", (inst / "agyteam").resolve())
+    monkeypatch.setenv("ATEAM_PLUGIN_DIR", str(inst))
+    monkeypatch.setattr(install_check, "SRC", (inst / "ateam").resolve())
     r = FakeReport()
-    doc.check_plugin_install(r, "agyteam.runner_agy:AgyRunner")
+    doc.check_plugin_install(r, "ateam.runner_agy:AgyRunner")
     assert not r.failed
     assert any("cannot be judged from here" in text for _, text in r.lines)
 
@@ -252,10 +252,10 @@ def test_a_bus_server_bound_to_another_team_is_a_failure(tmp_path):
     other_team = make_team(tmp_path, "conv0916")
 
     proc = subprocess.Popen(
-        [sys.executable, "-m", "agyteam.mcp_bus", str(other_team), "manager"],
+        [sys.executable, "-m", "ateam.mcp_bus", str(other_team), "manager"],
         cwd=ROOT, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
-        env=dict(os.environ, AGYTEAM_TEAM_DIR=str(other_team)))
+        env=dict(os.environ, ATEAM_TEAM_DIR=str(other_team)))
     try:
         r = FakeReport()
         doctor.check_stale_bus_servers(r, this_team, pids={proc.pid})
@@ -270,10 +270,10 @@ def test_a_bus_server_bound_to_another_team_is_a_failure(tmp_path):
 def test_a_server_bound_to_this_team_is_fine(tmp_path):
     td = make_team(tmp_path)
     proc = subprocess.Popen(
-        [sys.executable, "-m", "agyteam.mcp_bus", str(td), "manager"],
+        [sys.executable, "-m", "ateam.mcp_bus", str(td), "manager"],
         cwd=ROOT, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
-        env=dict(os.environ, AGYTEAM_TEAM_DIR=str(td)))
+        env=dict(os.environ, ATEAM_TEAM_DIR=str(td)))
     try:
         r = FakeReport()
         doctor.check_stale_bus_servers(r, td, pids={proc.pid})
@@ -292,7 +292,7 @@ def test_a_process_merely_mentioning_the_module_is_not_a_server(tmp_path):
     """
     td = make_team(tmp_path)
     proc = subprocess.Popen(
-        ["/bin/sh", "-c", "echo agyteam.mcp_bus /somewhere/else >/dev/null; "
+        ["/bin/sh", "-c", "echo ateam.mcp_bus /somewhere/else >/dev/null; "
                           "sleep 30"],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:

@@ -16,7 +16,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent.parent))
 import eval as ev  # noqa: E402
 import llm  # noqa: E402
-from agyteam import recall  # noqa: E402
+from ateam import recall  # noqa: E402
 
 MODEL = "gemini-embedding-2"
 KS = (1, 3, 5, 10, 20)

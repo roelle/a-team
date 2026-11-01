@@ -12,7 +12,7 @@ import tempfile
 from pathlib import Path
 
 # Prevent outer agent process environment from bleeding into unit test scope and isolation tests
-for _k in ("AGYTEAM_TEAM_DIR", "AGYTEAM_SHARED_DIR"):
+for _k in ("ATEAM_TEAM_DIR", "ATEAM_SHARED_DIR"):
     os.environ.pop(_k, None)
 
 from rpc_util import PY, ROOT, check, rpc, text_of
@@ -26,7 +26,7 @@ def test_memory_invocation() -> tuple[int, int]:
     shutil.rmtree(ws, ignore_errors=True)
 
     # positional workspace (how the SDK path launches it)
-    r = rpc("agyteam.mcp_memory", [str(ws)], [
+    r = rpc("ateam.mcp_memory", [str(ws)], [
         ("save_memory", {"name": "deploy-host", "description": "where we deploy",
                          "content": "horta, ssh port 2222"})])
     init, tools, saved = r[0], r[1], r[2]
@@ -35,12 +35,12 @@ def test_memory_invocation() -> tuple[int, int]:
     ws2 = ROOT / "evals" / "ws_mcp_env"
     shutil.rmtree(ws2, ignore_errors=True)
     ws2.mkdir(parents=True)
-    env_run = rpc("agyteam.mcp_memory", [], [("memory_index", {})],
-                  env={"AGYTEAM_AGENT": "alice", "AGYTEAM_WORKSPACE": str(ws2)})
+    env_run = rpc("ateam.mcp_memory", [], [("memory_index", {})],
+                  env={"ATEAM_AGENT": "alice", "ATEAM_WORKSPACE": str(ws2)})
 
     return sum([
         check("initialize handshake names the agent",
-              init["result"]["serverInfo"]["name"].startswith("agy-team-memory"),
+              init["result"]["serverInfo"]["name"].startswith("a-team-memory"),
               init["result"]["serverInfo"]["name"]),
         check("tools/list exposes 6 tools", len(tools["result"]["tools"]) == 6),
         check("positional workspace writes there", (ws / "MEMORY.md").exists()),
@@ -58,9 +58,9 @@ def test_roster_file() -> tuple[int, int]:
     td.mkdir(parents=True)
     (td / "roster.json").write_text(json.dumps(
         {"mission": "test", "agents": [{"name": "tpm", "role": "coordinates"}]}))
-    env = {"AGYTEAM_AGENT": "tpm", "AGYTEAM_TEAM_DIR": str(td),
-           "AGYTEAM_ROSTER_ADMIN": "1"}
-    rpc("agyteam.mcp_bus", [], [("roster_add", {"name": "qa", "role": "reviews"})],
+    env = {"ATEAM_AGENT": "tpm", "ATEAM_TEAM_DIR": str(td),
+           "ATEAM_ROSTER_ADMIN": "1"}
+    rpc("ateam.mcp_bus", [], [("roster_add", {"name": "qa", "role": "reviews"})],
         env=env)
     doc = json.loads((td / "roster.json").read_text())
     return sum([
@@ -76,15 +76,15 @@ def test_scopes() -> tuple[int, int]:
     print("\n== file scope resolution ==")
     import os
     base = {k: v for k, v in os.environ.items()
-            if k not in ("AGYTEAM_PROJECT_DIR", "AGYTEAM_DURABLE_DIR")}
+            if k not in ("ATEAM_PROJECT_DIR", "ATEAM_DURABLE_DIR")}
 
     def run_scope(cwd, env=None):
-        return subprocess.run([str(PY), "-m", "agyteam.scope"], cwd=cwd,
+        return subprocess.run([str(PY), "-m", "ateam.scope"], cwd=cwd,
                               env={**base, "PYTHONPATH": str(ROOT), **(env or {})},
                               capture_output=True, text=True, timeout=30).stdout
 
-    out = run_scope(ROOT, {"AGYTEAM_DURABLE_DIR": "/tmp/agyteam-durable-test",
-                           "AGYTEAM_PROJECT_DIR": str(ROOT)})
+    out = run_scope(ROOT, {"ATEAM_DURABLE_DIR": "/tmp/ateam-durable-test",
+                           "ATEAM_PROJECT_DIR": str(ROOT)})
 
     repo = ROOT / "evals" / "gitroot_unit"
     shutil.rmtree(repo, ignore_errors=True)
@@ -100,13 +100,13 @@ def test_scopes() -> tuple[int, int]:
 
     # Must live outside this repo, else walking up correctly finds *our* root
     # and the test proves nothing.
-    plain = Path(tempfile.mkdtemp(prefix="agyteam-nogit-")).resolve()
+    plain = Path(tempfile.mkdtemp(prefix="ateam-nogit-")).resolve()
     from_plain = run_scope(plain)
 
     return sum([
-        check("durable honors env override", "/tmp/agyteam-durable-test" in out, out),
+        check("durable honors env override", "/tmp/ateam-durable-test" in out, out),
         check("project honors env override", str(ROOT) in out, out),
-        check("shared defaults under project", ".agy-team-shared" in out, out),
+        check("shared defaults under project", ".a-team-shared" in out, out),
         check("git root found from nested subdir", f"{repo} [git root]" in from_sub,
               from_sub),
         check("worktree .git file treated as root", f"{wt} [git root]" in from_wt,
@@ -114,7 +114,7 @@ def test_scopes() -> tuple[int, int]:
         check("non-repo falls back to cwd", f"{plain} [not a git repo]" in from_plain,
               from_plain),
         check("shared follows the discovered git root",
-              str(repo / ".agy-team-shared") in from_sub, from_sub),
+              str(repo / ".a-team-shared") in from_sub, from_sub),
     ]), 7
 
 
@@ -123,7 +123,7 @@ def test_roster_shapes() -> tuple[int, int]:
     and fail readably on the ones that are genuinely ambiguous."""
     print("\n== roster shapes and migration ==")
     sys.path.insert(0, str(ROOT))
-    from agyteam.roster import RosterError, normalize_agents
+    from ateam.roster import RosterError, normalize_agents
 
     def names(raw):
         return [a["name"] for a in normalize_agents(raw)]
@@ -149,10 +149,10 @@ def test_roster_shapes() -> tuple[int, int]:
     shutil.rmtree(td, ignore_errors=True)
     (td / "inbox").mkdir(parents=True)
     (td / "roster.json").write_text(json.dumps({"mission": "m", "agents": old_style}))
-    env = {"AGYTEAM_AGENT": "tpm", "AGYTEAM_TEAM_DIR": str(td)}
-    listed = text_of(rpc("agyteam.mcp_bus", [], [("list_teammates", {})], env=env)[2])
-    rpc("agyteam.mcp_bus", [], [("roster_add", {"name": "qa", "role": "reviews"})],
-        env={**env, "AGYTEAM_ROSTER_ADMIN": "1"})
+    env = {"ATEAM_AGENT": "tpm", "ATEAM_TEAM_DIR": str(td)}
+    listed = text_of(rpc("ateam.mcp_bus", [], [("list_teammates", {})], env=env)[2])
+    rpc("ateam.mcp_bus", [], [("roster_add", {"name": "qa", "role": "reviews"})],
+        env={**env, "ATEAM_ROSTER_ADMIN": "1"})
     migrated = json.loads((td / "roster.json").read_text())
 
     return sum([
@@ -200,14 +200,14 @@ def test_stdlib_purity() -> tuple[int, int]:
         return p.returncode == 0, p.stderr
 
     checks = []
-    for mod in ("agyteam.mcp_memory", "agyteam.mcp_bus", "agyteam.mcp_self", "agyteam.scope",
-                "agyteam.transport_file", "agyteam.store", "agyteam.lifecycle"):
+    for mod in ("ateam.mcp_memory", "ateam.mcp_bus", "ateam.mcp_self", "ateam.scope",
+                "ateam.transport_file", "ateam.store", "ateam.lifecycle"):
         ok, err = imports(mod, str(ROOT))
         checks.append(check(f"{mod} imports with no third-party deps", ok, err))
 
     # the venv-only modules SHOULD fail here — proves the test has teeth
-    ok, _ = imports("agyteam.sdk_agent", str(ROOT))
-    checks.append(check("control: agyteam.sdk_agent (needs google-antigravity) does NOT import",
+    ok, _ = imports("ateam.sdk_agent", str(ROOT))
+    checks.append(check("control: ateam.sdk_agent (needs google-antigravity) does NOT import",
                         not ok, "sdk_agent.py imported on bare python — purity test is "
                                 "not actually discriminating"))
     return sum(checks), len(checks)
@@ -216,9 +216,9 @@ def test_stdlib_purity() -> tuple[int, int]:
 def test_team_isolation() -> tuple[int, int]:
     """Separate teams must share no roster, no bus, and no memory."""
     print("\n== team namespacing ==")
-    root = Path(tempfile.mkdtemp(prefix="agyteam-teams-"))
-    base = {"AGYTEAM_TEAMS_ROOT": str(root), "PYTHONPATH": str(ROOT),
-            "AGYTEAM_TEAM_DIR": "", "AGYTEAM_DURABLE_DIR": ""}
+    root = Path(tempfile.mkdtemp(prefix="ateam-teams-"))
+    base = {"ATEAM_TEAMS_ROOT": str(root), "PYTHONPATH": str(ROOT),
+            "ATEAM_TEAM_DIR": "", "ATEAM_DURABLE_DIR": ""}
 
     for team in ("alpha", "beta"):
         d = root / team / "team"
@@ -228,27 +228,27 @@ def test_team_isolation() -> tuple[int, int]:
             {"name": "coder", "role": "implements"}]}))
 
     def send(team, to, content):
-        return rpc("agyteam.mcp_bus", [], [("send_to_teammate",
+        return rpc("ateam.mcp_bus", [], [("send_to_teammate",
                                             {"to": to, "content": content})],
-                   env={**base, "AGYTEAM_TEAM": team, "AGYTEAM_AGENT": "tpm"})[2:]
+                   env={**base, "ATEAM_TEAM": team, "ATEAM_AGENT": "tpm"})[2:]
 
     def inbox(team, agent):
-        return text_of(rpc("agyteam.mcp_bus", [], [("check_inbox", {})],
-                           env={**base, "AGYTEAM_TEAM": team,
-                                "AGYTEAM_AGENT": agent})[2])
+        return text_of(rpc("ateam.mcp_bus", [], [("check_inbox", {})],
+                           env={**base, "ATEAM_TEAM": team,
+                                "ATEAM_AGENT": agent})[2])
 
     send("alpha", "coder", "alpha-only-secret")
     beta_inbox = inbox("beta", "coder")
     alpha_inbox = inbox("alpha", "coder")
 
     # explicit durable path should override the root/team composition entirely
-    exact = Path(tempfile.mkdtemp(prefix="agyteam-exact-"))
-    out = subprocess.run([str(PY), "-m", "agyteam.scope"], cwd=ROOT,
-                         env={**base, "AGYTEAM_TEAM": "alpha",
-                              "AGYTEAM_DURABLE_DIR": str(exact)},
+    exact = Path(tempfile.mkdtemp(prefix="ateam-exact-"))
+    out = subprocess.run([str(PY), "-m", "ateam.scope"], cwd=ROOT,
+                         env={**base, "ATEAM_TEAM": "alpha",
+                              "ATEAM_DURABLE_DIR": str(exact)},
                          capture_output=True, text=True, timeout=30).stdout
-    bad_name = subprocess.run([str(PY), "-m", "agyteam.scope"], cwd=ROOT,
-                              env={**base, "AGYTEAM_TEAM": "../escape"},
+    bad_name = subprocess.run([str(PY), "-m", "ateam.scope"], cwd=ROOT,
+                              env={**base, "ATEAM_TEAM": "../escape"},
                               capture_output=True, text=True, timeout=30).stdout
 
     return sum([

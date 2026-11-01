@@ -14,11 +14,11 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "evals"))
 
-from agyteam import actions, channels, mcp_bus  # noqa: E402
-from agyteam.record import Feed, Record  # noqa: E402
-from agyteam.supervisor import Supervisor  # noqa: E402
-from agyteam.transport import load as load_transport  # noqa: E402
-from agyteam.transport_file import FileTransport  # noqa: E402
+from ateam import actions, channels, mcp_bus  # noqa: E402
+from ateam.record import Feed, Record  # noqa: E402
+from ateam.supervisor import Supervisor  # noqa: E402
+from ateam.transport import load as load_transport  # noqa: E402
+from ateam.transport_file import FileTransport  # noqa: E402
 from fixture_runner import ScriptedRunner  # noqa: E402
 
 AGENTS = ["tpm", "coder", "qa", "syseng"]
@@ -30,9 +30,9 @@ def team(tmp_path, monkeypatch):
     (td / "inbox").mkdir(parents=True)
     (td / "roster.json").write_text(json.dumps({"agents": [
         {"name": a, "role": "works"} for a in AGENTS]}))
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(td))
-    monkeypatch.delenv("AGYTEAM_AGENT", raising=False)
-    monkeypatch.delenv("AGYTEAM_BUS_TRANSPORT", raising=False)
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(td))
+    monkeypatch.delenv("ATEAM_AGENT", raising=False)
+    monkeypatch.delenv("ATEAM_BUS_TRANSPORT", raising=False)
     channels.create(td, "billing", ["coder", "qa"], topic="the invoices")
     return td
 
@@ -207,7 +207,7 @@ def test_list_channels_shows_only_mine(team):
 def test_a_busy_channel_does_not_flood_the_wake_prompt(team, monkeypatch):
     """Every waking message goes in; quiet ones only while they fit, and the
     rest stay unread rather than being dropped."""
-    from agyteam import config
+    from ateam import config
     monkeypatch.setattr(config, "WAKE_PROMPT_BYTES", 2000)
     for i in range(40):
         actions.post(team, "billing", f"chatter {i:02d} " + "x" * 80, author="matt")
@@ -339,7 +339,7 @@ def test_the_feed_notices_snapshot_changes(team):
 
 
 def test_search_finds_messages_and_tasks(team):
-    from agyteam import tasks
+    from ateam import tasks
     actions.post(team, "billing", "the kingfisher invoice is late", author="matt")
     tasks.create(team, "p", "chase the kingfisher invoice", owner="coder", created_by="coder")
     kinds = {h["type"] for h in Record(team).search("KINGFISHER")}
@@ -349,7 +349,7 @@ def test_search_finds_messages_and_tasks(team):
 # --- operator actions ----------------------------------------------------------------------------
 
 def test_operator_actions_are_refused_inside_an_agents_session(team, monkeypatch):
-    monkeypatch.setenv("AGYTEAM_AGENT", "coder")
+    monkeypatch.setenv("ATEAM_AGENT", "coder")
     for call in (lambda: actions.post(team, "billing", "hi"),
                  lambda: actions.dm(team, "qa", "hi"),
                  lambda: actions.create_channel(team, "x"),

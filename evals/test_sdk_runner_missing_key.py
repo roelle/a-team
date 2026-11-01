@@ -20,7 +20,7 @@ sys.path.insert(0, str(ROOT))
 
 pytest.importorskip("google.antigravity")
 
-from agyteam.runner_sdk import SdkRunner  # noqa: E402
+from ateam.runner_sdk import SdkRunner  # noqa: E402
 
 
 @pytest.fixture
@@ -29,7 +29,7 @@ def runner(tmp_path, monkeypatch):
     (td / "inbox").mkdir(parents=True)
     (td / "roster.json").write_text(json.dumps({"agents": [
         {"name": "coder", "role": "implements"}]}))
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(td))
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(td))
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     r = SdkRunner()
     yield r

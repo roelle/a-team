@@ -8,10 +8,10 @@ working around a refusal; it did not, and a rule is one long context away
 from being forgotten anyway. The diagnosis was theirs: every permission is
 stored in a file the agents can edit.
 
-Nothing in agyteam can stop a process running as the operator's user from
+Nothing in ateam can stop a process running as the operator's user from
 writing a file the operator can write. These tests hold what can be held:
 no agent's tools write the team directory, confined or not; and a roster
-changed during a turn by anything other than agyteam is put back, kept
+changed during a turn by anything other than ateam is put back, kept
 aside, recorded, and reported to the operator.
 """
 import json
@@ -24,9 +24,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "evals"))
 
-from agyteam import policy, roster as roster_lib  # noqa: E402
-from agyteam.supervisor import Supervisor  # noqa: E402
-from agyteam.transport import load as load_transport  # noqa: E402
+from ateam import policy, roster as roster_lib  # noqa: E402
+from ateam.supervisor import Supervisor  # noqa: E402
+from ateam.transport import load as load_transport  # noqa: E402
 from fixture_runner import ScriptedRunner  # noqa: E402
 
 AGENTS = ["manager", "coder"]
@@ -39,8 +39,8 @@ def team(tmp_path, monkeypatch):
     td = tmp_path / "team"
     (td / "inbox").mkdir(parents=True)
     (td / "roster.json").write_text(json.dumps(ROSTER, indent=2) + "\n")
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(td))
-    monkeypatch.setenv("AGYTEAM_DURABLE_DIR", str(tmp_path / "durable"))
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(td))
+    monkeypatch.setenv("ATEAM_DURABLE_DIR", str(tmp_path / "durable"))
     return td
 
 
@@ -142,7 +142,7 @@ def test_the_operator_is_told_and_it_is_not_an_answer(team):
     assert not sup.stopped.startswith("the user was answered"), sup.stopped
 
 
-def test_a_change_agyteam_writes_during_a_turn_is_kept(team):
+def test_a_change_ateam_writes_during_a_turn_is_kept(team):
     """lifecycle, or the bus's roster admin tools: they go through save()."""
     def add_qa():
         doc = roster_lib.load(team / "roster.json")
@@ -177,7 +177,7 @@ def test_a_change_made_while_no_turn_runs_is_the_operators(team):
 def test_replaying_an_older_recorded_roster_is_not_accepted(team):
     """Only the newest recorded write vouches for the file, and a supervisor
     records the roster it starts with, so an agent cannot put back a looser
-    roster agyteam once wrote."""
+    roster ateam once wrote."""
     loose = dict(ROSTER, agents=[ROSTER["agents"][0],
                                  dict(ROSTER["agents"][1], confined=False)])
     roster_lib.save(team / "roster.json", loose)

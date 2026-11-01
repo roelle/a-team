@@ -17,9 +17,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "evals"))
 
-from agyteam.runner_host import HostRunner  # noqa: E402
-from agyteam.supervisor import Supervisor  # noqa: E402
-from agyteam.transport import load as load_transport  # noqa: E402
+from ateam.runner_host import HostRunner  # noqa: E402
+from ateam.supervisor import Supervisor  # noqa: E402
+from ateam.transport import load as load_transport  # noqa: E402
 
 HOST = str(ROOT / "evals" / "fixture_host.py")
 
@@ -34,7 +34,7 @@ def host(tmp_path, monkeypatch):
     signals = tmp_path / "signals"
     signals.mkdir()
     log = tmp_path / "host.jsonl"
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(td))
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(td))
     monkeypatch.setenv("FAKE_HOST_LOG", str(log))
     monkeypatch.setenv("FAKE_HOST_SIGNALS", str(signals))
     monkeypatch.setenv("FAKE_HOST_DELAY", "0.15")

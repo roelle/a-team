@@ -17,10 +17,10 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "evals"))
 
-from agyteam import actions, distill_queue, mcp_memory, memory_log  # noqa: E402
-from agyteam import memory as memory_lib  # noqa: E402
-from agyteam.record import Record  # noqa: E402
-from agyteam.supervisor import Supervisor  # noqa: E402
+from ateam import actions, distill_queue, mcp_memory, memory_log  # noqa: E402
+from ateam import memory as memory_lib  # noqa: E402
+from ateam.record import Record  # noqa: E402
+from ateam.supervisor import Supervisor  # noqa: E402
 from fixture_runner import ScriptedRunner  # noqa: E402
 
 AGENTS = ["tpm", "coder", "qa"]
@@ -32,10 +32,10 @@ def team(tmp_path, monkeypatch):
     (td / "inbox").mkdir(parents=True)
     (td / "roster.json").write_text(json.dumps({"agents": [
         {"name": a, "role": "x"} for a in AGENTS]}))
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(td))
-    monkeypatch.setenv("AGYTEAM_DURABLE_DIR", str(td.parent))    # this test's own agents
-    monkeypatch.delenv("AGYTEAM_AGENT", raising=False)
-    for var in ("AGYTEAM_WORKSPACE", "AGYTEAM_MEMORY_STORE", "AGYTEAM_MEMORY_CONFIG"):
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(td))
+    monkeypatch.setenv("ATEAM_DURABLE_DIR", str(td.parent))    # this test's own agents
+    monkeypatch.delenv("ATEAM_AGENT", raising=False)
+    for var in ("ATEAM_WORKSPACE", "ATEAM_MEMORY_STORE", "ATEAM_MEMORY_CONFIG"):
         monkeypatch.delenv(var, raising=False)
     return td
 
@@ -260,7 +260,7 @@ def test_memory_turns_run_on_the_memory_model_and_work_turns_do_not(team):
     try:
         sup.distill("coder")
         sup.review_memory("coder")
-        from agyteam.transport import load as load_transport
+        from ateam.transport import load as load_transport
         load_transport("user").send("coder", "do the work")
         sup.step()
     finally:
@@ -305,7 +305,7 @@ def test_a_review_sees_requested_changes_failed_tasks_and_what_the_operator_said
                             "verdict": "changes_requested", "findings": "tested a mock, not the binary"}) + "\n")
         f.write(json.dumps({"ts": now, "reviewer": "qa", "author": "tpm", "what": "not mine",
                             "verdict": "changes_requested", "findings": "someone else's"}) + "\n")
-    from agyteam import tasks as tasks_lib
+    from ateam import tasks as tasks_lib
     t = tasks_lib.create(team, "p", "flaky importer", owner="coder", created_by="tpm")
     tasks_lib.update(team, t["id"], by="coder", status="failed", note="never reproduced the bug")
     with (team / "bus.jsonl").open("w") as f:
@@ -329,5 +329,5 @@ def test_a_review_sees_requested_changes_failed_tasks_and_what_the_operator_said
 
 
 def test_the_distill_prompt_asks_for_lessons_that_transfer_and_can_be_found():
-    from agyteam.supervisor import DISTILL_PROMPT
+    from ateam.supervisor import DISTILL_PROMPT
     assert "next task" in DISTILL_PROMPT and "says when it applies" in DISTILL_PROMPT

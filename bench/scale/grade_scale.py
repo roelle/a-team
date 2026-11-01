@@ -166,7 +166,7 @@ def modified_files(pristine: Path, staged: Path) -> list[str]:
     """Files of the audited tree the team changed, plus files it added there
     other than FINDINGS.json. An audit was asked for; edits were not."""
     out = []
-    skip = ("__pycache__", ".pytest_cache", ".agy-team-shared")
+    skip = ("__pycache__", ".pytest_cache", ".a-team-shared")
     for p in sorted(staged.rglob("*")):
         rel = p.relative_to(staged)
         if p.is_dir() or any(x in rel.parts for x in skip) or rel.name == "FINDINGS.json" \

@@ -1,0 +1,488 @@
+"""MCP stdio server for tracking work that outlives a single turn.
+
+Companion to `ateam/tasks.py`, which is the record and holds every rule --
+who may change a task, what a valid reminder is, what closing one requires,
+and the lock that makes a claim mean something. This server only translates
+tool calls into those functions and their refusals into sentences, and asks
+`ateam.policy` whether this agent may assign work to others at all.
+
+Like ateam/mcp_bus.py, ateam/mcp_memory.py and ateam/mcp_self.py, this is
+pure Python standard library, built on ateam.mcp_base.serve.
+
+Identity: `python -m ateam.mcp_tasks <team_dir> <agent_name>` (explicit), or
+set ATEAM_AGENT (agy CLI path). Refuses to start nameless rather than
+guessing, so a task can never be filed under the wrong owner.
+"""
+import json
+import os
+import sys
+from pathlib import Path
+
+from .mcp_base import ArgError, boolean, fit, flag, serve, string, tool
+from . import heartbeat, policy, steer
+from . import roster as roster_lib
+from . import scope
+from . import tasks as tasks_lib
+
+_STATUS = {"type": "string", "enum": sorted(tasks_lib.STATUSES),
+           "description": "queued, claimed, running, blocked, review (done, "
+                          "waiting on an approved review), done, failed, "
+                          "cancelled, or icebox (parked: only the operator takes "
+                          "a task back out). in_progress, waiting, completed and "
+                          "the like are accepted and mapped"}
+_CHANNEL = string("The channel this task is discussed in, e.g. 'billing'; its "
+                  "status changes are noted there. '' unlinks it")
+
+_BLOCKED_BY = string("Comma-separated task ids that must be done first. It cannot "
+                     "be started until then, and its owner is told when it is ready")
+_WRITES = string("Comma-separated paths it expects to change. This locks nothing: "
+                 "it warns you and others when open tasks overlap")
+
+TOOLS = [
+    tool("create_task",
+         "Start tracking work that will outlive this turn -- a simulation, a "
+         "long build, anything you would otherwise have to remember to come "
+         "back to. Owned by you unless you name a teammate. Pass check_after "
+         "to be reminded at a time, or until to be woken only when something "
+         "has happened (a file appears, a process exits).",
+         {"title": string("Short description of the task"),
+          "parent": string("The task this one is part of (its id). Default: the one "
+                           "task you are working on now, if there is exactly one. "
+                           "'none' for a top-level task"),
+          "level": string("How big it is, when you know: 0 a task, 1 a project, "
+                          "2 a program (the team's names may differ). Leave it out "
+                          "and it is worked out from what is under it"),
+          "priority": string("P0 (most urgent) to P4"),
+          "auto_close": boolean("true to close this task by itself once every task "
+                                "under it is done; otherwise its owner is told"),
+          "project": string("An optional label; a subtask takes its parent's"),
+          "owner": string("Teammate who owns it (default: you)"),
+          "note": string("What you started, where its output will land, and "
+                         "anything a later check-in will need"),
+          "check_after": string(f"When to be reminded: {tasks_lib.WHEN_HELP}"),
+          "until": string("Wake me only when this holds: 'file_exists:/path', "
+                          "'file_contains:/path:text' or 'pid_exited:1234'. "
+                          "Checked by the sweep itself, costing you no turns"),
+          "poll_every": string("How often to re-check until, e.g. '10m' (default 5m)"),
+          "deadline": string(f"With until: wake me anyway at this time if it has "
+                             f"not happened: {tasks_lib.WHEN_HELP}"),
+          "collaborators": string("Comma-separated teammates whose work this task "
+                                  "also needs; it cannot close until each has "
+                                  "recorded activity since it was created"),
+          "requires_review": boolean("true if this task may not close, and its "
+                                     "result may not go to the user, without an "
+                                     "approved review naming it"),
+          "blocked_by": _BLOCKED_BY,
+          "writes": _WRITES,
+          "channel": _CHANNEL},
+         ["title"]),
+    tool("claim_task",
+         "Take ownership of a task nobody owns yet. Refuses if a teammate "
+         "already owns it; they can hand it over with update_task(owner=...).",
+         {"task_id": string("Task id from create_task or list_tasks")},
+         ["task_id"]),
+    tool("update_task",
+         "Change a task you own: its status, its note, who owns it, when you "
+         "want to be reminded, or what it is waiting on. Set check_after or "
+         "until when you are waiting on something slow and go do other work; "
+         "you will get a message when it comes due.",
+         {"task_id": string("Task id"),
+          "status": _STATUS,
+          "check_after": string(f"When to be reminded: {tasks_lib.WHEN_HELP}. "
+                                "Or 'clear' to remove the reminder"),
+          "until": string("Wake me only when this holds: 'file_exists:/path', "
+                          "'file_contains:/path:text' or 'pid_exited:1234'"),
+          "poll_every": string("How often to re-check until, e.g. '10m'"),
+          "deadline": string("With until: wake me anyway at this time"),
+          "owner": string("Hand the task to this teammate"),
+          "collaborators": string("Comma-separated teammates whose work this needs"),
+          "evidence": string("Where the result can be checked: a path, or a review"),
+          "note": string("Replace the task's note with this"),
+          "parent": string("Move it under this task (its id), or 'none' for top level"),
+          "level": string("0 a task, 1 a project, 2 a program...; 'auto' to work it "
+                          "out from what is under it"),
+          "priority": string("P0 (most urgent) to P4"),
+          "auto_close": boolean("Close it by itself once everything under it is done"),
+          "blocked_by": string("Comma-separated task ids that must be done first, "
+                               "replacing any set before; 'none' to clear"),
+          "writes": string("Comma-separated paths it expects to change, replacing "
+                           "any set before; 'none' to clear"),
+          "channel": _CHANNEL},
+         ["task_id"]),
+    tool("complete_task",
+         "Close a task you own. The note is required and replaces the old one: "
+         "say what was done and where the result is. Refused while a "
+         "collaborator has not yet worked on it, or while a task that "
+         "requires_review has no approved review naming it.",
+         {"task_id": string("Task id"),
+          "note": string("What was done and where the result is"),
+          "evidence": string("Where it can be checked: a path, or 'review' "
+                             "once one is recorded")},
+         ["task_id", "note"]),
+    tool("list_tasks",
+         "List tasks, most recently updated first. Pass owner=<your name> to "
+         "see only your own; no arguments shows the whole team's. A long list "
+         "is cut short with a count of what was left out.",
+         {"project": string("Filter to one project label"),
+          "owner": string("Filter to one owner"),
+          "status": string("Filter to one status"),
+          "task_id": string("Just this task"),
+          "under": string("A task id: show it and everything under it, as a tree"),
+          "archived": boolean("Include archived branches (left out by default)")}),
+]
+
+_DELIVERY = ("[reminder set for {when}: it arrives as a message once that time "
+             "passes and the sweep next runs; {who}.]")
+_WAITING = ("[waiting on {what}, checked every {every} with no turn spent; "
+            "you will be messaged when it holds{deadline}; {who}.]")
+
+
+def _resolve_context(team_dir: Path | None = None) -> tuple[scope.Scopes, Path]:
+    env = os.environ.get("ATEAM_TEAM_DIR")
+    if env or team_dir is not None:
+        td = team_dir or Path(env).resolve()
+        scopes = scope.load(durable=td.parent, team=td.parent.name)
+        return scopes, td
+    scopes = scope.load()
+    return scopes, scopes.team_dir()
+
+
+def _known_agents(team_dir: Path) -> set:
+    try:
+        return {a["name"] for a in
+                roster_lib.load(team_dir / "roster.json").get("agents", [])}
+    except Exception:
+        return set()
+
+
+def _check_teammates(team_dir: Path, names) -> str | None:
+    known = _known_agents(team_dir)
+    bad = [n for n in names if known and n not in known]
+    if bad:
+        return (f"[error: {', '.join(bad)} not on this roster. Known agents: "
+                f"{', '.join(sorted(known))}]")
+    return None
+
+
+def _text(a: dict, key: str) -> str:
+    v = a.get(key)
+    return v.strip() if isinstance(v, str) else ""
+
+
+def _names(a: dict, key: str) -> list[str] | None:
+    raw = _text(a, key)
+    if not raw:
+        return None
+    return [n.strip() for n in raw.split(",") if n.strip()]
+
+
+def _in_flight(team_dir: Path | None) -> dict[str, tuple[str, str]]:
+    """{task_id: (agent, since)} for turns running now on account of a task.
+
+    Read from the supervisor's in-flight ledger, and only from the task ids
+    that triggered each turn -- an agent being busy says nothing about which
+    of its tasks it is busy with. Empty when no supervisor is running, since
+    a ledger left by one that died describes nothing.
+    """
+    if team_dir is None or not heartbeat.running(team_dir):
+        return {}
+    try:
+        doc = json.loads((Path(team_dir) / "inflight.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    out = {}
+    for agent, turn in (doc.items() if isinstance(doc, dict) else []):
+        for tid in ((turn or {}).get("trigger") or {}).get("task_ids") or []:
+            out[tid] = (agent, turn.get("ts", ""))
+    return out
+
+
+def _blocks(rows: list[dict], team_dir: Path | None = None, indent: dict | None = None) -> list[str]:
+    flying = _in_flight(team_dir) if rows else {}
+    state = tasks_lib.snapshot(team_dir) if rows and team_dir is not None else {}
+    shape = tasks_lib.tree(team_dir) if rows and team_dir is not None else {}
+    names = tasks_lib.level_names(team_dir) if team_dir is not None else tasks_lib.DEFAULT_LEVEL_NAMES
+    blocks = []
+    for t in rows:
+        lines = []
+        extra = []
+        node = shape.get(t["id"]) or {}
+        if node.get("level"):
+            n = node["level"]
+            extra.append(f"a {names[n] if n < len(names) else f'level-{n}'}")
+        if node.get("total"):
+            extra.append(f"{node['done']}/{node['total']} under it closed")
+        if t.get("priority") is not None:
+            extra.append(f"P{t['priority']}")
+        if t["id"] in flying:
+            agent, since = flying[t["id"]]
+            extra.append(f"in flight with {agent} since {since}")
+        if t.get("check_after"):
+            extra.append(f"reminder at {t['check_after']}")
+        if t.get("until"):
+            extra.append(f"waiting on {tasks_lib._describe(t['until'])}")
+        if t.get("collaborators"):
+            extra.append(f"with {', '.join(t['collaborators'])}")
+        if t.get("requires_review"):
+            extra.append("requires review")
+        waiting = tasks_lib.open_blockers(state, t) if t.get("status") not in tasks_lib.TERMINAL else []
+        if waiting:
+            extra.append(f"waits for {', '.join(waiting)}")
+        if t.get("channel"):
+            extra.append(f"discussed in #{t['channel']}")
+        tail = f" ({'; '.join(extra)})" if extra else ""
+        pad = "  " * (indent or {}).get(t["id"], 0)
+        label = f" ({t.get('project')})" if t.get("project") else ""
+        lines.append(f"{pad}- {t['id']} [{t.get('status')}]{label} "
+                     f"{t.get('title')} — owner: {t.get('owner') or 'unclaimed'}{tail}")
+        if node.get("path") and indent is None:
+            lines.append(f"  under: {' › '.join(node['path'])}")
+        if t.get("writes"):
+            lines.append(f"  writes: {', '.join(t['writes'])}")
+        for o in tasks_lib.overlaps(state, t):
+            lines.append(f"  overlap: {o['id']} ({o.get('owner') or 'unclaimed'}) "
+                         f"expects to write {', '.join(o['writes'])}")
+        if t.get("note"):
+            lines.append(f"  note: {t['note']}")
+        if t.get("evidence"):
+            lines.append(f"  evidence: {t['evidence']}")
+        blocks.append("\n".join(lines))
+    return blocks
+
+
+def _render(rows: list[dict], team_dir: Path | None = None) -> str:
+    if not rows:
+        return "[no tasks]"
+    return "\n".join(_blocks(rows, team_dir))
+
+
+def _with_delivery(team_dir: Path, t: dict, text: str) -> str:
+    if not t:
+        return text
+    who = heartbeat.describe(team_dir)
+    if t.get("until") and t.get("status") not in tasks_lib.TERMINAL:
+        dl = f", or at {t['deadline']} regardless" if t.get("deadline") else ""
+        return f"{text}\n" + _WAITING.format(
+            what=tasks_lib._describe(t["until"]), every=t.get("poll_every") or "5m",
+            deadline=dl, who=who)
+    if t.get("check_after"):
+        return f"{text}\n" + _DELIVERY.format(when=t["check_after"], who=who)
+    return text
+
+
+def _policy(agent: str, team_dir: Path, tool_name: str, args: dict) -> str | None:
+    return policy.check_tool_policy(agent, tool_name, args, team_dir=team_dir,
+                                    check_paths=False)
+
+
+def _create_task(agent: str, team_dir: Path, a: dict) -> str:
+    project, title = _text(a, "project"), _text(a, "title")
+    if not title:
+        return "[error: create_task is missing required argument: title]"
+    parent, defaulted = _text(a, "parent"), False
+    if parent.lower() in ("none", "top", "-"):
+        parent = ""
+    elif not parent and "parent" not in a:
+        mine = [t for t in tasks_lib.snapshot(team_dir).values()
+                if t.get("owner") == agent and t.get("status") in ("claimed", "running")]
+        if len(mine) == 1:
+            parent, defaulted = mine[0]["id"], True
+    owner = _text(a, "owner") or agent
+    collaborators = _names(a, "collaborators") or []
+    err = _check_teammates(team_dir, [owner, *collaborators])
+    if err:
+        return err
+    refusal = _policy(agent, team_dir, "create_task", {"owner": owner})
+    if refusal:
+        return refusal
+    try:
+        until = tasks_lib.parse_until(_text(a, "until")) if _text(a, "until") else None
+        t = tasks_lib.create(team_dir, project, title, owner=owner, created_by=agent,
+                             note=_text(a, "note"),
+                             check_after=_text(a, "check_after") or None,
+                             collaborators=collaborators,
+                             requires_review=flag(a, "requires_review"),
+                             until=until, poll_every=_text(a, "poll_every") or None,
+                             deadline=_text(a, "deadline") or None,
+                             channel=_text(a, "channel") or None,
+                             parent=parent or None,
+                             level=_text(a, "level") or None,
+                             priority=_text(a, "priority") or None,
+                             auto_close=flag(a, "auto_close"),
+                             blocked_by=_names(a, "blocked_by"),
+                             writes=_names(a, "writes"))
+    except tasks_lib.TaskError as e:
+        return f"[error: {e}]"
+    where = (f"\n[it is under {parent}, the task you are working on; pass "
+             f"parent='none' for a top-level task, or another task's id]" if defaulted else "")
+    return _with_delivery(team_dir, t, f"[task created: {t['id']}]\n{_render([t], team_dir)}{where}")
+
+
+def _claim_task(agent: str, team_dir: Path, a: dict) -> str:
+    task_id = _text(a, "task_id")
+    if not task_id:
+        return "[error: claim_task is missing required argument: task_id]"
+    t = tasks_lib.claim(team_dir, task_id, agent)
+    if t is None:
+        return f"[error: no task with id '{task_id}']"
+    return f"[claimed]\n{_render([t])}"
+
+
+def _update_task(agent: str, team_dir: Path, a: dict) -> str:
+    task_id = _text(a, "task_id")
+    if not task_id:
+        return "[error: update_task is missing required argument: task_id]"
+    owner = _text(a, "owner") or None
+    collaborators = _names(a, "collaborators")
+    err = _check_teammates(team_dir, [n for n in [owner, *(collaborators or [])] if n])
+    if err:
+        return err
+    if owner:
+        refusal = _policy(agent, team_dir, "update_task", {"owner": owner})
+        if refusal:
+            return refusal
+    raw = _text(a, "check_after")
+    clear = raw.lower() == "clear"
+    try:
+        until = tasks_lib.parse_until(_text(a, "until")) if _text(a, "until") else None
+    except tasks_lib.TaskError as e:
+        return f"[error: {e}]"
+    t = tasks_lib.update(team_dir, task_id, agent,
+                         channel=a.get("channel") if isinstance(a.get("channel"), str) else None,
+                         status=_text(a, "status") or None,
+                         owner=owner,
+                         check_after=None if clear or not raw else raw,
+                         clear_check_after=clear,
+                         note=a.get("note") if isinstance(a.get("note"), str) else None,
+                         evidence=_text(a, "evidence") or None,
+                         collaborators=collaborators,
+                         until=until, poll_every=_text(a, "poll_every") or None,
+                         deadline=_text(a, "deadline") or None,
+                         parent=_parent_arg(a),
+                         level=_text(a, "level") or None,
+                         priority=_text(a, "priority") or None,
+                         auto_close=flag(a, "auto_close") if "auto_close" in a else None,
+                         blocked_by=_list_arg(a, "blocked_by"),
+                         writes=_list_arg(a, "writes"))
+    if t is None:
+        return f"[error: no task with id '{task_id}']"
+    out = f"[updated]\n{_render([t], team_dir)}"
+    return _with_delivery(team_dir, t, out) if (raw and not clear) or until else out
+
+
+def _list_arg(a: dict, key: str) -> list[str] | None:
+    """None leaves the field alone; 'none' empties it."""
+    if key not in a:
+        return None
+    return [] if _text(a, key).lower() in ("", "none") else _names(a, key)
+
+
+def _parent_arg(a: dict) -> str | None:
+    if "parent" not in a:
+        return None
+    p = _text(a, "parent")
+    return "" if p.lower() in ("none", "top", "-", "") else p
+
+
+def _complete_task(agent: str, team_dir: Path, a: dict) -> str:
+    task_id, note = _text(a, "task_id"), _text(a, "note")
+    if not task_id:
+        return "[error: complete_task is missing required argument: task_id]"
+    if not note:
+        return ("[error: complete_task needs a closing note: what was done and "
+                "where the result is. It replaces the task's old note]")
+    t = tasks_lib.complete(team_dir, task_id, agent, note,
+                           evidence=_text(a, "evidence") or None)
+    if t is None:
+        return f"[error: no task with id '{task_id}']"
+    out = f"[completed]\n{_render([t])}"
+    creator = t.get("created_by")
+    if creator and creator not in (agent, t.get("owner")) and creator != "user":
+        try:
+            from .transport import load as load_transport
+            bus = load_transport(agent)
+            try:
+                bus.send_kind(creator, f"Task {t['id']} ({t.get('title')}) is done: "
+                                       f"{note}", kind="deliverable", task_id=t["id"])
+            finally:
+                if hasattr(bus, "close"):
+                    bus.close()
+            out += f"\n[{creator}, who created it, has been told]"
+        except Exception:
+            pass
+    return out
+
+
+def _list_tasks(team_dir: Path, a: dict) -> str:
+    shape = tasks_lib.tree(team_dir)
+    if _text(a, "under"):
+        root = _text(a, "under")
+        state = tasks_lib.snapshot(team_dir)
+        if root not in state:
+            return f"[error: no task with id '{root}']"
+        order, depth = [], {}
+
+        def walk(tid, d):
+            order.append(state[tid]); depth[tid] = d
+            kids = sorted(shape[tid]["children"], key=lambda c: (state[c].get("status") in tasks_lib.TERMINAL,
+                                                                 state[c].get("title") or ""))
+            for c in kids:
+                walk(c, d + 1)
+        walk(root, 0)
+        text, _ = fit(_blocks(order, team_dir, indent=depth),
+                      "[{n} more tasks under it not shown]", sep="\n")
+        return text
+    rows = tasks_lib.list_tasks(
+        team_dir, project=_text(a, "project") or None, owner=_text(a, "owner") or None,
+        status=tasks_lib.normalize_status(_text(a, "status") or None))
+    if _text(a, "task_id"):
+        rows = [r for r in rows if r["id"] == _text(a, "task_id")]
+    elif not flag(a, "archived"):
+        rows = [r for r in rows if not (shape.get(r["id"]) or {}).get("archived_by")]
+    if not rows:
+        return "[no tasks]"
+    text, _ = fit(_blocks(list(reversed(rows)), team_dir),
+                  "[{n} less recently updated tasks not shown; filter by "
+                  "project, owner, status or task_id]", sep="\n")
+    return text
+
+
+def main(agent: str, team_dir: Path | None = None):
+    scopes, td = _resolve_context(team_dir)
+    handlers = {
+        "create_task": lambda a: _create_task(agent, td, a),
+        "claim_task": lambda a: _claim_task(agent, td, a),
+        "update_task": lambda a: _update_task(agent, td, a),
+        "complete_task": lambda a: _complete_task(agent, td, a),
+        "list_tasks": lambda a: _list_tasks(td, a),
+    }
+
+    def dispatch(name, args):
+        fn = handlers.get(name)
+        if not fn:
+            return (f"[error: unknown tool '{name}'. This server provides: "
+                    f"{', '.join(sorted(handlers))}]")
+        try:
+            return fn(args)
+        except (tasks_lib.TaskError, ArgError) as e:
+            return f"[error: {e}]"
+
+    serve(f"a-team-tasks:{agent}", TOOLS, dispatch,
+          footer=lambda: steer.take_notes(td, agent))
+
+
+if __name__ == "__main__":
+    td_arg = None
+    if len(sys.argv) == 3:                      # <team_dir> <agent_name>
+        td_arg = Path(sys.argv[1]).resolve()
+        os.environ["ATEAM_TEAM_DIR"] = str(td_arg)
+        me = sys.argv[2]
+    elif len(sys.argv) == 2:                    # <agent_name>
+        me = sys.argv[1]
+    else:
+        me = os.environ.get("ATEAM_AGENT", "")
+    if not me:
+        sys.exit("ateam.mcp_tasks: no agent identity. Pass <team_dir> "
+                 "<agent_name> or set ATEAM_AGENT (and optionally "
+                 "ATEAM_TEAM_DIR).")
+    main(me, team_dir=td_arg)

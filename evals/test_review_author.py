@@ -19,8 +19,8 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from agyteam.mcp_bus import _record_review  # noqa: E402
-from agyteam.transport_file import FileTransport  # noqa: E402
+from ateam.mcp_bus import _record_review  # noqa: E402
+from ateam.transport_file import FileTransport  # noqa: E402
 
 TS = "2026-09-14 12:00:00"
 
@@ -30,8 +30,8 @@ def team(tmp_path, monkeypatch):
     """A team mid-episode: manager has worked, coder and qa have not."""
     d = tmp_path / "team"
     d.mkdir()
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(d))
-    monkeypatch.delenv("AGYTEAM_AUDIT_LOG", raising=False)
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(d))
+    monkeypatch.delenv("ATEAM_AUDIT_LOG", raising=False)
     (d / "roster.json").write_text(json.dumps({"agents": [
         {"name": "manager", "role": "gates"},
         {"name": "coder", "role": "implements"},
@@ -169,7 +169,7 @@ def test_work_before_the_episode_began_does_not_count(team):
 
 def test_an_unmarked_episode_starts_where_its_duration_says(team):
     """Episodes recorded before starts were marked: derived, rounded earlier."""
-    from agyteam.activity import episode_start
+    from ateam.activity import episode_start
     mark(team, "2026-09-14 12:10:00", "episode", turns=3,
          stopped_reason="answered", duration_s=600.4)
     assert episode_start(team) == "2026-09-14 11:59:59"
@@ -179,7 +179,7 @@ def test_an_unmarked_episode_starts_where_its_duration_says(team):
 
 def test_the_last_marker_in_the_file_decides_not_the_clock(team):
     """An episode can end and the next begin in the same second."""
-    from agyteam.activity import episode_start
+    from ateam.activity import episode_start
     mark(team, "2026-09-14 12:00:00", "episode_start")
     mark(team, "2026-09-14 12:00:07", "episode", turns=1,
          stopped_reason="team went idle", duration_s=7.0)
@@ -198,8 +198,8 @@ def test_unverifiable_author_is_recorded_as_unverified_not_refused(tmp_path,
     """
     d = tmp_path / "bare"
     d.mkdir()
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(d))
-    monkeypatch.delenv("AGYTEAM_AUDIT_LOG", raising=False)
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(d))
+    monkeypatch.delenv("ATEAM_AUDIT_LOG", raising=False)
     (d / "roster.json").write_text(json.dumps({"agents": [
         {"name": "manager", "role": "m"}, {"name": "coder", "role": "c"}]}))
     (d / "proof.py").write_text("def test_ok():\n    assert 1 == 1\n")
@@ -213,7 +213,7 @@ def test_audit_log_counts_as_a_channel(team, monkeypatch, tmp_path):
     audit = tmp_path / "audit.jsonl"
     audit.write_text(json.dumps(
         {"ts": TS, "agent": "coder", "tool": "run_command"}) + "\n")
-    monkeypatch.setenv("AGYTEAM_AUDIT_LOG", str(audit))
+    monkeypatch.setenv("ATEAM_AUDIT_LOG", str(audit))
     assert review(team, author="coder").startswith("[review recorded:")
 
 
@@ -224,8 +224,8 @@ def test_another_teams_agent_does_not_vouch_for_this_one(team, monkeypatch,
     audit = tmp_path / "audit.jsonl"
     audit.write_text(json.dumps({"ts": TS, "team": "other-team",
                                  "agent": "coder", "tool": "run_command"}) + "\n")
-    monkeypatch.setenv("AGYTEAM_AUDIT_LOG", str(audit))
-    monkeypatch.setenv("AGYTEAM_TEAM", "this-team")
+    monkeypatch.setenv("ATEAM_AUDIT_LOG", str(audit))
+    monkeypatch.setenv("ATEAM_TEAM", "this-team")
     out = review(team, author="coder")
     assert out.startswith("[error:") and "no recorded activity" in out
 
@@ -239,7 +239,7 @@ def test_norm_adoption_is_not_a_work_review(tmp_path):
     an answer reach the user. A team that held a retrospective would arrive
     with an approved review it had never earned.
     """
-    from agyteam.supervisor import Supervisor, record_review
+    from ateam.supervisor import Supervisor, record_review
 
     d = tmp_path / "team"
     d.mkdir()
@@ -258,7 +258,7 @@ def test_norm_adoption_is_not_a_work_review(tmp_path):
 
 def test_rows_written_before_the_kind_field_still_count_as_work(tmp_path):
     """They were work reviews; re-reading history as governance would be a lie."""
-    from agyteam.supervisor import Supervisor
+    from ateam.supervisor import Supervisor
 
     d = tmp_path / "team"
     d.mkdir()

@@ -6,8 +6,8 @@
   team: every live turn was recorded as died in a restart, and an empty
   ledger was saved over the live supervisor's.
 - Asking which models the team's runner offers (the chat app's picker,
-  Record.models(), doctor, `agyteam.models`) read AGYTEAM_RUNNER and
-  AGYTEAM_RUNNER_CONFIG and never the roster's "supervisor" block, so from
+  Record.models(), doctor, `ateam.models`) read ATEAM_RUNNER and
+  ATEAM_RUNNER_CONFIG and never the roster's "supervisor" block, so from
   any process without the launcher's exports the answer was the default
   runner's, or nothing.
 """
@@ -23,10 +23,10 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "evals"))
 
-from agyteam import runner as runner_lib, supervisor  # noqa: E402
-from agyteam.record import Record  # noqa: E402
-from agyteam.runner import Runner  # noqa: E402
-from agyteam.supervisor import Supervisor  # noqa: E402
+from ateam import runner as runner_lib, supervisor  # noqa: E402
+from ateam.record import Record  # noqa: E402
+from ateam.runner import Runner  # noqa: E402
+from ateam.supervisor import Supervisor  # noqa: E402
 from fixture_runner import ScriptedRunner  # noqa: E402
 
 AGENTS = ["manager", "coder"]
@@ -40,9 +40,9 @@ def team(tmp_path, monkeypatch):
     (td / "roster.json").write_text(json.dumps({"agents": [
         {"name": "manager", "role": "coordinates"},
         {"name": "coder", "role": "implements", "model": "team-model"}]}))
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(td))
-    monkeypatch.delenv("AGYTEAM_AGENT", raising=False)
-    for var in ("AGYTEAM_RUNNER", "AGYTEAM_RUNNER_CONFIG", "AGYTEAM_MODEL_CHECK"):
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(td))
+    monkeypatch.delenv("ATEAM_AGENT", raising=False)
+    for var in ("ATEAM_RUNNER", "ATEAM_RUNNER_CONFIG", "ATEAM_MODEL_CHECK"):
         monkeypatch.setenv(var, "")
         monkeypatch.delenv(var)
     runner_lib._MODEL_CACHE.clear()
@@ -82,8 +82,8 @@ def test_status_leaves_the_ledger_alone(team, capsys):
 HOLD = textwrap.dedent("""
     import sys, time, os
     sys.path.insert(0, {root!r}); sys.path.insert(0, {evals!r})
-    os.environ["AGYTEAM_TEAM_DIR"] = {td!r}
-    from agyteam.supervisor import Supervisor
+    os.environ["ATEAM_TEAM_DIR"] = {td!r}
+    from ateam.supervisor import Supervisor
     from fixture_runner import ScriptedRunner
     sup = Supervisor(["manager", "coder"], ScriptedRunner({{}}), quiet=True)
     assert sup._claim_team()
@@ -178,16 +178,16 @@ def test_a_model_the_teams_runner_does_not_offer_is_flagged(team):
 
 
 def test_the_environment_still_answers_for_a_team_with_no_block(team, monkeypatch):
-    monkeypatch.setenv("AGYTEAM_RUNNER", f"{THIS}:Listing")
-    monkeypatch.setenv("AGYTEAM_RUNNER_CONFIG", json.dumps({"offers": ["team-model"]}))
+    monkeypatch.setenv("ATEAM_RUNNER", f"{THIS}:Listing")
+    monkeypatch.setenv("ATEAM_RUNNER_CONFIG", json.dumps({"offers": ["team-model"]}))
     assert runner_lib.team_runner(team) == (
-        f"{THIS}:Listing", {"offers": ["team-model"]}, "AGYTEAM_RUNNER")
+        f"{THIS}:Listing", {"offers": ["team-model"]}, "ATEAM_RUNNER")
     assert Record(team).models()["coder"]["available"] is True
 
 
 def test_the_roster_beats_the_environment_and_brings_its_own_config(team, monkeypatch):
-    monkeypatch.setenv("AGYTEAM_RUNNER", "agyteam.runner_agy:AgyRunner")
-    monkeypatch.setenv("AGYTEAM_RUNNER_CONFIG", json.dumps({"binary": "/opt/agy"}))
+    monkeypatch.setenv("ATEAM_RUNNER", "ateam.runner_agy:AgyRunner")
+    monkeypatch.setenv("ATEAM_RUNNER_CONFIG", json.dumps({"binary": "/opt/agy"}))
     block(team, runner=f"{THIS}:Listing")
     assert runner_lib.team_runner(team) == (f"{THIS}:Listing", {}, "roster"), \
         "another runner's config must not travel to the team's"
@@ -195,7 +195,7 @@ def test_the_roster_beats_the_environment_and_brings_its_own_config(team, monkey
 
 
 def test_setting_a_model_is_checked_against_the_teams_runner(team, monkeypatch):
-    from agyteam import models
+    from ateam import models
     monkeypatch.setenv("USER", "operator")
     block(team, runner=f"{THIS}:Listing", runner_config={"offers": ["team-model"]})
     models.set_model(team, "coder", "team-model")

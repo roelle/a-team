@@ -7,6 +7,37 @@ the README for what counts as the public surface.
 
 ## [Unreleased]
 
+## [4.0.0] - 2026-11-01
+
+agy-team and agy-chat are now one product, a-team, in a new repository. It is
+forked from agy-team 3.24.0 and agy-chat 0.19.0 with the history of both. Those
+repositories stay where they are; nothing changes for a team that stays on them.
+
+### Changed
+- **One package and one command.** `pip install a-team` or pipx. `a-team` runs
+  the app, and `a-team cli`, `a-team lifecycle`, `a-team starter`, `a-team
+  people` and `a-team plugin` do the rest. The app's history is in
+  `docs/app-changelog.md`.
+- **Renamed:** the package to `ateam`, variables to `ATEAM_*`, the default home
+  for teams to `~/a-teams`, a project's shared directory to `.a-team-shared`, and
+  the plugin and its MCP servers to `a-team` and `ateam_*`.
+
+### Added
+- **It runs in a container.** The `Dockerfile` works with Docker or Podman, on
+  an API key, as a non-root user. `a-team --start-teams` brings back every team
+  that was not stopped on purpose, and SIGTERM now stops the app promptly.
+
+### Kept working
+- `AGYTEAM_*` and `AGYCHAT_*` variables are read when the new name is not set.
+- `~/agy-teams` stays the default until `~/a-teams` exists, and an existing
+  `.agy-team-shared` stays in use.
+- A roster's `agyteam.*` runner, transport and memory specs, and
+  `allowed_mcp_servers` entries, are read as their new names.
+
+### Removed
+- The `agyteam` and `agy-chat` commands, and importing `agyteam`. Code of your
+  own that imports it needs `ateam` instead.
+
 ## [3.24.0] - 2026-11-01
 
 ### Changed
@@ -643,7 +674,8 @@ MCP memory server.
 ## [1.0] - 2026-09-08
 Milestone tag (pre-semver).
 
-[Unreleased]: https://github.com/roelle/agy-team/compare/v3.24.0...HEAD
+[Unreleased]: https://github.com/roelle/a-team/compare/v4.0.0...HEAD
+[4.0.0]: https://github.com/roelle/a-team/releases/tag/v4.0.0
 [3.24.0]: https://github.com/roelle/agy-team/compare/v3.23.0...v3.24.0
 [3.23.0]: https://github.com/roelle/agy-team/compare/v3.22.0...v3.23.0
 [3.22.0]: https://github.com/roelle/agy-team/compare/v3.21.0...v3.22.0

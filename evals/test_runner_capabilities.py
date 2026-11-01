@@ -13,9 +13,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from agyteam.runner import Runner  # noqa: E402
-from agyteam.runner_agy import AgyRunner  # noqa: E402
-from agyteam.runner_template import MyRunner  # noqa: E402
+from ateam.runner import Runner  # noqa: E402
+from ateam.runner_agy import AgyRunner  # noqa: E402
+from ateam.runner_template import MyRunner  # noqa: E402
 
 
 def test_base_class_defaults_to_no_capability():
@@ -37,7 +37,7 @@ def test_external_host_runner_declares_both_false():
 
 def test_sdk_runner_declares_both_true_if_importable():
     try:
-        from agyteam.runner_sdk import SdkRunner
+        from ateam.runner_sdk import SdkRunner
     except Exception:
         return          # dependency absent; nothing to assert
     assert SdkRunner.supports_audit is True
@@ -46,7 +46,7 @@ def test_sdk_runner_declares_both_true_if_importable():
 
 
 def test_status_reports_capabilities():
-    from agyteam import lifecycle
+    from ateam import lifecycle
     caps = lifecycle.runner_capabilities()
     assert "supports_audit" in caps and "supports_containment" in caps
     assert "spec" in caps
@@ -65,7 +65,7 @@ def test_capability_scoping_is_declared_by_every_runner():
     assert AgyRunner.supports_capability_scoping is False
     assert MyRunner.supports_capability_scoping is False
     try:
-        from agyteam.runner_sdk import SdkRunner
+        from ateam.runner_sdk import SdkRunner
     except Exception:
         return
     assert SdkRunner.supports_capability_scoping is True
@@ -73,21 +73,21 @@ def test_capability_scoping_is_declared_by_every_runner():
 
 def test_introspection_says_whether_tools_off_is_enforced(tmp_path, monkeypatch):
     """The one reader that acts on the answer must be told which it is."""
-    from agyteam import mcp_self
+    from ateam import mcp_self
 
     td = tmp_path / "team"
     td.mkdir()
     (td / "roster.json").write_text(json.dumps({"agents": [
         {"name": "manager", "role": "gates",
          "tools_off": ["create_file", "edit_file"]}]}))
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(td))
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(td))
 
-    monkeypatch.setenv("AGYTEAM_RUNNER", "agyteam.runner_agy:AgyRunner")
+    monkeypatch.setenv("ATEAM_RUNNER", "ateam.runner_agy:AgyRunner")
     out = mcp_self.my_capabilities("manager", team_dir=td)
     assert "create_file" in out
     assert "NOT enforced" in out, out
 
-    monkeypatch.setenv("AGYTEAM_RUNNER", "agyteam.runner_sdk:SdkRunner")
+    monkeypatch.setenv("ATEAM_RUNNER", "ateam.runner_sdk:SdkRunner")
     out = mcp_self.my_capabilities("manager", team_dir=td)
     assert "never reaches you" in out, out
 
@@ -96,11 +96,11 @@ def test_a_cycled_conversation_is_retired_not_discarded(tmp_path, monkeypatch):
     """--cycle-all emptied conversations.json and nothing re-registered.
 
     Observed shrinking live across one run: five agents, then two, then one.
-    Afterwards `agyteam.session <agent>` found nobody -- the exact failure the
+    Afterwards `ateam.session <agent>` found nobody -- the exact failure the
     base class exists to prevent -- and anything reverse-mapping a
     conversation id back to an agent failed open, silently.
     """
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(tmp_path))
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(tmp_path))
 
     class R(Runner):
         label = "t"
@@ -145,7 +145,7 @@ def _team_that_said_something(tmp_path):
 
 def _grade(audit_path, env_extra=None, team_dir="/nonexistent"):
     import os
-    env = {k: v for k, v in os.environ.items() if k != "AGYTEAM_AUDIT_LOG"}
+    env = {k: v for k, v in os.environ.items() if k != "ATEAM_AUDIT_LOG"}
     env.update(env_extra or {})
     return subprocess.run(
         [sys.executable, str(ROOT / "bench/grade.py"), "audit_telemetry",
@@ -182,12 +182,12 @@ def test_grader_survives_a_runner_it_cannot_construct(tmp_path):
     """Unknown must not become "refuse to grade".
 
     load() raises SystemExit on every misconfiguration, and SystemExit is a
-    BaseException. Catching Exception around it meant one bad AGYTEAM_RUNNER
+    BaseException. Catching Exception around it meant one bad ATEAM_RUNNER
     exited the grader with no score at all -- a regression introduced by the
     commit that added the N/A handling in the first place.
     """
     out = _grade("/nonexistent/audit.jsonl",
-                 env_extra={"AGYTEAM_RUNNER": "no.such.module:Nope"},
+                 env_extra={"ATEAM_RUNNER": "no.such.module:Nope"},
                  team_dir=_team_that_said_something(tmp_path))
     assert out.strip(), "the grader printed nothing at all"
     assert "audit_telemetry" in out

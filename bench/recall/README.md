@@ -1,6 +1,6 @@
 # bench/recall: does the right memory reach the agent?
 
-The bench behind `agyteam/recall.py`. It asks one question at several
+The bench behind `ateam/recall.py`. It asks one question at several
 corpus sizes: when a request needs one of an agent's own memories, is that
 memory put in front of the agent, and when a request does not need any, is
 the agent left alone?

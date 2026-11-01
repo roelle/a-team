@@ -1,10 +1,10 @@
 {
-  "agy-team-steer": {
+  "a-team-steer": {
     "PostToolUse": [
-      {"matcher": "*", "hooks": [{"command": "__PYTHON__ -m agyteam.hook_step tool", "timeout": 5}]}
+      {"matcher": "*", "hooks": [{"command": "__PYTHON__ -m ateam.hook_step tool", "timeout": 5}]}
     ],
     "PreInvocation": [
-      {"command": "__PYTHON__ -m agyteam.hook_step model", "timeout": 5}
+      {"command": "__PYTHON__ -m ateam.hook_step model", "timeout": 5}
     ]
   }
 }

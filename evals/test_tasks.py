@@ -21,7 +21,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from agyteam import doctor, mcp_tasks, tasks  # noqa: E402
+from ateam import doctor, mcp_tasks, tasks  # noqa: E402
 
 NOON = calendar.timegm((2026, 9, 24, 12, 0, 0))    # 2026-09-24T12:00:00Z
 PAST = "2000-01-01T00:00:00Z"
@@ -35,7 +35,7 @@ def team(tmp_path, monkeypatch):
     (td / "roster.json").write_text(json.dumps({"agents": [
         {"name": "coder", "role": "implements"},
         {"name": "qa", "role": "reviews"}]}))
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(td))
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(td))
     tasks._quiet.clear()
     return td
 
@@ -284,7 +284,7 @@ def test_a_send_without_keywords_still_gets_every_reminder(team):
 
 
 def test_reminders_reach_the_inbox_as_reminders_with_their_task(team):
-    from agyteam.transport_file import FileTransport
+    from ateam.transport_file import FileTransport
     t = remind(team, title="a")
     tasks.sweep(team, FileTransport("supervisor").send_kind)
     [msg] = FileTransport("coder").fetch()
@@ -346,8 +346,8 @@ def test_the_sweep_runs_from_the_command_line(team):
     """A host that does not run the supervisor calls this from its own
     scheduler; the reminder must land in the owner's inbox."""
     remind(team)
-    env = {**os.environ, "PYTHONPATH": str(ROOT), "AGYTEAM_TEAM_DIR": str(team)}
-    out = subprocess.run([sys.executable, "-m", "agyteam.tasks", "sweep",
+    env = {**os.environ, "PYTHONPATH": str(ROOT), "ATEAM_TEAM_DIR": str(team)}
+    out = subprocess.run([sys.executable, "-m", "ateam.tasks", "sweep",
                           "--team-dir", str(team)],
                          capture_output=True, text=True, env=env, timeout=60)
     assert out.returncode == 0, out.stderr

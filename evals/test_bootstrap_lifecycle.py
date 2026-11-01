@@ -22,15 +22,15 @@ if str(ROOT) not in sys.path:
 if str(ROOT / "evals") not in sys.path:
     sys.path.insert(0, str(ROOT / "evals"))
 
-# Isolate from any ambient AGYTEAM_* environment variables
-for _k in ("AGYTEAM_TEAM_DIR", "AGYTEAM_SHARED_DIR", "AGYTEAM_AGENT", "AGYTEAM_ROSTER_ADMIN"):
+# Isolate from any ambient ATEAM_* environment variables
+for _k in ("ATEAM_TEAM_DIR", "ATEAM_SHARED_DIR", "ATEAM_AGENT", "ATEAM_ROSTER_ADMIN"):
     os.environ.pop(_k, None)
 
 from rpc_util import rpc, text_of, tool_names
-from agyteam import lifecycle, roster as roster_lib
-from agyteam.runner_sdk import SdkRunner
-from agyteam.supervisor import Supervisor
-from agyteam.transport import load as load_transport
+from ateam import lifecycle, roster as roster_lib
+from ateam.runner_sdk import SdkRunner
+from ateam.supervisor import Supervisor
+from ateam.transport import load as load_transport
 from fixture_runner import ScriptedRunner
 
 
@@ -163,7 +163,7 @@ def test_lifecycle_api():
 
 
 def test_lifecycle_cli():
-    """Test CLI subcommands via python -m agyteam.lifecycle."""
+    """Test CLI subcommands via python -m ateam.lifecycle."""
     with tempfile.TemporaryDirectory(prefix="agy-test-cli-") as td_raw:
         td = Path(td_raw)
         roster_path = td / "roster.json"
@@ -175,7 +175,7 @@ def test_lifecycle_cli():
 
         def run_cli(*args):
             return subprocess.run(
-                [sys.executable, "-m", "agyteam.lifecycle", "--team-dir", str(td), *args],
+                [sys.executable, "-m", "ateam.lifecycle", "--team-dir", str(td), *args],
                 cwd=ROOT, env=env, capture_output=True, text=True, check=True
             )
 
@@ -228,7 +228,7 @@ def test_lifecycle_cli():
 
 
 def test_mcp_admin_tools():
-    """Test MCP bus tools exposure and admin execution gated by AGYTEAM_ROSTER_ADMIN."""
+    """Test MCP bus tools exposure and admin execution gated by ATEAM_ROSTER_ADMIN."""
     with tempfile.TemporaryDirectory(prefix="agy-test-mcp-") as td_raw:
         td = Path(td_raw)
         roster_path = td / "roster.json"
@@ -237,10 +237,10 @@ def test_mcp_admin_tools():
             "agents": [{"name": "tpm", "role": "coordinator"}],
         }))
 
-        # 1. When AGYTEAM_ROSTER_ADMIN is not enabled, admin tools are omitted
+        # 1. When ATEAM_ROSTER_ADMIN is not enabled, admin tools are omitted
         resp_no_admin = rpc(
-            "agyteam.mcp_bus", [str(td), "tpm"], [("tools/list", {})],
-            env={"AGYTEAM_ROSTER_ADMIN": "0", "AGYTEAM_TEAM_DIR": str(td), "AGYTEAM_AGENT": "tpm"}
+            "ateam.mcp_bus", [str(td), "tpm"], [("tools/list", {})],
+            env={"ATEAM_ROSTER_ADMIN": "0", "ATEAM_TEAM_DIR": str(td), "ATEAM_AGENT": "tpm"}
         )
         tools_no_admin = tool_names(resp_no_admin[1])
         assert "grant_workspace" not in tools_no_admin
@@ -249,7 +249,7 @@ def test_mcp_admin_tools():
         assert "start_team" not in tools_no_admin
         assert "team_status" not in tools_no_admin
 
-        # 2. When AGYTEAM_ROSTER_ADMIN=1, admin tools are listed and callable
+        # 2. When ATEAM_ROSTER_ADMIN=1, admin tools are listed and callable
         ws_mcp = str(Path(td / "mcp_ws").resolve())
         calls = [
             ("grant_workspace", {"workspace": ws_mcp}),
@@ -260,8 +260,8 @@ def test_mcp_admin_tools():
             ("revoke_workspace", {"workspace": ws_mcp}),
         ]
         resp_admin = rpc(
-            "agyteam.mcp_bus", [str(td), "tpm"], calls,
-            env={"AGYTEAM_ROSTER_ADMIN": "1", "AGYTEAM_TEAM_DIR": str(td), "AGYTEAM_AGENT": "tpm"}
+            "ateam.mcp_bus", [str(td), "tpm"], calls,
+            env={"ATEAM_ROSTER_ADMIN": "1", "ATEAM_TEAM_DIR": str(td), "ATEAM_AGENT": "tpm"}
         )
         tools_admin = tool_names(resp_admin[1])
         assert "grant_workspace" in tools_admin
@@ -309,8 +309,8 @@ def test_supervisor_stop_and_resume_mail_preserved():
                 {"name": "coder", "role": "dev"},
             ]
         }))
-        old_env = os.environ.get("AGYTEAM_TEAM_DIR")
-        os.environ["AGYTEAM_TEAM_DIR"] = str(td)
+        old_env = os.environ.get("ATEAM_TEAM_DIR")
+        os.environ["ATEAM_TEAM_DIR"] = str(td)
         try:
             # Send message to tpm
             load_transport("user").send("tpm", "critical message before pause")
@@ -345,9 +345,9 @@ def test_supervisor_stop_and_resume_mail_preserved():
             sup.close()
         finally:
             if old_env is not None:
-                os.environ["AGYTEAM_TEAM_DIR"] = old_env
+                os.environ["ATEAM_TEAM_DIR"] = old_env
             else:
-                os.environ.pop("AGYTEAM_TEAM_DIR", None)
+                os.environ.pop("ATEAM_TEAM_DIR", None)
 
 
 def test_supervisor_dynamic_roster_reload():
@@ -361,8 +361,8 @@ def test_supervisor_dynamic_roster_reload():
                 {"name": "coder", "role": "developer"},
             ]
         }))
-        old_env = os.environ.get("AGYTEAM_TEAM_DIR")
-        os.environ["AGYTEAM_TEAM_DIR"] = str(td)
+        old_env = os.environ.get("ATEAM_TEAM_DIR")
+        os.environ["ATEAM_TEAM_DIR"] = str(td)
         try:
             sup = Supervisor(["tpm", "coder"], ScriptedRunner({}), quiet=True)
             assert set(sup.agents) == {"tpm", "coder"}
@@ -383,9 +383,9 @@ def test_supervisor_dynamic_roster_reload():
             sup.close()
         finally:
             if old_env is not None:
-                os.environ["AGYTEAM_TEAM_DIR"] = old_env
+                os.environ["ATEAM_TEAM_DIR"] = old_env
             else:
-                os.environ.pop("AGYTEAM_TEAM_DIR", None)
+                os.environ.pop("ATEAM_TEAM_DIR", None)
 
 
 def test_runner_sdk_session_recycling_and_banner():
@@ -474,8 +474,8 @@ def test_end_to_end_workspace_grant_and_effective_workspaces():
             "workspaces": [top_ws],
             "agents": [{"name": "coder", "workspaces": [coder_ws]}],
         }))
-        old_env = os.environ.get("AGYTEAM_TEAM_DIR")
-        os.environ["AGYTEAM_TEAM_DIR"] = str(td)
+        old_env = os.environ.get("ATEAM_TEAM_DIR")
+        os.environ["ATEAM_TEAM_DIR"] = str(td)
         runner = None
         try:
             runner = SdkRunner()
@@ -507,9 +507,9 @@ def test_end_to_end_workspace_grant_and_effective_workspaces():
             if runner is not None:
                 runner.close()
             if old_env is not None:
-                os.environ["AGYTEAM_TEAM_DIR"] = old_env
+                os.environ["ATEAM_TEAM_DIR"] = old_env
             else:
-                os.environ.pop("AGYTEAM_TEAM_DIR", None)
+                os.environ.pop("ATEAM_TEAM_DIR", None)
 
 
 if __name__ == "__main__":

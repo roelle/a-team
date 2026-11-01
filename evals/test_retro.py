@@ -25,9 +25,9 @@ from rpc_util import ROOT, check
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "evals"))
 
-from agyteam import persona, scope, supervisor  # noqa: E402
-from agyteam.runner import Runner  # noqa: E402
-from agyteam.scope import Scopes  # noqa: E402
+from ateam import persona, scope, supervisor  # noqa: E402
+from ateam.runner import Runner  # noqa: E402
+from ateam.scope import Scopes  # noqa: E402
 
 
 
@@ -35,7 +35,7 @@ def test_norms_absence() -> tuple[int, int]:
     """NORMS.md is absent by default, and absence is normal."""
     print("\n== Step 1: norms absence ==")
     checks = []
-    tmp = Path(tempfile.mkdtemp(prefix="agyteam-norms-absent-"))
+    tmp = Path(tempfile.mkdtemp(prefix="ateam-norms-absent-"))
     try:
         dur = tmp / "durable"
         proj = tmp / "project"
@@ -71,7 +71,7 @@ def test_norms_seeding() -> tuple[int, int]:
     """Seeding NORMS.md populates CONSISTENCY and VERIFICATION, respects overwrite/force."""
     print("\n== Step 1: norms seeding ==")
     checks = []
-    tmp = Path(tempfile.mkdtemp(prefix="agyteam-norms-seed-"))
+    tmp = Path(tempfile.mkdtemp(prefix="ateam-norms-seed-"))
     try:
         dur = tmp / "durable"
         proj = tmp / "project"
@@ -131,7 +131,7 @@ def test_brief_loading_and_sharing() -> tuple[int, int]:
     """Norms loaded into every agent's brief alongside existing sections."""
     print("\n== Step 1: brief loading and teammate sharing ==")
     checks = []
-    tmp = Path(tempfile.mkdtemp(prefix="agyteam-norms-brief-"))
+    tmp = Path(tempfile.mkdtemp(prefix="ateam-norms-brief-"))
     try:
         dur = tmp / "durable"
         proj = tmp / "project"
@@ -185,7 +185,7 @@ def test_team_scoping() -> tuple[int, int]:
     """Different teams have different norms; isolation is maintained."""
     print("\n== Step 1: team scoping and isolation ==")
     checks = []
-    tmp = Path(tempfile.mkdtemp(prefix="agyteam-norms-iso-"))
+    tmp = Path(tempfile.mkdtemp(prefix="ateam-norms-iso-"))
     try:
         scopes_red = Scopes(durable=tmp / "red", project=tmp / "proj", shared=tmp / "shr", team="red")
         scopes_blue = Scopes(durable=tmp / "blue", project=tmp / "proj", shared=tmp / "shr", team="blue")
@@ -217,7 +217,7 @@ def test_signature_compatibility() -> tuple[int, int]:
     """brief() handles all existing and new signature permutations."""
     print("\n== Step 1: brief signature compatibility ==")
     checks = []
-    tmp = Path(tempfile.mkdtemp(prefix="agyteam-norms-sig-"))
+    tmp = Path(tempfile.mkdtemp(prefix="ateam-norms-sig-"))
     try:
         dur = tmp / "durable"
         proj = tmp / "project"
@@ -259,25 +259,25 @@ def test_signature_compatibility() -> tuple[int, int]:
         checks.append(check("brief(agent, agents, shared_dir=scopes) handles Scopes object",
                             norms_text in b6 and f"belongs under {shr}" in b6, b6[-300:]))
 
-        # 7. Environment variable AGYTEAM_TEAM_DIR resolution
-        old_env = os.environ.get("AGYTEAM_TEAM_DIR")
+        # 7. Environment variable ATEAM_TEAM_DIR resolution
+        old_env = os.environ.get("ATEAM_TEAM_DIR")
         try:
-            os.environ["AGYTEAM_TEAM_DIR"] = str(team_dir)
+            os.environ["ATEAM_TEAM_DIR"] = str(team_dir)
             b7 = persona.brief("coder", agents)
-            checks.append(check("brief() picks up AGYTEAM_TEAM_DIR from environment",
+            checks.append(check("brief() picks up ATEAM_TEAM_DIR from environment",
                                 norms_text in b7, b7[-200:]))
         finally:
             if old_env is not None:
-                os.environ["AGYTEAM_TEAM_DIR"] = old_env
+                os.environ["ATEAM_TEAM_DIR"] = old_env
             else:
-                os.environ.pop("AGYTEAM_TEAM_DIR", None)
+                os.environ.pop("ATEAM_TEAM_DIR", None)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     return sum(checks), len(checks)
 
 
 def test_stdlib_purity() -> tuple[int, int]:
-    """agyteam.scope and agyteam.persona must be stdlib-only."""
+    """ateam.scope and ateam.persona must be stdlib-only."""
     print("\n== Step 1: stdlib purity (system python, no venv) ==")
     sys_py = "/usr/bin/python3"
     if not Path(sys_py).exists():
@@ -290,7 +290,7 @@ def test_stdlib_purity() -> tuple[int, int]:
         return p.returncode == 0, p.stderr
 
     checks = []
-    for mod in ("agyteam.scope", "agyteam.persona"):
+    for mod in ("ateam.scope", "ateam.persona"):
         ok, err = imports(mod)
         checks.append(check(f"{mod} imports with stdlib only", ok, err))
 
@@ -497,7 +497,7 @@ def test_retro_norm_change_workflow() -> tuple[int, int]:
     """Test full retrospective workflow when a norm change is proposed."""
     print("\n== Step 2: retro workflow with norm change ==")
     checks = []
-    tmp = Path(tempfile.mkdtemp(prefix="agyteam-retro-norm-"))
+    tmp = Path(tempfile.mkdtemp(prefix="ateam-retro-norm-"))
     try:
         td = make_retro_team(tmp)
         leader_output = """## 1. What went well
@@ -562,7 +562,7 @@ def test_retro_no_change_workflow() -> tuple[int, int]:
     """Test retrospective workflow when 'no change, and here is why' is decided."""
     print("\n== Step 2: retro workflow with no change ==")
     checks = []
-    tmp = Path(tempfile.mkdtemp(prefix="agyteam-retro-nochange-"))
+    tmp = Path(tempfile.mkdtemp(prefix="ateam-retro-nochange-"))
     try:
         td = make_retro_team(tmp)
         leader_output = """## 1. What went well
@@ -614,7 +614,7 @@ def test_retro_rejections() -> tuple[int, int]:
     """Test retrospective failures on dodges, missing sections, and unknown leader."""
     print("\n== Step 2: retro rejection on dodges and missing sections ==")
     checks = []
-    tmp = Path(tempfile.mkdtemp(prefix="agyteam-retro-fail-"))
+    tmp = Path(tempfile.mkdtemp(prefix="ateam-retro-fail-"))
     try:
         td = make_retro_team(tmp)
 
@@ -663,7 +663,7 @@ def test_accountability_tension() -> tuple[int, int]:
     """Test naming of accountability tension when leader is accountable (e.g. tpm/manager) vs non-accountable."""
     print("\n== Step 2: accountability tension naming ==")
     checks = []
-    tmp = Path(tempfile.mkdtemp(prefix="agyteam-retro-tension-"))
+    tmp = Path(tempfile.mkdtemp(prefix="ateam-retro-tension-"))
     try:
         tension_needle = supervisor.TENSION_ACCOUNTABLE
 
@@ -707,7 +707,7 @@ def test_retro_uses_durable_record() -> tuple[int, int]:
     """Test that retro prompts include durable record (episodes, reviews, bus traffic)."""
     print("\n== Step 2: retro uses durable record not memory ==")
     checks = []
-    tmp = Path(tempfile.mkdtemp(prefix="agyteam-retro-rec-"))
+    tmp = Path(tempfile.mkdtemp(prefix="ateam-retro-rec-"))
     try:
         td = make_retro_team(tmp)
         valid_output = """## 1. What went well
@@ -741,7 +741,7 @@ def test_retro_cli() -> tuple[int, int]:
     """Test supervisor CLI with --retro and --retro-leader."""
     print("\n== Step 2: supervisor CLI --retro ==")
     checks = []
-    tmp = Path(tempfile.mkdtemp(prefix="agyteam-retro-cli-"))
+    tmp = Path(tempfile.mkdtemp(prefix="ateam-retro-cli-"))
     try:
         valid_output = """## 1. What went well
 Delivered on time.
@@ -810,7 +810,7 @@ def test_retro_refusal() -> tuple[int, int]:
     """Test Step 3 refusal when there is no new work, and override with --force."""
     print("\n== Step 3: retro refusal on no new work ==")
     checks = []
-    tmp = Path(tempfile.mkdtemp(prefix="agyteam-retro-refuse-"))
+    tmp = Path(tempfile.mkdtemp(prefix="ateam-retro-refuse-"))
     try:
         valid_output = """## 1. What went well
 Great execution.
@@ -899,7 +899,7 @@ def test_retro_participant_capping() -> tuple[int, int]:
     """Test Step 3 capping of retro participants based on recent activity."""
     print("\n== Step 3: retro participant capping ==")
     checks = []
-    tmp = Path(tempfile.mkdtemp(prefix="agyteam-retro-cap-"))
+    tmp = Path(tempfile.mkdtemp(prefix="ateam-retro-cap-"))
     try:
         td = tmp / "team"
         (td / "inbox").mkdir(parents=True, exist_ok=True)
@@ -990,7 +990,7 @@ def test_retro_transcript_bounding() -> tuple[int, int]:
     """Test Step 3 bounding of history transcript and participant reflections."""
     print("\n== Step 3: retro transcript and reflection bounding ==")
     checks = []
-    tmp = Path(tempfile.mkdtemp(prefix="agyteam-retro-bound-"))
+    tmp = Path(tempfile.mkdtemp(prefix="ateam-retro-bound-"))
     try:
         # 1. format_retro_record character truncation
         fake_rep = {

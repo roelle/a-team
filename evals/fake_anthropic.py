@@ -5,7 +5,7 @@ lives between them: flags it accepts, sessions it resumes, tools and hooks it
 really mounts. A faked SDK would pass while all of that was wrong. So the tests
 run the real CLI and fake only the far end, with no key and no cost.
 
-    api = FakeAnthropic(["hello", use("mcp__agyteam_bus__list_teammates", {}), "done"])
+    api = FakeAnthropic(["hello", use("mcp__ateam_bus__list_teammates", {}), "done"])
     ANTHROPIC_BASE_URL=api.url  ANTHROPIC_API_KEY=not-a-real-key
 
 Each entry answers one request that offered tools, in order, and the last is

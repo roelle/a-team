@@ -1,16 +1,16 @@
 """A second, independent memory store — SQLite instead of markdown files.
 
 Written the way a third party would: it imports only the public interface
-(agyteam.memory) and touches no agyteam internals. Its job is to prove the
+(ateam.memory) and touches no ateam internals. Its job is to prove the
 storage seam is real, so moving memory to a shared or internal backend is a
 config change rather than a fork.
 
-Config (AGYTEAM_MEMORY_CONFIG): {"db": "/path/to.db"}
+Config (ATEAM_MEMORY_CONFIG): {"db": "/path/to.db"}
 """
 import os
 import sqlite3
 
-from agyteam.memory import MemoryEntry, MemoryStore
+from ateam.memory import MemoryEntry, MemoryStore
 
 
 class SqliteMemory(MemoryStore):
@@ -18,7 +18,7 @@ class SqliteMemory(MemoryStore):
 
     def __init__(self, agent, config=None):
         super().__init__(agent, config)
-        db = self.config.get("db") or os.environ.get("AGYTEAM_FIXTURE_MEM_DB")
+        db = self.config.get("db") or os.environ.get("ATEAM_FIXTURE_MEM_DB")
         if not db:
             raise SystemExit("SqliteMemory needs config {'db': ...}")
         self.conn = sqlite3.connect(db, timeout=10)

@@ -23,8 +23,8 @@ if str(ROOT) not in sys.path:
 import pytest
 from google.antigravity.types import BuiltinTools, ToolCall, ToolResult
 
-from agyteam.observer_file import FileObserver
-from agyteam.runner_sdk import SdkRunner
+from ateam.observer_file import FileObserver
+from ateam.runner_sdk import SdkRunner
 
 FIXTURE_PATH = ROOT / "fixtures" / "tool_result_fixture.json"
 
@@ -34,7 +34,7 @@ def _setup_runner():
     td = Path(tempfile.mkdtemp(prefix="test-adapter-helper-")) / "team"
     td.mkdir(parents=True)
     (td / "roster.json").write_text(json.dumps({"agents": [{"name": "coder", "role": "implements"}]}))
-    os.environ["AGYTEAM_TEAM_DIR"] = str(td)
+    os.environ["ATEAM_TEAM_DIR"] = str(td)
     obs = FileObserver({"team_dir": str(td)})
     runner = SdkRunner(observer=obs)
     agent = runner._submit(runner._ensure("coder"))
@@ -84,8 +84,8 @@ def test_sdk_runner_adapter_all_committed_samples():
     td.mkdir(parents=True)
     (td / "roster.json").write_text(json.dumps({"agents": [{"name": "coder", "role": "implements"}]}))
 
-    saved_team_dir = os.environ.get("AGYTEAM_TEAM_DIR")
-    os.environ["AGYTEAM_TEAM_DIR"] = str(td)
+    saved_team_dir = os.environ.get("ATEAM_TEAM_DIR")
+    os.environ["ATEAM_TEAM_DIR"] = str(td)
 
     try:
         obs = FileObserver({"team_dir": str(td)})
@@ -123,9 +123,9 @@ def test_sdk_runner_adapter_all_committed_samples():
 
     finally:
         if saved_team_dir is not None:
-            os.environ["AGYTEAM_TEAM_DIR"] = saved_team_dir
+            os.environ["ATEAM_TEAM_DIR"] = saved_team_dir
         else:
-            os.environ.pop("AGYTEAM_TEAM_DIR", None)
+            os.environ.pop("ATEAM_TEAM_DIR", None)
         shutil.rmtree(td.parent, ignore_errors=True)
 
 
@@ -135,8 +135,8 @@ def test_sdk_runner_adapter_builtin_enum_and_exception():
     td.mkdir(parents=True)
     (td / "roster.json").write_text(json.dumps({"agents": [{"name": "coder", "role": "implements"}]}))
 
-    saved_team_dir = os.environ.get("AGYTEAM_TEAM_DIR")
-    os.environ["AGYTEAM_TEAM_DIR"] = str(td)
+    saved_team_dir = os.environ.get("ATEAM_TEAM_DIR")
+    os.environ["ATEAM_TEAM_DIR"] = str(td)
 
     try:
         obs = FileObserver({"team_dir": str(td)})
@@ -169,9 +169,9 @@ def test_sdk_runner_adapter_builtin_enum_and_exception():
 
     finally:
         if saved_team_dir is not None:
-            os.environ["AGYTEAM_TEAM_DIR"] = saved_team_dir
+            os.environ["ATEAM_TEAM_DIR"] = saved_team_dir
         else:
-            os.environ.pop("AGYTEAM_TEAM_DIR", None)
+            os.environ.pop("ATEAM_TEAM_DIR", None)
         shutil.rmtree(td.parent, ignore_errors=True)
 
 
@@ -181,8 +181,8 @@ def test_sdk_runner_adapter_fifo_name_fallback():
     td.mkdir(parents=True)
     (td / "roster.json").write_text(json.dumps({"agents": [{"name": "coder", "role": "implements"}]}))
 
-    saved_team_dir = os.environ.get("AGYTEAM_TEAM_DIR")
-    os.environ["AGYTEAM_TEAM_DIR"] = str(td)
+    saved_team_dir = os.environ.get("ATEAM_TEAM_DIR")
+    os.environ["ATEAM_TEAM_DIR"] = str(td)
 
     try:
         obs = FileObserver({"team_dir": str(td)})
@@ -217,15 +217,15 @@ def test_sdk_runner_adapter_fifo_name_fallback():
 
     finally:
         if saved_team_dir is not None:
-            os.environ["AGYTEAM_TEAM_DIR"] = saved_team_dir
+            os.environ["ATEAM_TEAM_DIR"] = saved_team_dir
         else:
-            os.environ.pop("AGYTEAM_TEAM_DIR", None)
+            os.environ.pop("ATEAM_TEAM_DIR", None)
         shutil.rmtree(td.parent, ignore_errors=True)
 
 
 def test_banned_defensive_guessing_and_speculative_getattrs():
-    """Verify agyteam/runner_sdk.py contains no speculative getattr fallback chains or blanket try/excepts."""
-    src_path = Path(__file__).resolve().parent.parent / "agyteam" / "runner_sdk.py"
+    """Verify ateam/runner_sdk.py contains no speculative getattr fallback chains or blanket try/excepts."""
+    src_path = Path(__file__).resolve().parent.parent / "ateam" / "runner_sdk.py"
     src_content = src_path.read_text()
 
     assert 'getattr(res, "args"' not in src_content
@@ -246,7 +246,7 @@ def test_banned_defensive_guessing_and_speculative_getattrs():
 def test_correlation_maps_cleared_on_trace():
     """Verify that both _tool_call_starts and _tool_call_starts_by_name are cleared after tracing."""
     td, runner, obs, pre_hook, post_hook = _setup_runner()
-    saved_team_dir = os.environ.get("AGYTEAM_TEAM_DIR")
+    saved_team_dir = os.environ.get("ATEAM_TEAM_DIR")
     try:
         # Case 1: Calls with both ID and Step ID
         for i in range(10):
@@ -285,9 +285,9 @@ def test_correlation_maps_cleared_on_trace():
         runner.close()
     finally:
         if saved_team_dir is not None:
-            os.environ["AGYTEAM_TEAM_DIR"] = saved_team_dir
+            os.environ["ATEAM_TEAM_DIR"] = saved_team_dir
         else:
-            os.environ.pop("AGYTEAM_TEAM_DIR", None)
+            os.environ.pop("ATEAM_TEAM_DIR", None)
         shutil.rmtree(td.parent, ignore_errors=True)
 
 if __name__ == "__main__":

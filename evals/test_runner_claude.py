@@ -21,11 +21,11 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "evals"))
 
-from agyteam.runner_claude import ClaudeRunner  # noqa: E402
-from agyteam.transport import load as load_transport  # noqa: E402
+from ateam.runner_claude import ClaudeRunner  # noqa: E402
+from ateam.transport import load as load_transport  # noqa: E402
 from fake_anthropic import FakeAnthropic, status, use  # noqa: E402
 
-BUS = "mcp__agyteam_bus__"
+BUS = "mcp__ateam_bus__"
 
 
 @pytest.fixture
@@ -35,10 +35,10 @@ def team(tmp_path, monkeypatch):
     (td / "roster.json").write_text(json.dumps({"agents": [
         {"name": "coder", "role": "implements"},
         {"name": "qa", "role": "reviews"}]}))
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(td))
-    monkeypatch.setenv("AGYTEAM_DURABLE_DIR", str(tmp_path / "durable"))
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(td))
+    monkeypatch.setenv("ATEAM_DURABLE_DIR", str(tmp_path / "durable"))
     monkeypatch.setenv("ANTHROPIC_API_KEY", "not-a-real-key")
-    monkeypatch.delenv("AGYTEAM_AGENT", raising=False)
+    monkeypatch.delenv("ATEAM_AGENT", raising=False)
     monkeypatch.chdir(tmp_path)
     return td
 
@@ -69,8 +69,8 @@ def test_a_turn_reaches_the_model_with_the_brief_and_the_team_tools(team, api):
     system = json.dumps(req["system"])
     assert "coder" in system and "implements" in system, "the brief did not reach the model"
     tools = {t["name"] for t in req["tools"]}
-    assert {BUS + "send_to_teammate", BUS + "check_inbox", "mcp__agyteam_tasks__create_task",
-            "mcp__agyteam_memory__save_memory", "Bash", "Read", "Agent"} <= tools, sorted(tools)
+    assert {BUS + "send_to_teammate", BUS + "check_inbox", "mcp__ateam_tasks__create_task",
+            "mcp__ateam_memory__save_memory", "Bash", "Read", "Agent"} <= tools, sorted(tools)
     assert "AskUserQuestion" not in tools, "nobody is there to answer"
     assert not any("ToolSearch" == t for t in tools), "the brief names tools that must be there"
 
@@ -126,14 +126,14 @@ def test_a_tool_turned_off_is_gone_under_any_runtimes_name(team, api):
     write_roster(team, tools_off=["run_command", "WebFetch", "create_task"], workers=False)
     runner().wake("coder", "go")
     tools = {t["name"] for t in api.requests[0]["tools"]}
-    assert not tools & {"Bash", "WebFetch", "Agent", "mcp__agyteam_tasks__create_task"}, sorted(tools)
+    assert not tools & {"Bash", "WebFetch", "Agent", "mcp__ateam_tasks__create_task"}, sorted(tools)
     assert {"Read", BUS + "send_to_teammate"} <= tools
 
 
 @pytest.mark.parametrize("api", [[use("Bash", {"command": "git push --force"}), "stopped"]], indirect=True)
 def test_the_teams_policy_refuses_a_call_and_it_is_audited(team, api, tmp_path, monkeypatch):
     log = tmp_path / "audit.jsonl"
-    monkeypatch.setenv("AGYTEAM_AUDIT_LOG", str(log))
+    monkeypatch.setenv("ATEAM_AUDIT_LOG", str(log))
     write_roster(team, forbidden_commands=[{"pattern": "git push", "message": "the reviewer pushes"}])
     assert runner().wake("coder", "ship it") == "stopped"
     told = json.dumps(api.requests[-1]["messages"])
@@ -164,7 +164,7 @@ def test_an_agents_shell_has_no_keys(team, api, tmp_path, monkeypatch):
     api.script[:] = [use("Bash", {"command": f"env > {out}"}), "ok"]
     runner().wake("coder", "look around")
     seen = out.read_text()
-    assert "AGYTEAM_AGENT=coder" in seen
+    assert "ATEAM_AGENT=coder" in seen
     assert "not-a-real-key" not in seen and "not-a-real-gemini-key" not in seen
 
 
@@ -199,7 +199,7 @@ def test_a_rejected_request_is_a_failure_and_is_not_retried(team, api):
 
 @pytest.mark.parametrize("api", [[status(529), status(529), status(529), "recovered"]], indirect=True)
 def test_an_overloaded_provider_is_waited_out(team, api, monkeypatch):
-    from agyteam import runner as runner_lib
+    from ateam import runner as runner_lib
     monkeypatch.setattr(runner_lib, "RETRY_BASE_SECONDS", 0.01)
     monkeypatch.setenv("CLAUDE_CODE_MAX_RETRIES", "0")
     assert runner().wake("coder", "go") == "recovered"
@@ -264,8 +264,8 @@ def test_an_unknown_effort_is_named(team, api):
 @pytest.mark.parametrize("api", [[use(BUS + "send_to_teammate", {"to": "qa", "content": "please review"}),
                                   "handed over", "reviewed"]], indirect=True)
 def test_a_team_on_claude_runs_under_the_supervisor(team, api):
-    from agyteam.supervisor import Supervisor
-    from agyteam.transport import load as load_transport
+    from ateam.supervisor import Supervisor
+    from ateam.transport import load as load_transport
     load_transport("user").send("coder", "start")
     sup = Supervisor(["coder", "qa"], runner(), quiet=True, require_review=False)
     try:
@@ -279,9 +279,9 @@ def test_a_team_on_claude_runs_under_the_supervisor(team, api):
 
 
 def test_an_agent_can_run_on_claude_beside_a_team_on_another_runtime(team, api, monkeypatch):
-    from agyteam.runner_mixed import MixedRunner
+    from ateam.runner_mixed import MixedRunner
     from fixture_runner import ScriptedRunner
-    write_roster(team, runner="agyteam.runner_claude:ClaudeRunner", model="claude-haiku-5-5")
+    write_roster(team, runner="ateam.runner_claude:ClaudeRunner", model="claude-haiku-5-5")
     m = MixedRunner({"default": "fixture_runner:ScriptedRunner"})
     assert m.runner_spec("coder").endswith("ClaudeRunner")
     assert isinstance(m._sub("coder"), ClaudeRunner) and isinstance(m._sub("qa"), ScriptedRunner)
@@ -330,7 +330,7 @@ def test_the_same_call_three_times_reaches_the_model_as_a_note(team, api):
     assert "3 times in a row" in said_to_model(api.requests[3])
 
 
-@pytest.mark.parametrize("api", [[use("mcp__agyteam_bus__list_teammates"), use("Bash", {"command": "true"}),
+@pytest.mark.parametrize("api", [[use("mcp__ateam_bus__list_teammates"), use("Bash", {"command": "true"}),
                                   "done"]], indirect=True)
 def test_mail_that_arrives_mid_turn_reaches_the_model_at_the_next_step(team, api):
     begin_turn(team)

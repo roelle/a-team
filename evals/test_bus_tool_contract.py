@@ -19,8 +19,8 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from agyteam import persona  # noqa: E402
-from agyteam.mcp_bus import ADMIN_TOOLS, TOOLS, _args, _BadArgs  # noqa: E402
+from ateam import persona  # noqa: E402
+from ateam.mcp_bus import ADMIN_TOOLS, TOOLS, _args, _BadArgs  # noqa: E402
 
 
 # --- U1: the error names the tool, the argument, and the call form ----------

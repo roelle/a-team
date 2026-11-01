@@ -22,7 +22,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from agyteam.supervisor import (TENSION_ACCOUNTABLE,  # noqa: E402
+from ateam.supervisor import (TENSION_ACCOUNTABLE,  # noqa: E402
                                 format_retro_report, resolve_retro_leader)
 
 

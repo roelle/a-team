@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch
 import io
 import contextlib
-from agyteam import lifecycle
+from ateam import lifecycle
 
 def test_lifecycle_silent_degradation_on_hygiene_exception():
     """Prove that a crash in git hygiene check is incorrectly swallowed and hidden from users."""
@@ -16,7 +16,7 @@ def test_lifecycle_silent_degradation_on_hygiene_exception():
     }
     
     out = io.StringIO()
-    with patch("agyteam.lifecycle.team_status", return_value=status):
+    with patch("ateam.lifecycle.team_status", return_value=status):
         with contextlib.redirect_stdout(out):
             lifecycle.main(["status"])
     

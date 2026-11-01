@@ -1,6 +1,6 @@
 """Two things an integrator reported, each with the failure it caused.
 
-- A team's supervisor started by a client (agy-chat's Start button) ran with
+- A team's supervisor started by a client (a-team's Start button) ran with
   the client's environment, not the team's: the default runner instead of the
   team's, so wakes failed and conversations were lost, and a guessed manager.
   The roster's "supervisor" block now says how the team is run.
@@ -18,10 +18,10 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "evals"))
 
-from agyteam import channels, mcp_bus, supervisor  # noqa: E402
-from agyteam.roster import resolve_name  # noqa: E402
-from agyteam.transport import load as load_transport  # noqa: E402
-from agyteam.transport_file import FileTransport  # noqa: E402
+from ateam import channels, mcp_bus, supervisor  # noqa: E402
+from ateam.roster import resolve_name  # noqa: E402
+from ateam.transport import load as load_transport  # noqa: E402
+from ateam.transport_file import FileTransport  # noqa: E402
 from fixture_runner import ScriptedRunner  # noqa: E402
 
 SEEN: list[dict] = []
@@ -33,7 +33,7 @@ class TeamRunner(ScriptedRunner):
     label = "team-runner"
 
     def wake(self, agent, message):
-        beat = json.loads((Path(os.environ["AGYTEAM_TEAM_DIR"]) / "supervisor.json").read_text())
+        beat = json.loads((Path(os.environ["ATEAM_TEAM_DIR"]) / "supervisor.json").read_text())
         SEEN.append({"config": dict(self.config), "beat": beat, "agent": agent})
         return "ok"
 
@@ -46,10 +46,10 @@ class OtherRunner(TeamRunner):
 def team(tmp_path, monkeypatch):
     td = tmp_path / "team"
     (td / "inbox").mkdir(parents=True)
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(td))
-    monkeypatch.delenv("AGYTEAM_AGENT", raising=False)
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(td))
+    monkeypatch.delenv("ATEAM_AGENT", raising=False)
     # main() writes these; set-then-delete so teardown restores the originals.
-    for var in ("AGYTEAM_RUNNER", "AGYTEAM_RUNNER_CONFIG"):
+    for var in ("ATEAM_RUNNER", "ATEAM_RUNNER_CONFIG"):
         monkeypatch.setenv(var, "")
         monkeypatch.delenv(var)
     SEEN.clear()
@@ -82,8 +82,8 @@ def test_a_client_started_supervisor_runs_the_team_as_its_roster_says(team):
 
 
 def test_the_roster_beats_the_launchers_environment_and_drops_its_config(team, monkeypatch):
-    monkeypatch.setenv("AGYTEAM_RUNNER", f"{THIS}:OtherRunner")
-    monkeypatch.setenv("AGYTEAM_RUNNER_CONFIG", json.dumps({"tag": "launcher"}))
+    monkeypatch.setenv("ATEAM_RUNNER", f"{THIS}:OtherRunner")
+    monkeypatch.setenv("ATEAM_RUNNER_CONFIG", json.dumps({"tag": "launcher"}))
     roster(team, AGENTS, {"runner": f"{THIS}:TeamRunner"})
     supervisor.main(["--team-dir", str(team), "--quiet", "--say", "at-Ada: hi"])
     assert SEEN[0]["beat"]["runner"] == "team-runner"
@@ -99,13 +99,13 @@ def test_the_flag_beats_the_roster(team):
 
 
 def test_without_a_block_the_environment_still_decides(team, monkeypatch):
-    monkeypatch.setenv("AGYTEAM_RUNNER", f"{THIS}:OtherRunner")
-    monkeypatch.setenv("AGYTEAM_RUNNER_CONFIG", json.dumps({"tag": "launcher"}))
+    monkeypatch.setenv("ATEAM_RUNNER", f"{THIS}:OtherRunner")
+    monkeypatch.setenv("ATEAM_RUNNER_CONFIG", json.dumps({"tag": "launcher"}))
     roster(team, AGENTS)
     supervisor.main(["--team-dir", str(team), "--quiet", "--say", "at-Ada: hi"])
     assert SEEN[0]["beat"]["runner"] == "other-runner"
     assert SEEN[0]["config"].get("tag") == "launcher"
-    assert SEEN[0]["beat"]["source"] == {"runner": "AGYTEAM_RUNNER"}
+    assert SEEN[0]["beat"]["source"] == {"runner": "ATEAM_RUNNER"}
 
 
 def test_cycle_uses_the_teams_runner_too(team):

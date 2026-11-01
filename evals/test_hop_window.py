@@ -2,7 +2,7 @@
 
 Reported: a busy team reached its 32 hops while one agent was mid-turn. The
 budget reset only once no turn was in flight, so while that turn ran nobody
-else woke -- including an agent the user had just @mentioned in agy-chat --
+else woke -- including an agent the user had just @mentioned in a-team --
 and nothing on screen said why.
 """
 import json
@@ -17,10 +17,10 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "evals"))
 
-from agyteam import config  # noqa: E402
-from agyteam.record import Record  # noqa: E402
-from agyteam.supervisor import Supervisor  # noqa: E402
-from agyteam.transport import load as load_transport  # noqa: E402
+from ateam import config  # noqa: E402
+from ateam.record import Record  # noqa: E402
+from ateam.supervisor import Supervisor  # noqa: E402
+from ateam.transport import load as load_transport  # noqa: E402
 from fixture_runner import ScriptedRunner  # noqa: E402
 
 AGENTS = ["tpm", "coder", "qa"]
@@ -33,7 +33,7 @@ def team(tmp_path, monkeypatch):
     (td / "roster.json").write_text(json.dumps({"agents": [
         {"name": a, "role": "works", **({"is_principal": True} if a == "tpm" else {})}
         for a in AGENTS]}))
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(td))
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(td))
     return td
 
 

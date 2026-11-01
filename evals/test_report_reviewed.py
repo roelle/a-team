@@ -16,7 +16,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from agyteam.supervisor import format_report, generate_report  # noqa: E402
+from ateam.supervisor import format_report, generate_report  # noqa: E402
 
 
 def write(path, rows):
@@ -68,8 +68,8 @@ def test_an_episode_flag_is_taken_as_recorded(tmp_path):
 def test_the_cost_summary_does_not_print_unpriced_work_as_free(tmp_path):
     """`--cost` printed $0.0000 for 1.4 million tokens on a model the pricing
     table does not list."""
-    from agyteam.observer import format_summary
-    from agyteam.observer_file import FileObserver
+    from ateam.observer import format_summary
+    from ateam.observer_file import FileObserver
     td = tmp_path / "team"
     td.mkdir()
     obs = FileObserver({"team_dir": str(td)})

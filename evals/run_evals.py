@@ -15,9 +15,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PY = ROOT / ".venv" / "bin" / "python"
-# AGYTEAM_EXTRA_ARGS="--mcp" appends flags (e.g. to route memory through MCP).
-IMPL = os.environ.get("AGYTEAM_IMPL", "agyteam.sdk_cli")
-EXTRA = os.environ.get("AGYTEAM_EXTRA_ARGS", "").split()
+# ATEAM_EXTRA_ARGS="--mcp" appends flags (e.g. to route memory through MCP).
+IMPL = os.environ.get("ATEAM_IMPL", "ateam.sdk_cli")
+EXTRA = os.environ.get("ATEAM_EXTRA_ARGS", "").split()
 
 
 def run_agent(workspace: Path, prompt: str, distill: bool = False) -> str:

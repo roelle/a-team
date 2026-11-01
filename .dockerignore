@@ -1,0 +1,7 @@
+.venv
+.git
+build
+evals
+bench
+fixtures
+**/__pycache__

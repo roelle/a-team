@@ -43,10 +43,10 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "evals"))
 
-from agyteam import retro_store  # noqa: E402
-from agyteam.supervisor import Supervisor  # noqa: E402
-from agyteam.supervisor import retro as run_retro  # noqa: E402
-from agyteam.transport import load as load_transport  # noqa: E402
+from ateam import retro_store  # noqa: E402
+from ateam.supervisor import Supervisor  # noqa: E402
+from ateam.supervisor import retro as run_retro  # noqa: E402
+from ateam.transport import load as load_transport  # noqa: E402
 from fixture_runner import COLUMNS  # noqa: E402
 
 AGENTS = ["manager", "coder", "qa"]
@@ -75,8 +75,8 @@ def team(tmp_path, monkeypatch):
     (td / "events.jsonl").write_text(json.dumps(
         {"ts": "2026-09-14 09:00:00", "event": "turn", "agent": "coder",
          "conversation": "c1", "duration_s": 5.0}) + "\n")
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(td))
-    monkeypatch.setenv("AGYTEAM_DURABLE_DIR", str(tmp_path / "durable"))
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(td))
+    monkeypatch.setenv("ATEAM_DURABLE_DIR", str(tmp_path / "durable"))
     return td
 
 
@@ -173,8 +173,8 @@ def test_cycle_distils_and_retires_in_both_columns(team, column):
 
 def test_the_review_gate_behaves_the_same_in_both_columns(team, column):
     """Recording a review must not depend on anything the runner returns."""
-    from agyteam.mcp_bus import _record_review
-    from agyteam.transport_file import FileTransport
+    from ateam.mcp_bus import _record_review
+    from ateam.transport_file import FileTransport
 
     runner = column({"script": {"coder": [["qa", "built it"]]}})
     sup = Supervisor(AGENTS, runner, max_hops=8, quiet=True)
@@ -186,7 +186,7 @@ def test_the_review_gate_behaves_the_same_in_both_columns(team, column):
     # ended: it opened when that episode began, before coder said anything.
     # Opened at the episode's end, this passed only when coder's message and
     # the end fell in the same second.
-    from agyteam.activity import episode_start, jsonl
+    from ateam.activity import episode_start, jsonl
     sent = [e["ts"] for e in jsonl(team / "bus.jsonl") if e.get("from") == "coder"]
     assert sent and episode_start(team) <= min(sent), (episode_start(team), sent)
 

@@ -3,11 +3,11 @@
 
 This replaces a documented one-liner that could not work:
 
-    python -m agyteam.lifecycle status --json | grep -c bench   # want 0
+    python -m ateam.lifecycle status --json | grep -c bench   # want 0
 
 `status --json` reports the TEAM-level workspace grants and, for each agent,
 only a name and a role. Per-agent `workspaces` from roster.json never appear,
-`AGYTEAM_EXTRA_WORKSPACES` never appears, and neither does the working
+`ATEAM_EXTRA_WORKSPACES` never appears, and neither does the working
 directory -- which `sdk_agent._workspaces()` grants unconditionally. So the
 count was zero whether or not the keys were reachable: a check that passes
 because it is blind, which is the exact defect class the bench measures.
@@ -39,10 +39,10 @@ def covers(grant: Path, target: Path) -> bool:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--team", default=os.environ.get("AGYTEAM_TEAM", "default"))
+    ap.add_argument("--team", default=os.environ.get("ATEAM_TEAM", "default"))
     ap.add_argument("--teams-root",
-                    default=os.environ.get("AGYTEAM_TEAMS_ROOT",
-                                           str(Path.home() / "agy-teams")))
+                    default=os.environ.get("ATEAM_TEAMS_ROOT",
+                                           str(Path.home() / "a-teams")))
     ap.add_argument("--cwd", default=os.getcwd(),
                     help="directory the supervisor will be launched from; "
                          "granted to every agent unconditionally")
@@ -75,7 +75,7 @@ def main() -> int:
               file=sys.stderr)
         return 2
 
-    env_extra = [p for p in os.environ.get("AGYTEAM_EXTRA_WORKSPACES", "")
+    env_extra = [p for p in os.environ.get("ATEAM_EXTRA_WORKSPACES", "")
                  .split(os.pathsep) if p.strip()]
 
     # Every grant an agent actually receives, mirroring _workspaces():
@@ -84,7 +84,7 @@ def main() -> int:
     # to everyone and is usually the repo, which is where these keys live.
     shared = [("working directory", a.cwd),
               ("team directory", str(Path(a.teams_root) / a.team))]
-    shared += [("AGYTEAM_EXTRA_WORKSPACES", p) for p in env_extra]
+    shared += [("ATEAM_EXTRA_WORKSPACES", p) for p in env_extra]
 
     leaks = []
     for agent in agents:

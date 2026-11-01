@@ -22,10 +22,10 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "evals"))
 
-from agyteam import hook_step, mcp_base, mcp_bus, receipts, steer  # noqa: E402
-from agyteam.supervisor import Supervisor  # noqa: E402
-from agyteam.transport import Message  # noqa: E402
-from agyteam.transport import load as load_transport  # noqa: E402
+from ateam import hook_step, mcp_base, mcp_bus, receipts, steer  # noqa: E402
+from ateam.supervisor import Supervisor  # noqa: E402
+from ateam.transport import Message  # noqa: E402
+from ateam.transport import load as load_transport  # noqa: E402
 from fixture_runner import ScriptedRunner  # noqa: E402
 
 
@@ -35,9 +35,9 @@ def team(tmp_path, monkeypatch):
     (td / "inbox").mkdir(parents=True)
     (td / "roster.json").write_text(json.dumps({"agents": [
         {"name": "coder", "role": "builds"}, {"name": "qa", "role": "reviews"}]}))
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(td))
-    monkeypatch.setenv("AGYTEAM_DURABLE_DIR", str(tmp_path / "durable"))
-    monkeypatch.delenv("AGYTEAM_AGENT", raising=False)
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(td))
+    monkeypatch.setenv("ATEAM_DURABLE_DIR", str(tmp_path / "durable"))
+    monkeypatch.delenv("ATEAM_AGENT", raising=False)
     return td
 
 
@@ -296,7 +296,7 @@ def test_the_ledger_says_how_mail_reached_the_turn(team):
 # --- hook_step and the server footer ---------------------------------------
 
 def hook(event, payload, env):
-    r = subprocess.run([sys.executable, "-m", "agyteam.hook_step", event],
+    r = subprocess.run([sys.executable, "-m", "ateam.hook_step", event],
                        input=json.dumps(payload), capture_output=True, text=True,
                        env=env, cwd=ROOT, check=False)
     assert r.returncode == 0, r.stderr
@@ -305,8 +305,8 @@ def hook(event, payload, env):
 
 @pytest.fixture
 def env(team):
-    return {"PATH": "/usr/bin:/bin", "AGYTEAM_TEAM_DIR": str(team), "AGYTEAM_AGENT": "coder",
-            "AGYTEAM_DURABLE_DIR": str(team.parent / "durable")}
+    return {"PATH": "/usr/bin:/bin", "ATEAM_TEAM_DIR": str(team), "ATEAM_AGENT": "coder",
+            "ATEAM_DURABLE_DIR": str(team.parent / "durable")}
 
 
 def test_the_agy_hooks_count_calls_and_inject_what_is_due(team, env):
@@ -324,7 +324,7 @@ def test_the_agy_hooks_count_calls_and_inject_what_is_due(team, env):
 
 
 def test_the_hook_finds_the_agent_by_its_conversation(team, env):
-    del env["AGYTEAM_AGENT"]
+    del env["ATEAM_AGENT"]
     (team / "conversations.json").write_text(json.dumps({"coder": "c1"}))
     begin_turn(team)
     send("user", "coder", "Stop.")
@@ -333,14 +333,14 @@ def test_the_hook_finds_the_agent_by_its_conversation(team, env):
 
 
 def test_a_persons_own_session_is_left_alone(team, env):
-    del env["AGYTEAM_AGENT"]
+    del env["ATEAM_AGENT"]
     begin_turn(team)
     assert hook("model", {"conversationId": "somebody-else"}, env) == {}
     assert hook("tool", {"toolCall": {"name": "x", "args": {}}}, env) == {}
 
 
 def test_nonsense_on_stdin_does_not_fail_the_hook(env):
-    r = subprocess.run([sys.executable, "-m", "agyteam.hook_step", "model"], input="{oops",
+    r = subprocess.run([sys.executable, "-m", "ateam.hook_step", "model"], input="{oops",
                        capture_output=True, text=True, env=env, cwd=ROOT, check=False)
     assert r.returncode == 0 and json.loads(r.stdout) == {}
 
@@ -356,7 +356,7 @@ def test_a_team_tool_result_carries_a_footer(monkeypatch, capsys):
 
 
 def test_the_antigravity_sdk_refuses_one_call_to_say_what_cannot_wait(team):
-    agent = pytest.importorskip("agyteam.sdk_agent")
+    agent = pytest.importorskip("ateam.sdk_agent")
     conf = agent.build_config(team.parent / "ws", name="coder", with_bus=True, use_mcp=True)
     hook_fn = next(h for h in conf.hooks if "steer_turn" in repr(vars(h)))
 
@@ -372,13 +372,13 @@ def test_the_antigravity_sdk_refuses_one_call_to_say_what_cannot_wait(team):
     assert "from user: Stop." in refused.message and "did not run" in refused.message
     assert run(SimpleNamespace(name="view_file", args={"AbsolutePath": "/b"})).allow is True
     send("user", "coder", "Also this.")
-    assert run(SimpleNamespace(name="mcp_agyteam_bus_check_inbox", args={})).allow is True
+    assert run(SimpleNamespace(name="mcp_ateam_bus_check_inbox", args={})).allow is True
 
 
 def test_the_plugin_ships_the_hooks():
-    hooks = json.loads((ROOT / "plugin" / "hooks.template.json").read_text())["agy-team-steer"]
-    assert hooks["PostToolUse"][0]["hooks"][0]["command"].endswith("-m agyteam.hook_step tool")
-    assert hooks["PreInvocation"][0]["command"].endswith("-m agyteam.hook_step model")
+    hooks = json.loads((ROOT / "plugin" / "hooks.template.json").read_text())["a-team-steer"]
+    assert hooks["PostToolUse"][0]["hooks"][0]["command"].endswith("-m ateam.hook_step tool")
+    assert hooks["PreInvocation"][0]["command"].endswith("-m ateam.hook_step model")
 
 
 def test_message_keys_ignore_how_the_message_was_carried():

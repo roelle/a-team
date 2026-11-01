@@ -23,9 +23,9 @@ an undeclared capability requirement. See evals/test_runner_columns.py.
 import json
 import os
 
-from agyteam import retro_store
-from agyteam.runner import Runner
-from agyteam.transport import load as load_transport
+from ateam import retro_store
+from ateam.runner import Runner
+from ateam.transport import load as load_transport
 
 
 class ScriptedRunner(Runner):
@@ -37,7 +37,7 @@ class ScriptedRunner(Runner):
         self.retro_answers = dict(self.config.get("retro", {}))
         self.tool_calls = dict(self.config.get("tool_calls", {}))
         self.fail = set(self.config.get("fail", []))
-        self.log_path = self.config.get("log") or os.environ.get("AGYTEAM_RUNNER_LOG")
+        self.log_path = self.config.get("log") or os.environ.get("ATEAM_RUNNER_LOG")
         self.woken: list[str] = []
 
     def wake(self, agent: str, message: str) -> str:
@@ -106,7 +106,7 @@ class MinimalRunner(ScriptedRunner):
 
     That difference is the whole diagnostic. A test that passes above and
     fails here is not a flaky test; it is a dependency on something no runner
-    promised, and every one found so far has been a real defect in agyteam
+    promised, and every one found so far has been a real defect in ateam
     rather than a shortcoming of the host.
     """
     label = "minimal"

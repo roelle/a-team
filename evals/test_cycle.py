@@ -20,10 +20,10 @@ if str(EVALS_DIR) not in sys.path:
 
 from rpc_util import ROOT, check
 
-from agyteam import config                        # noqa: E402
-from agyteam import memory as memory_lib          # noqa: E402
-from agyteam.runner import Runner                 # noqa: E402
-from agyteam.supervisor import Supervisor, distill, cycle, main, DISTILL_PROMPT  # noqa: E402
+from ateam import config                        # noqa: E402
+from ateam import memory as memory_lib          # noqa: E402
+from ateam.runner import Runner                 # noqa: E402
+from ateam.supervisor import Supervisor, distill, cycle, main, DISTILL_PROMPT  # noqa: E402
 from fixture_memory import SqliteMemory           # noqa: E402
 
 
@@ -65,7 +65,7 @@ class MockRunner(Runner):
         super().close()
 
 
-def make_temp_team(prefix="agyteam-cycle-") -> Path:
+def make_temp_team(prefix="ateam-cycle-") -> Path:
     td = Path(tempfile.mkdtemp(prefix=prefix)) / "team"
     td.mkdir(parents=True)
     (td / "inbox").mkdir(parents=True)
@@ -73,8 +73,8 @@ def make_temp_team(prefix="agyteam-cycle-") -> Path:
         {"name": "coder", "role": "implements"},
         {"name": "tpm", "role": "coordinates"},
     ]}))
-    os.environ["AGYTEAM_TEAM_DIR"] = str(td)
-    os.environ["AGYTEAM_DURABLE_DIR"] = str(td.parent)
+    os.environ["ATEAM_TEAM_DIR"] = str(td)
+    os.environ["ATEAM_DURABLE_DIR"] = str(td.parent)
     return td
 
 
@@ -250,11 +250,11 @@ def test_distill_with_sqlite_fixture() -> tuple[int, int]:
     print("\n== distill with sqlite fixture ==")
     td = make_temp_team()
     db_path = td.parent / "test_mem.db"
-    old_store = os.environ.get("AGYTEAM_MEMORY_STORE")
-    old_cfg = os.environ.get("AGYTEAM_MEMORY_CONFIG")
+    old_store = os.environ.get("ATEAM_MEMORY_STORE")
+    old_cfg = os.environ.get("ATEAM_MEMORY_CONFIG")
 
-    os.environ["AGYTEAM_MEMORY_STORE"] = "fixture_memory:SqliteMemory"
-    os.environ["AGYTEAM_MEMORY_CONFIG"] = json.dumps({"db": str(db_path)})
+    os.environ["ATEAM_MEMORY_STORE"] = "fixture_memory:SqliteMemory"
+    os.environ["ATEAM_MEMORY_CONFIG"] = json.dumps({"db": str(db_path)})
 
     try:
         def saving_wake(agent, prompt):
@@ -297,13 +297,13 @@ def test_distill_with_sqlite_fixture() -> tuple[int, int]:
         ]), 5
     finally:
         if old_store is not None:
-            os.environ["AGYTEAM_MEMORY_STORE"] = old_store
+            os.environ["ATEAM_MEMORY_STORE"] = old_store
         else:
-            os.environ.pop("AGYTEAM_MEMORY_STORE", None)
+            os.environ.pop("ATEAM_MEMORY_STORE", None)
         if old_cfg is not None:
-            os.environ["AGYTEAM_MEMORY_CONFIG"] = old_cfg
+            os.environ["ATEAM_MEMORY_CONFIG"] = old_cfg
         else:
-            os.environ.pop("AGYTEAM_MEMORY_CONFIG", None)
+            os.environ.pop("ATEAM_MEMORY_CONFIG", None)
 
 
 def test_cycle_resets_conversation() -> tuple[int, int]:
@@ -592,12 +592,12 @@ def test_auto_cycle_never_mid_episode_with_work_outstanding() -> tuple[int, int]
 
 
 def test_auto_cycle_env_threshold_override() -> tuple[int, int]:
-    """AGYTEAM_CYCLE_THRESHOLD environment variable overrides the default threshold."""
+    """ATEAM_CYCLE_THRESHOLD environment variable overrides the default threshold."""
     print("\n== auto-cycle env threshold override ==")
     td = make_temp_team()
 
-    old_env = os.environ.get("AGYTEAM_CYCLE_THRESHOLD")
-    os.environ["AGYTEAM_CYCLE_THRESHOLD"] = "50000"
+    old_env = os.environ.get("ATEAM_CYCLE_THRESHOLD")
+    os.environ["ATEAM_CYCLE_THRESHOLD"] = "50000"
     try:
         runner = MockRunner(conv_id="conv-env")
         sup = Supervisor(["coder"], runner, team_dir=td, quiet=True)
@@ -608,7 +608,7 @@ def test_auto_cycle_env_threshold_override() -> tuple[int, int]:
         sup.close()
 
         # Test higher override prevents cycling
-        os.environ["AGYTEAM_CYCLE_THRESHOLD"] = "200000"
+        os.environ["ATEAM_CYCLE_THRESHOLD"] = "200000"
         runner2 = MockRunner(conv_id="conv-env2")
         sup2 = Supervisor(["coder"], runner2, team_dir=td, quiet=True)
         sup2.observer.record_turn(agent="coder", conversation="conv-env2", duration_s=1.0,
@@ -626,9 +626,9 @@ def test_auto_cycle_env_threshold_override() -> tuple[int, int]:
         ]), 5
     finally:
         if old_env is not None:
-            os.environ["AGYTEAM_CYCLE_THRESHOLD"] = old_env
+            os.environ["ATEAM_CYCLE_THRESHOLD"] = old_env
         else:
-            os.environ.pop("AGYTEAM_CYCLE_THRESHOLD", None)
+            os.environ.pop("ATEAM_CYCLE_THRESHOLD", None)
 
 
 def test_auto_cycle_across_supervisor_restarts() -> tuple[int, int]:

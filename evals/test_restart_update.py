@@ -4,7 +4,7 @@ Upgrading used to mean waiting until every agent was idle at once, which a
 team that keeps itself busy almost never is, or stopping it, which cancelled
 the turns in flight. A restart request drains instead: no new turns, the
 ones in flight finish, then the supervisor restarts itself on the new code.
-`python -m agyteam.update` does the update and the restarts in one command.
+`python -m ateam.update` does the update and the restarts in one command.
 """
 import json
 import os
@@ -20,9 +20,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "evals"))
 
-from agyteam import actions, config, heartbeat, update  # noqa: E402
-from agyteam.supervisor import RESTART_FILE, Supervisor, request_restart  # noqa: E402
-from agyteam.transport import load as load_transport  # noqa: E402
+from ateam import actions, config, heartbeat, update  # noqa: E402
+from ateam.supervisor import RESTART_FILE, Supervisor, request_restart  # noqa: E402
+from ateam.transport import load as load_transport  # noqa: E402
 from fixture_runner import ScriptedRunner  # noqa: E402
 
 AGENTS = ["tpm", "coder", "qa"]
@@ -35,8 +35,8 @@ def team(tmp_path, monkeypatch):
     (td / "roster.json").write_text(json.dumps({"agents": [
         {"name": "tpm", "role": "coordinates"}, {"name": "coder", "role": "implements"},
         {"name": "qa", "role": "reviews"}]}))
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(td))
-    monkeypatch.delenv("AGYTEAM_AGENT", raising=False)
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(td))
+    monkeypatch.delenv("ATEAM_AGENT", raising=False)
     monkeypatch.setattr(config, "WAKE_BACKOFF_BASE_S", 0.0)
     monkeypatch.setattr(config, "WAKE_BACKOFF_MAX_S", 0.0)
     return td
@@ -125,7 +125,7 @@ def test_a_daemon_restarts_in_place_with_its_arguments(team, tmp_path):
     (team / "roster.json").write_text(json.dumps(doc))
     env = dict(os.environ, PYTHONPATH=os.pathsep.join([str(tmp_path), str(ROOT / "evals"), str(ROOT)]))
     log = open(tmp_path / "daemon.log", "wb")
-    proc = subprocess.Popen([sys.executable, "-m", "agyteam.supervisor", "--daemon", "--quiet",
+    proc = subprocess.Popen([sys.executable, "-m", "ateam.supervisor", "--daemon", "--quiet",
                              "--poll", "0.1", "--team-dir", str(team)],
                             env=env, stdout=log, stderr=subprocess.STDOUT, cwd=ROOT)
     try:

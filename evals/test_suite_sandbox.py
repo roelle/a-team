@@ -1,7 +1,7 @@
 """The offline suite must not be able to reach a real team.
 
 `pytest evals/` once retired a live team's conversations: a test built a
-runner with no arguments, the runner resolved its team from AGYTEAM_TEAM, and
+runner with no arguments, the runner resolved its team from ATEAM_TEAM, and
 recycling `tpm` on it wrote to that team's conversations.json. conftest.py
 now points the ambient team at a throwaway directory before every test.
 """
@@ -15,8 +15,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "evals"))
 
-from agyteam import scope  # noqa: E402
-from agyteam.runner import Runner  # noqa: E402
+from ateam import scope  # noqa: E402
+from ateam.runner import Runner  # noqa: E402
 
 
 def sandbox():
@@ -40,9 +40,9 @@ def test_a_runner_built_with_no_arguments_writes_inside_it():
 
 
 def test_an_exported_team_does_not_survive_into_a_test():
-    """The fixture runs before each test, so a module that sets AGYTEAM_TEAM
+    """The fixture runs before each test, so a module that sets ATEAM_TEAM
     at import -- as the delivery eval did -- cannot redirect the rest."""
-    assert "AGYTEAM_TEAM" not in os.environ and "AGYTEAM_TEAM_DIR" not in os.environ
+    assert "ATEAM_TEAM" not in os.environ and "ATEAM_TEAM_DIR" not in os.environ
 
 
 def test_collecting_the_live_evals_leaves_the_environment_alone():

@@ -21,9 +21,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "evals"))
 
-from agyteam import config, mcp_base, mcp_tasks, models  # noqa: E402
-from agyteam.supervisor import DISTILL_PROMPT, Supervisor  # noqa: E402
-from agyteam.transport import load as load_transport  # noqa: E402
+from ateam import config, mcp_base, mcp_tasks, models  # noqa: E402
+from ateam.supervisor import DISTILL_PROMPT, Supervisor  # noqa: E402
+from ateam.transport import load as load_transport  # noqa: E402
 from fixture_runner import ScriptedRunner  # noqa: E402
 
 AGENTS = ["tpm", "coder", "qa"]
@@ -36,8 +36,8 @@ def team(tmp_path, monkeypatch):
     (td / "roster.json").write_text(json.dumps({"agents": [
         {"name": "tpm", "role": "coordinates"}, {"name": "coder", "role": "implements"},
         {"name": "qa", "role": "reviews"}]}))
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(td))
-    monkeypatch.delenv("AGYTEAM_AGENT", raising=False)
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(td))
+    monkeypatch.delenv("ATEAM_AGENT", raising=False)
     monkeypatch.setattr(config, "WAKE_BACKOFF_BASE_S", 0.0)
     monkeypatch.setattr(config, "WAKE_BACKOFF_MAX_S", 0.0)
     return td
@@ -48,8 +48,8 @@ def team(tmp_path, monkeypatch):
 DRIVER = textwrap.dedent("""
     import json, os, sys, time
     sys.path.insert(0, {root!r}); sys.path.insert(0, {evals!r})
-    os.environ["AGYTEAM_TEAM_DIR"] = {td!r}
-    from agyteam.supervisor import Supervisor
+    os.environ["ATEAM_TEAM_DIR"] = {td!r}
+    from ateam.supervisor import Supervisor
     from fixture_runner import ScriptedRunner
 
     class Slow(ScriptedRunner):
@@ -212,7 +212,7 @@ def call_server(td, agent, name, arguments):
     msgs = [{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
             {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
              "params": {"name": name, "arguments": arguments}}]
-    out = subprocess.run([sys.executable, "-m", "agyteam.mcp_tasks", str(td), agent],
+    out = subprocess.run([sys.executable, "-m", "ateam.mcp_tasks", str(td), agent],
                          input="".join(json.dumps(m) + "\n" for m in msgs),
                          capture_output=True, text=True, cwd=ROOT, timeout=30)
     return json.loads(out.stdout.splitlines()[-1])["result"]
@@ -242,8 +242,8 @@ if __name__ == "__main__":
 PARALLEL_DRIVER = textwrap.dedent("""
     import json, os, sys, time
     sys.path.insert(0, {root!r}); sys.path.insert(0, {evals!r})
-    os.environ["AGYTEAM_TEAM_DIR"] = {td!r}
-    from agyteam.supervisor import Supervisor
+    os.environ["ATEAM_TEAM_DIR"] = {td!r}
+    from ateam.supervisor import Supervisor
     from fixture_runner import ScriptedRunner
 
     class Timed(ScriptedRunner):

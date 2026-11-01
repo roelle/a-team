@@ -61,7 +61,7 @@ def main(argv=None):
     by_id = {m["id"]: m for m in mems}
     targets = [m for m in mems if m["real"]]
     distract = [m for m in mems if not m["real"]]
-    from agyteam import recall
+    from ateam import recall
     if a.cands == "embed":
         mvec = em.embed_all({m["id"]: em.mem_text(m, trig) for m in mems}, "RETRIEVAL_DOCUMENT")
     texts = {f"{q['id']}|{k}": q.get(k, "") for q in qs for k in ("direct", "paraphrase", "oblique") if q.get(k)}

@@ -10,8 +10,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from evals.fixture_transport import SqliteTransport
-from agyteam.mcp_bus import _record_review
-from agyteam.transport import load as load_transport
+from ateam.mcp_bus import _record_review
+from ateam.transport import load as load_transport
 
 
 def check(name, cond, msg=""):
@@ -24,18 +24,18 @@ def check(name, cond, msg=""):
 def test_qa_review_gate_evasion() -> tuple[int, int]:
     print("\n== test_qa_review_gate_evasion ==")
     # 1. Setup workspace
-    sqlite_db = Path(tempfile.mkdtemp(prefix="agyteam-qa-qa-")) / "bus.db"
+    sqlite_db = Path(tempfile.mkdtemp(prefix="ateam-qa-qa-")) / "bus.db"
     team_dir = sqlite_db.parent
     sql_cfg = json.dumps({"db": str(sqlite_db), "roster": [{"name": "qa", "role": "verifies"}]})
     
     saved_env = {
-        "AGYTEAM_TEAM_DIR": os.environ.get("AGYTEAM_TEAM_DIR"),
-        "AGYTEAM_BUS_TRANSPORT": os.environ.get("AGYTEAM_BUS_TRANSPORT"),
-        "AGYTEAM_BUS_CONFIG": os.environ.get("AGYTEAM_BUS_CONFIG"),
+        "ATEAM_TEAM_DIR": os.environ.get("ATEAM_TEAM_DIR"),
+        "ATEAM_BUS_TRANSPORT": os.environ.get("ATEAM_BUS_TRANSPORT"),
+        "ATEAM_BUS_CONFIG": os.environ.get("ATEAM_BUS_CONFIG"),
     }
-    os.environ["AGYTEAM_TEAM_DIR"] = str(team_dir)
-    os.environ["AGYTEAM_BUS_TRANSPORT"] = "fixture_transport:SqliteTransport"
-    os.environ["AGYTEAM_BUS_CONFIG"] = sql_cfg
+    os.environ["ATEAM_TEAM_DIR"] = str(team_dir)
+    os.environ["ATEAM_BUS_TRANSPORT"] = "fixture_transport:SqliteTransport"
+    os.environ["ATEAM_BUS_CONFIG"] = sql_cfg
 
     try:
         t = load_transport("qa")

@@ -15,9 +15,9 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from agyteam.mcp_bus import TOOLS, _list_teammates  # noqa: E402
-from agyteam.record import Record  # noqa: E402
-from agyteam.transport_file import FileTransport  # noqa: E402
+from ateam.mcp_bus import TOOLS, _list_teammates  # noqa: E402
+from ateam.record import Record  # noqa: E402
+from ateam.transport_file import FileTransport  # noqa: E402
 
 NOW = time.time()
 
@@ -41,7 +41,7 @@ def team(tmp_path, monkeypatch):
         {"name": "eng", "role": "builds"},
         {"name": "docs", "role": "writes docs"},
         {"name": "qa", "role": "reviews"}]}))
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(td))
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(td))
     events = [
         # eng: a 30-minute turn that ended 10 minutes ago
         {"ts": ts(600), "event": "turn", "agent": "eng", "duration_s": 1800},

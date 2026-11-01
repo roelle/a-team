@@ -17,10 +17,10 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "evals"))
 
-from agyteam import mcp_bus, mcp_tasks, tasks  # noqa: E402
-from agyteam.supervisor import Supervisor  # noqa: E402
-from agyteam.transport import load as load_transport  # noqa: E402
-from agyteam.transport_file import FileTransport  # noqa: E402
+from ateam import mcp_bus, mcp_tasks, tasks  # noqa: E402
+from ateam.supervisor import Supervisor  # noqa: E402
+from ateam.transport import load as load_transport  # noqa: E402
+from ateam.transport_file import FileTransport  # noqa: E402
 from fixture_runner import ScriptedRunner  # noqa: E402
 
 AGENTS = ["manager", "coder", "qa"]
@@ -35,8 +35,8 @@ def team(tmp_path, monkeypatch):
         {"name": "coder", "role": "implements"},
         {"name": "qa", "role": "reviews"}]}))
     (td / "proof.py").write_text("def test_ok():\n    assert 1 == 1\n")
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(td))
-    monkeypatch.delenv("AGYTEAM_AUDIT_LOG", raising=False)
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(td))
+    monkeypatch.delenv("ATEAM_AUDIT_LOG", raising=False)
     return td
 
 
@@ -85,9 +85,9 @@ def test_quiet_mail_is_read_on_the_next_wake(team):
 def test_the_record_says_what_quiet_mail_a_wake_carried(team):
     """Asked for: does being in every channel cost tokens? Quiet posts wake
     nobody, but each wake carries them, so each turn records how much."""
-    from agyteam import channels
-    from agyteam.observer import format_quiet_mail
-    from agyteam.record import Record
+    from ateam import channels
+    from ateam.observer import format_quiet_mail
+    from ateam.record import Record
 
     channels.create(team, "docs", ["coder", "qa"])
     channels.post(load_transport("qa"), team, "docs", "the guide moved", kind="work")
@@ -109,8 +109,8 @@ def test_the_record_says_what_quiet_mail_a_wake_carried(team):
 
 
 def test_a_turn_with_no_quiet_mail_records_none(team):
-    from agyteam.observer import format_quiet_mail
-    from agyteam.record import Record
+    from ateam.observer import format_quiet_mail
+    from ateam.record import Record
 
     load_transport("manager").send_kind("coder", "please do X", kind="deliverable")
     sup = Supervisor(AGENTS, ScriptedRunner({}), quiet=True)
@@ -201,7 +201,7 @@ def test_a_deliverable_for_the_user_waits_for_its_review(team):
 
 
 def test_list_retros_reads_back_what_record_retro_wrote(team):
-    from agyteam import retro_store
+    from ateam import retro_store
     assert "No recorded answers" in mcp_bus._list_retros(FileTransport("manager"))
     retro_store.record(team, "coder", "tests ran before every handoff",
                        "I reported a fix I had not executed", "no handoff without output")

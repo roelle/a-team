@@ -3,7 +3,7 @@
 It pinned manager and qa to "gemini-3.1-pro-preview", an SDK model id. The
 agy CLI -- the default runner -- does not know that name, so on a fresh CLI
 install both oversight roles failed every turn ("invalid model selection").
-Model names belong to the runtime; the seed leaves them to agyteam.models.
+Model names belong to the runtime; the seed leaves them to ateam.models.
 """
 import json
 import re
@@ -26,7 +26,7 @@ def test_the_seed_pins_no_model():
 
 
 def test_the_seed_says_how_to_choose_one():
-    assert "agyteam.models set" in seeded()["_note"]
+    assert "ateam.models set" in seeded()["_note"]
 
 
 if __name__ == "__main__":

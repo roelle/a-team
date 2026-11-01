@@ -113,17 +113,17 @@ def task_prompt(name: str, staged_dir: Path) -> str:
             "and do not ask me to confirm a plan.")
 
 
-DEFAULT_RUNNER = "agyteam.runner_sdk:SdkRunner"
+DEFAULT_RUNNER = "ateam.runner_sdk:SdkRunner"
 
 
 def runner_spec() -> str:
-    """Honour AGYTEAM_RUNNER, defaulting to the SDK runner.
+    """Honour ATEAM_RUNNER, defaulting to the SDK runner.
 
     It was hardcoded here, in the same commit that made runners pluggable, so
     the one script that measures whether the system learns could only ever
     measure one runtime.
     """
-    return os.environ.get("AGYTEAM_RUNNER") or DEFAULT_RUNNER
+    return os.environ.get("ATEAM_RUNNER") or DEFAULT_RUNNER
 
 
 DOCKER: dict = {}      # set by main() for --docker: image, mounts, home
@@ -131,22 +131,22 @@ DOCKER: dict = {}      # set by main() for --docker: image, mounts, home
 
 def sup(team: str, audit: str, *args: str) -> subprocess.CompletedProcess:
     env = dict(os.environ,
-               AGYTEAM_TEAM=team,
-               AGYTEAM_RUNNER=runner_spec(),
-               AGYTEAM_AUDIT_LOG=audit)
-    # These outrank AGYTEAM_TEAM. Left in place, the supervisor ran the bench
+               ATEAM_TEAM=team,
+               ATEAM_RUNNER=runner_spec(),
+               ATEAM_AUDIT_LOG=audit)
+    # These outrank ATEAM_TEAM. Left in place, the supervisor ran the bench
     # task on whatever team the operator's shell exported, not the cold one.
-    for key in ("AGYTEAM_TEAM_DIR", "AGYTEAM_DURABLE_DIR"):
+    for key in ("ATEAM_TEAM_DIR", "ATEAM_DURABLE_DIR"):
         env.pop(key, None)
     if not DOCKER:
         return subprocess.run(
-            [sys.executable, "-m", "agyteam.supervisor", *args],
+            [sys.executable, "-m", "ateam.supervisor", *args],
             cwd=REPO, env=env, capture_output=True, text=True, timeout=4 * 3600)
     # Inside the container the team can reach only what is mounted: the
     # staged trees, its own team directory, and the audit log -- each at the
     # path it has here, so the record reads the same on both sides.
-    passthrough = ["AGYTEAM_TEAM", "AGYTEAM_RUNNER", "AGYTEAM_AUDIT_LOG",
-                   "AGYTEAM_TEAMS_ROOT", "AGYTEAM_TURN_TIMEOUT", "AGYTEAM_PROJECT_DIR",
+    passthrough = ["ATEAM_TEAM", "ATEAM_RUNNER", "ATEAM_AUDIT_LOG",
+                   "ATEAM_TEAMS_ROOT", "ATEAM_TURN_TIMEOUT", "ATEAM_PROJECT_DIR",
                    "GEMINI_API_KEY"]
     # The record's timestamps are local time, and each run is graded by
     # the window it falls in on this clock. A container on UTC wrote times
@@ -161,15 +161,15 @@ def sup(team: str, audit: str, *args: str) -> subprocess.CompletedProcess:
             cmd += ["-e", k]            # value taken from env, never argv
     for m in DOCKER["mounts"]:
         cmd += ["-v", f"{m}:{m}"]
-    cmd += [DOCKER["image"], "python", "-m", "agyteam.supervisor", *args]
+    cmd += [DOCKER["image"], "python", "-m", "ateam.supervisor", *args]
     return subprocess.run(cmd, env=env, capture_output=True, text=True,
                           timeout=4 * 3600)
 
 
 def build_image(tag: str) -> str:
-    """Build the team image from agyteam/ and packaging files only."""
+    """Build the team image from ateam/ and packaging files only."""
     ctx = Path(tempfile.mkdtemp(prefix="bench-image-"))
-    shutil.copytree(REPO / "agyteam", ctx / "agyteam",
+    shutil.copytree(REPO / "ateam", ctx / "ateam",
                     ignore=shutil.ignore_patterns("__pycache__"))
     for f in ("pyproject.toml", "README.md"):
         shutil.copy(REPO / f, ctx / f)
@@ -181,7 +181,7 @@ def build_image(tag: str) -> str:
         sys.exit(f"docker build failed:\n{p.stderr[-2000:]}")
     probe = subprocess.run(["docker", "run", "--rm", tag, "sh", "-c",
                             "test ! -e /app/bench && test ! -e /app/evals && "
-                            "python -c 'import agyteam.supervisor, google.antigravity'"],
+                            "python -c 'import ateam.supervisor, google.antigravity'"],
                            capture_output=True, text=True)
     if probe.returncode != 0:
         sys.exit(f"image {tag} is not fit to run the bench:\n{probe.stderr[-1000:]}")
@@ -331,7 +331,7 @@ def check_containment(stage: Path) -> None:
     rotted instrument; this is the same refusal one step earlier.
     """
     sys.path.insert(0, str(REPO))
-    from agyteam.runner import capabilities
+    from ateam.runner import capabilities
     caps = capabilities(runner_spec())
     if caps["supports_containment"] is True:
         return
@@ -356,7 +356,7 @@ def main() -> int:
     ap.add_argument("--audit", required=True,
                     help="audit log path OUTSIDE every workspace")
     ap.add_argument("--teams-root",
-                    default=str(Path.home() / "agy-teams"))
+                    default=str(Path.home() / "a-teams"))
     ap.add_argument("--suite", choices=("audit", "scale"), default="audit",
                     help="audit: the two small sibling tasks; scale: three "
                          "larger packages graded by executing the team's claims")
@@ -365,14 +365,14 @@ def main() -> int:
     ap.add_argument("--model", default=None,
                     help="put every agent on this model (and drop per-agent effort)")
     ap.add_argument("--turn-timeout", type=int, default=None,
-                    help="AGYTEAM_TURN_TIMEOUT for the team's turns, seconds")
+                    help="ATEAM_TURN_TIMEOUT for the team's turns, seconds")
     a = ap.parse_args()
 
     # The supervisor runs as a child and finds the team through the
     # environment; --teams-root used to stop at this process.
-    os.environ["AGYTEAM_TEAMS_ROOT"] = str(Path(a.teams_root).expanduser())
+    os.environ["ATEAM_TEAMS_ROOT"] = str(Path(a.teams_root).expanduser())
     if a.turn_timeout:
-        os.environ["AGYTEAM_TURN_TIMEOUT"] = str(a.turn_timeout)
+        os.environ["ATEAM_TURN_TIMEOUT"] = str(a.turn_timeout)
     team_root = Path(a.teams_root).expanduser() / a.team
     if team_root.exists():
         sys.exit(f"{team_root} already exists. A convergence run must start "
@@ -399,10 +399,10 @@ def main() -> int:
         team_root.mkdir(parents=True)
         home = team_root / "_home"
         home.mkdir()
-        DOCKER.update(image=build_image("agyteam-bench:latest"),
+        DOCKER.update(image=build_image("ateam-bench:latest"),
                       mounts=[str(stage), str(team_root), str(audit_dir)],
                       home=str(home))
-        os.environ["AGYTEAM_PROJECT_DIR"] = str(stage)
+        os.environ["ATEAM_PROJECT_DIR"] = str(stage)
         print(f"image:     {DOCKER['image']} (mounts: {', '.join(DOCKER['mounts'])})\n")
     else:
         check_containment(stage)

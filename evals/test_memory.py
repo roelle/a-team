@@ -2,11 +2,11 @@
 
 Runs the identical scenario against every configured store, so a new backend
 (shared database, knowledge service, internal store) can be validated before it
-is trusted. This is the suite agyteam/memory_template.py tells you to run.
+is trusted. This is the suite ateam/memory_template.py tells you to run.
 
   .venv/bin/python evals/test_memory.py
-  AGYTEAM_MEMORY_STORE=example_memory:MyStore \
-  AGYTEAM_MEMORY_CONFIG='{"dsn":"..."}' .venv/bin/python evals/test_memory.py
+  ATEAM_MEMORY_STORE=example_memory:MyStore \
+  ATEAM_MEMORY_CONFIG='{"dsn":"..."}' .venv/bin/python evals/test_memory.py
 
 With no arguments it tests the built-in file store plus an independent SQLite
 fixture — if both pass, the seam is real and not file-specific.
@@ -27,7 +27,7 @@ def contract(label: str, env_for) -> tuple[int, int]:
     print(f"\n== memory contract: {label} ==")
 
     def call(agent, calls):
-        return rpc("agyteam.mcp_memory", [], calls, env=env_for(agent))
+        return rpc("ateam.mcp_memory", [], calls, env=env_for(agent))
 
     r = call("alice", [
         ("memory_index", {}),
@@ -83,23 +83,23 @@ def contract(label: str, env_for) -> tuple[int, int]:
 
 
 def file_env():
-    base = Path(tempfile.mkdtemp(prefix="agyteam-mem-file-"))
+    base = Path(tempfile.mkdtemp(prefix="ateam-mem-file-"))
 
     def env_for(agent):
         ws = base / agent
         ws.mkdir(parents=True, exist_ok=True)
-        return {"AGYTEAM_AGENT": agent, "AGYTEAM_WORKSPACE": str(ws),
-                "AGYTEAM_MEMORY_STORE": "agyteam.memory_file:FileMemory"}
+        return {"ATEAM_AGENT": agent, "ATEAM_WORKSPACE": str(ws),
+                "ATEAM_MEMORY_STORE": "ateam.memory_file:FileMemory"}
     return env_for
 
 
 def sqlite_env():
-    db = Path(tempfile.mkdtemp(prefix="agyteam-mem-sqlite-")) / "mem.db"
+    db = Path(tempfile.mkdtemp(prefix="ateam-mem-sqlite-")) / "mem.db"
     cfg = json.dumps({"db": str(db)})
 
     def env_for(agent):
-        return {"AGYTEAM_AGENT": agent, "AGYTEAM_MEMORY_CONFIG": cfg,
-                "AGYTEAM_MEMORY_STORE": "fixture_memory:SqliteMemory"}
+        return {"ATEAM_AGENT": agent, "ATEAM_MEMORY_CONFIG": cfg,
+                "ATEAM_MEMORY_STORE": "fixture_memory:SqliteMemory"}
     return env_for
 
 
@@ -108,17 +108,17 @@ def test_loader_failures() -> tuple[int, int]:
     print("\n== loader safety ==")
 
     def run(env):
-        p = subprocess.run([str(PY), "-m", "agyteam.mcp_memory"], cwd=ROOT,
+        p = subprocess.run([str(PY), "-m", "ateam.mcp_memory"], cwd=ROOT,
                            input="", capture_output=True, text=True, timeout=30,
                            env={**os.environ, "PYTHONPATH": str(ROOT),
-                                "AGYTEAM_AGENT": "alice", **env})
+                                "ATEAM_AGENT": "alice", **env})
         return p.returncode, (p.stderr or "") + (p.stdout or "")
 
-    rc1, o1 = run({"AGYTEAM_MEMORY_STORE": "nosuchmodule:Thing"})
-    rc2, o2 = run({"AGYTEAM_MEMORY_STORE": "agyteam.memory_file"})
-    rc3, o3 = run({"AGYTEAM_MEMORY_STORE": "agyteam.memory_file:FileMemory",
-                   "AGYTEAM_MEMORY_CONFIG": "{not json"})
-    rc4, o4 = run({"AGYTEAM_MEMORY_STORE": "agyteam.scope:Scopes"})
+    rc1, o1 = run({"ATEAM_MEMORY_STORE": "nosuchmodule:Thing"})
+    rc2, o2 = run({"ATEAM_MEMORY_STORE": "ateam.memory_file"})
+    rc3, o3 = run({"ATEAM_MEMORY_STORE": "ateam.memory_file:FileMemory",
+                   "ATEAM_MEMORY_CONFIG": "{not json"})
+    rc4, o4 = run({"ATEAM_MEMORY_STORE": "ateam.scope:Scopes"})
     return sum([
         check("missing module fails loudly", rc1 != 0 and "cannot load" in o1, o1),
         check("malformed spec rejected", rc2 != 0 and "module:Class" in o2, o2),
@@ -130,12 +130,12 @@ def test_loader_failures() -> tuple[int, int]:
 def test_provenance() -> tuple[int, int]:
     """Test memory provenance (when and why) and backward compatibility with legacy files."""
     print("\n== memory provenance ==")
-    ws = Path(tempfile.mkdtemp(prefix="agyteam-mem-prov-"))
-    env = {"AGYTEAM_AGENT": "alice", "AGYTEAM_WORKSPACE": str(ws),
-           "AGYTEAM_MEMORY_STORE": "agyteam.memory_file:FileMemory"}
+    ws = Path(tempfile.mkdtemp(prefix="ateam-mem-prov-"))
+    env = {"ATEAM_AGENT": "alice", "ATEAM_WORKSPACE": str(ws),
+           "ATEAM_MEMORY_STORE": "ateam.memory_file:FileMemory"}
 
     def call(calls):
-        return rpc("agyteam.mcp_memory", [], calls, env=env)
+        return rpc("ateam.mcp_memory", [], calls, env=env)
 
     # 1. Save with why and explicit when
     r1 = call([
@@ -190,11 +190,11 @@ def test_provenance() -> tuple[int, int]:
     t_read_updated = text_of(r4[1])
 
     # 5. Conforming store: SqliteMemory conforms to MemoryStore and accepts save_memory with why/when
-    sqlite_ws = Path(tempfile.mkdtemp(prefix="agyteam-mem-sql-prov-")) / "mem.db"
-    sql_env = {"AGYTEAM_AGENT": "alice",
-               "AGYTEAM_MEMORY_CONFIG": json.dumps({"db": str(sqlite_ws)}),
-               "AGYTEAM_MEMORY_STORE": "fixture_memory:SqliteMemory"}
-    r5 = rpc("agyteam.mcp_memory", [], [
+    sqlite_ws = Path(tempfile.mkdtemp(prefix="ateam-mem-sql-prov-")) / "mem.db"
+    sql_env = {"ATEAM_AGENT": "alice",
+               "ATEAM_MEMORY_CONFIG": json.dumps({"db": str(sqlite_ws)}),
+               "ATEAM_MEMORY_STORE": "fixture_memory:SqliteMemory"}
+    r5 = rpc("ateam.mcp_memory", [], [
         ("save_memory", {
             "name": "sqlite-test",
             "description": "sqlite conforming store test",
@@ -282,12 +282,12 @@ def test_provenance() -> tuple[int, int]:
 def test_contradiction_detection() -> tuple[int, int]:
     """Test contradiction and overlap detection on write."""
     print("\n== contradiction and overlap detection ==")
-    ws = Path(tempfile.mkdtemp(prefix="agyteam-mem-conflict-"))
-    env = {"AGYTEAM_AGENT": "alice", "AGYTEAM_WORKSPACE": str(ws),
-           "AGYTEAM_MEMORY_STORE": "agyteam.memory_file:FileMemory"}
+    ws = Path(tempfile.mkdtemp(prefix="ateam-mem-conflict-"))
+    env = {"ATEAM_AGENT": "alice", "ATEAM_WORKSPACE": str(ws),
+           "ATEAM_MEMORY_STORE": "ateam.memory_file:FileMemory"}
 
     def call(calls):
-        return rpc("agyteam.mcp_memory", [], calls, env=env)
+        return rpc("ateam.mcp_memory", [], calls, env=env)
 
     # Seed base memories
     call([
@@ -398,12 +398,12 @@ def test_contradiction_detection() -> tuple[int, int]:
 def test_review_memory() -> tuple[int, int]:
     """Test review_memory tool across all categories and clean baseline."""
     print("\n== memory self-review ==")
-    ws = Path(tempfile.mkdtemp(prefix="agyteam-mem-review-"))
-    env = {"AGYTEAM_AGENT": "alice", "AGYTEAM_WORKSPACE": str(ws),
-           "AGYTEAM_MEMORY_STORE": "agyteam.memory_file:FileMemory"}
+    ws = Path(tempfile.mkdtemp(prefix="ateam-mem-review-"))
+    env = {"ATEAM_AGENT": "alice", "ATEAM_WORKSPACE": str(ws),
+           "ATEAM_MEMORY_STORE": "ateam.memory_file:FileMemory"}
 
     def call(calls):
-        return rpc("agyteam.mcp_memory", [], calls, env=env)
+        return rpc("ateam.mcp_memory", [], calls, env=env)
 
     # 1. Clean baseline: store with unremarkable memories produces NO flags
     call([
@@ -472,10 +472,10 @@ def test_review_memory() -> tuple[int, int]:
 
     # 5. Mutual contradiction without antonym: postgres vs sqlite store choice
     # Saved through the store and reviewed via the MCP server review_memory tool over RPC
-    ws_db = Path(tempfile.mkdtemp(prefix="agyteam-mem-dbchoice-"))
-    env_db = {"AGYTEAM_AGENT": "alice", "AGYTEAM_WORKSPACE": str(ws_db),
-              "AGYTEAM_MEMORY_STORE": "agyteam.memory_file:FileMemory"}
-    r_no_antonym = rpc("agyteam.mcp_memory", [], [
+    ws_db = Path(tempfile.mkdtemp(prefix="ateam-mem-dbchoice-"))
+    env_db = {"ATEAM_AGENT": "alice", "ATEAM_WORKSPACE": str(ws_db),
+              "ATEAM_MEMORY_STORE": "ateam.memory_file:FileMemory"}
+    r_no_antonym = rpc("ateam.mcp_memory", [], [
         ("save_memory", {
             "name": "db",
             "description": "store choice",
@@ -542,12 +542,12 @@ def test_review_memory() -> tuple[int, int]:
 
 
 if __name__ == "__main__":
-    spec = os.environ.get("AGYTEAM_MEMORY_STORE")
+    spec = os.environ.get("ATEAM_MEMORY_STORE")
     if spec:
-        cfg = os.environ.get("AGYTEAM_MEMORY_CONFIG", "")
+        cfg = os.environ.get("ATEAM_MEMORY_CONFIG", "")
         runs = [contract(spec, lambda agent: {
-            "AGYTEAM_AGENT": agent, "AGYTEAM_MEMORY_STORE": spec,
-            "AGYTEAM_MEMORY_CONFIG": cfg})]
+            "ATEAM_AGENT": agent, "ATEAM_MEMORY_STORE": spec,
+            "ATEAM_MEMORY_CONFIG": cfg})]
     else:
         runs = [contract("file (default)", file_env()),
                 contract("sqlite (independent fixture)", sqlite_env()),

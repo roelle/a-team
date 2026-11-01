@@ -18,7 +18,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from agyteam.runner import Runner  # noqa: E402
+from ateam.runner import Runner  # noqa: E402
 
 
 class Host:
@@ -43,7 +43,7 @@ class Host:
 
 
 class TemplateRunner(Runner):
-    """Shaped exactly like agyteam/runner_template.py: create, register, deliver."""
+    """Shaped exactly like ateam/runner_template.py: create, register, deliver."""
     label = "template"
 
     def __init__(self, config=None, observer=None):
@@ -83,7 +83,7 @@ class LateRunner(TemplateRunner):
 def team(tmp_path, monkeypatch):
     d = tmp_path / "team"
     d.mkdir()
-    monkeypatch.setenv("AGYTEAM_TEAM_DIR", str(d))
+    monkeypatch.setenv("ATEAM_TEAM_DIR", str(d))
     return d
 
 
@@ -126,7 +126,7 @@ def test_the_brief_goes_in_after_registration_too(team):
 def test_the_template_keeps_this_shape():
     """The template is what anyone adapting a host actually copies, so the
     ordering has to be right *there*, not only in prose about it."""
-    src = (ROOT / "agyteam" / "runner_template.py").read_text()
+    src = (ROOT / "ateam" / "runner_template.py").read_text()
     body = src[src.index("def wake("):src.index("# --- host-specific")]
     create = body.index("_create_session")
     register = body.index("remember_conversation")
