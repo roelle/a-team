@@ -7,6 +7,31 @@ the README for what counts as the public surface.
 
 ## [Unreleased]
 
+## [4.2.0] - 2026-11-02
+
+### Added
+- **Memories say where they came from.** Every save and merge an agent makes in
+  a turn is logged with that turn, who its mail came from, and any outside
+  content in the conversation so far: a web page, a download, or a tool a-team
+  does not know. The Memories page shows it, as does the memory review, and
+  recall adds a note to a marked memory: its ordinary advice stands, but a step
+  that runs, sends, trusts or skips needs first-hand support. In the bench that
+  note cost nothing on sound memories and took a planted bad step from 11% to
+  0%. A mark survives a rewrite, a merge and a delete and
+  restore; only the operator saving the memory clears it. This is a record, not
+  a safety check: an unmarked memory can still have come from a file in the
+  repository, and a shell command can reach the network in ways a-team does not
+  see. Memories saved before this release have no stamp. New: `ateam/origin.py`,
+  `<team_dir>/origin/`, and the `turn`, `from`, `mail` and `outside` fields in
+  `memory_log.jsonl`.
+- `bench/recall/behave.py` measures whether an agent acts on a memory it is
+  given, what recall loses compared with always offering the right one, what
+  the note costs on a sound memory, what it stops on a planted one, and whether
+  an agent drops a stale memory when the request shows it no longer holds.
+- `bench/recall/late_misses.py <team_dir>` replays a team's recall misses as if
+  recall had also run during the turn, to show whether that is worth building.
+  It writes nothing to the team, and also reads agy-team directories.
+
 ## [4.1.0] - 2026-11-02
 
 ### Added
@@ -713,7 +738,8 @@ MCP memory server.
 ## [1.0] - 2026-09-08
 Milestone tag (pre-semver).
 
-[Unreleased]: https://github.com/roelle/a-team/compare/v4.1.0...HEAD
+[Unreleased]: https://github.com/roelle/a-team/compare/v4.2.0...HEAD
+[4.2.0]: https://github.com/roelle/a-team/compare/v4.1.0...v4.2.0
 [4.1.0]: https://github.com/roelle/a-team/compare/v4.0.2...v4.1.0
 [4.0.2]: https://github.com/roelle/a-team/compare/v4.0.1...v4.0.2
 [4.0.1]: https://github.com/roelle/a-team/compare/v4.0.0...v4.0.1

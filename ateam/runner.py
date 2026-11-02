@@ -27,6 +27,7 @@ import uuid
 from abc import ABC, abstractmethod
 from pathlib import Path
 
+from . import origin
 from .names import current_spec
 
 # The default must be the runner that works everywhere. runner_sdk needs
@@ -409,6 +410,7 @@ class Runner(ABC):
         self.conversations_path.parent.mkdir(parents=True, exist_ok=True)
         self.conversations_path.write_text(
             json.dumps(convs, indent=2, sort_keys=True))
+        origin.forget(self.team_dir, agent)
 
     def retired_conversations(self) -> list[dict]:
         """Every conversation this team has cycled, oldest first."""

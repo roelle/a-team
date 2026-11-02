@@ -32,7 +32,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from . import filelock
+from . import filelock, origin
 from .transport import Message
 from .transport import load as load_transport
 
@@ -117,6 +117,7 @@ def count_call(team_dir, agent: str, tool: str, args) -> None:
         turn = turn_of(team_dir, agent)
         if not turn:
             return
+        origin.note(team_dir, agent, tool, args)
         kept = {k: v for k, v in (args or {}).items() if k not in COMMENTARY}
         text = json.dumps(kept, sort_keys=True, default=str)
         call = hashlib.sha1(f"{tool}\0{text}".encode("utf-8", "replace")).hexdigest()[:16]

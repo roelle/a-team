@@ -9,11 +9,11 @@ It is also a lab for watching agent teams fail. Most of what is interesting here
 ## Install
 
 ```bash
-pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.1.0"
+pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.2.0"
 a-team
 ```
 
-Or with [uv](https://docs.astral.sh/uv/): `uv tool install "a-team @ git+https://github.com/roelle/a-team.git@v4.1.0"`.
+Or with [uv](https://docs.astral.sh/uv/): `uv tool install "a-team @ git+https://github.com/roelle/a-team.git@v4.2.0"`.
 
 It opens your browser, shows what this machine can run agents on, and creates a team. It takes no keys; put an API key in the environment you start it from.
 
@@ -53,7 +53,9 @@ that — why?"). That sentence is the training. Where it goes:
   that on (see [Session lifecycle](#session-lifecycle-cycling-and-distillation)).
   Memories belong to one agent: what you tell the manager is the manager's
   memory. Say it to the agent concerned (a direct message, or `@qa` in a
-  channel), or ask the manager to pass it on.
+  channel), or ask the manager to pass it on. Each save records its turn and
+  any outside content the agent had read, and the admin page shows it: a
+  record to check against, not proof that a memory is safe.
 - **Norms, the rules for the whole team.** `<team_dir>/NORMS.md` is part of
   every agent's brief. It is written by a retrospective (`--retro`) or by
   you, by hand; agents cannot write it. A brief is read when a conversation
@@ -1004,6 +1006,12 @@ now look after them:
   `Record.memory_stats(agent)` gives each memory's age, revisions, reads and
   last read. For history from before the log, it takes the reads from the
   event log.
+- **Origin.** Each save and merge in a turn also logs that turn, who its mail
+  came from, and any outside content in the conversation so far
+  (`ateam/origin.py`): a web page, a download, or a tool a-team does not know.
+  Recall and the review show that mark, and only the operator saving the memory
+  clears it. It is a record, not a verdict: a memory with no mark can still have
+  come from a file in the repository.
 - **Review.** A memory review is a turn in which an agent goes over its own
   memories with that history, and with `review_memory`'s flags. It merges
   what overlaps (`merge_memories`, which keeps the sources' history), rewrites
@@ -1677,7 +1685,7 @@ Releases follow [Semantic Versioning](https://semver.org/), tagged
 in [RELEASING.md](RELEASING.md). Pin a tag rather than `main`:
 
 ```bash
-pip install "a-team @ git+https://github.com/roelle/a-team.git@v4.1.0"
+pip install "a-team @ git+https://github.com/roelle/a-team.git@v4.2.0"
 python -m ateam.supervisor --version
 ```
 

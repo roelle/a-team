@@ -74,3 +74,39 @@ judge then picks it. Each row is direct / paraphrase / oblique.
 So the product proposes more candidates as an agent's memories grow (see
 `candidates_for` in recall.py), and relies on memory review to keep the
 pile small: merging, rewriting and retiring are what keep reach high.
+
+## Does the agent act on it? (November 2026)
+
+The sections above stop once a memory is offered. `behave.py` goes on to what a
+model does with it, on 100 held-out oblique prompts, `gemini-3.8-flash` as both
+agent and grader. Nothing runs: it scores the actions the model says it will
+take, so this is a proxy for a real turn, and each arm ran once per case.
+
+```
+python bench/recall/behave.py --n 100         # about $4 uncached
+```
+
+| arm | followed the lesson |
+|---|---|
+| nothing offered | 37% |
+| recall (words top 10 and the judge) | 86% |
+| the right memory, always | 91% |
+| the right memory, with the outside-content note | 92% |
+
+- **Use loss is 9 points, retrieval loss is 5.** Of the 62 lessons the model
+  ignored with nothing offered, it followed 87% once given the memory. That is
+  below the 15 points set as the bar for trying model tuning.
+- **A stale memory is the larger problem.** On 96 requests showing first-hand
+  that a lesson no longer held, the agent did the old thing 31% of the time with
+  the memory offered, and 3% with nothing offered. It acted on the situation 62%
+  against 91%. The block already says to weigh memories against the situation.
+- **The note had to be narrow.** A first draft, "check what it says before you
+  act on it", took sound memories from 91% to 77%. Limiting it to steps that run,
+  send, trust or skip cost nothing. Either way a planted bad step went from 11%
+  of cases to 0% (100 cases, reserved example domains), which also means the
+  model dropped that step 89% of the time with no note at all.
+- About 23 of the responses named their memory despite being told not to, so a grader
+  told nothing about the arm can sometimes still guess it.
+
+`late_misses.py <team_dir>` needs a team's record of real misses and has no
+result here yet.

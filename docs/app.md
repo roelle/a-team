@@ -22,7 +22,7 @@ beside the conversation.
 ## Run it
 
 ```bash
-pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.1.0"
+pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.2.0"
 a-team
 ```
 
@@ -101,6 +101,10 @@ The **Admin** page has four tabs:
   see recent memory reviews, and **Review now** to queue one. A review is a
   turn in which the agent merges, rewrites and deletes its own memories. It
   also runs on its own at milestones and weekly, between the agent's turns.
+  Each memory says whose mail its turn was answering, and **read outside**
+  names any web page, download or unknown tool in the conversation when it was
+  saved. That mark stays through the agent's own edits; saving the memory
+  yourself clears it.
 - **Update & restart**: the versions running, a check for updates, a
   Restart per team, and **Update & restart everything**. That updates
   a-team where it is installed (a checkout fast-forwards,

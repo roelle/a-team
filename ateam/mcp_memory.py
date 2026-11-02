@@ -20,7 +20,7 @@ repo it happened to be working in.
 import os
 import sys
 
-from . import memory_log, scope, steer
+from . import memory_log, origin, scope, steer
 from .mcp_base import serve, string, tool
 from .memory import (MemoryStore, detect_conflicts, extract_provenance,
                      normalize_name, review_memories)
@@ -104,7 +104,8 @@ def handlers(store: MemoryStore, team=None) -> dict:
 
         created = store.save(name, a["description"], a["content"],
                              why=why, when=when)
-        memory_log.record(team, store.agent, "save", name, new=bool(created))
+        memory_log.record(team, store.agent, "save", name, new=bool(created),
+                          **origin.stamp(team, store.agent))
         verb = "saved" if created else "updated"
         msg = f"[memory '{name}' {verb}]"
         if conflicts:
@@ -156,7 +157,8 @@ def handlers(store: MemoryStore, team=None) -> dict:
         for n in names:
             if n != into:
                 store.delete(n)
-        memory_log.record(team, store.agent, "merge", into, sources=names)
+        memory_log.record(team, store.agent, "merge", into, sources=names,
+                          **origin.stamp(team, store.agent))
         return (f"[merged {', '.join(names)} into '{into}'; the sources are archived]\n"
                 f"Current memory index:\n{render_index(store)}")
 

@@ -180,7 +180,14 @@ function memoryMeta(m) {
   const missed = r.missed ? ` · <span class="state-bad">missed ${r.missed}×</span>` : "";
   return `since ${esc(since)} · ${m.revisions || 0} revision${m.revisions === 1 ? "" : "s"} · `
     + `${m.reads ? `${m.reads} read${m.reads === 1 ? "" : "s"}, last ${esc(day(m.last_read))}` : `<span class="state-warn">never read</span>`}`
-    + recalled + missed;
+    + recalled + missed + memoryOrigin(m);
+}
+function memoryOrigin(m) {
+  const from = m.origin?.by ? ` · saved by ${esc(m.origin.by)}`
+    : m.origin?.from?.length ? ` · saved on a turn from ${esc(m.origin.from.join(", "))}` : "";
+  const read = m.outside?.length
+    ? ` · <span class="state-warn" title="This agent had read this outside content when it saved the memory. Saving the memory yourself clears the mark.">read outside: ${esc(m.outside.join(", "))}</span>` : "";
+  return from + read;
 }
 const PLURALS = { memory: "memories", miss: "misses" };
 const plural = (n, w) => `${n} ${n === 1 ? w : PLURALS[w] || w + "s"}`;

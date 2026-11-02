@@ -24,6 +24,8 @@ import time
 import uuid
 from pathlib import Path
 
+from . import origin
+
 LOG = "memory_log.jsonl"
 ARCHIVE = "memory_archive"
 
@@ -209,8 +211,30 @@ def _event_reads(team_dir, agent: str, before: str | None) -> list[tuple[str, st
     return out
 
 
+def outside(team_dir, agent: str) -> dict[str, list[str]]:
+    """{name: outside content behind that memory}. It stays through a rewrite,
+    a merge and a delete and restore: an agent's own later edit does not
+    vouch for what it read. What the operator writes or saves does."""
+    out: dict[str, list[str]] = {}
+    for r in _rows(team_dir):
+        if r.get("agent") != agent or r.get("op") not in ("save", "merge"):
+            continue
+        name = r.get("name")
+        if r.get("by") and not r.get("restored"):
+            out.pop(name, None)
+            continue
+        seen = list(out.get(name, []))
+        for src in r.get("sources") or []:
+            seen += out.get(src, [])
+        seen += r.get("outside") or []
+        if seen:
+            out[name] = list(dict.fromkeys(seen))[-origin.MAX_SOURCES:]
+    return out
+
+
 def stats(team_dir, agent: str, entries=()) -> dict[str, dict]:
-    """{name: {created, saved, revisions, reads, last_read, known_since}}.
+    """{name: {created, saved, revisions, reads, last_read, known_since,
+    origin, outside}}.
 
     `entries` (the store's index) supplies what the log cannot: for a memory
     saved before the log existed, its last save time, which is then the
@@ -236,6 +260,7 @@ def stats(team_dir, agent: str, entries=()) -> dict[str, dict]:
                 st["created"] = ts
             st["revisions"] += 1
             st["saved"] = ts
+            st["origin"] = _origin(r)
         elif op == "read":
             st = s(name)
             st["reads"] += 1
@@ -245,6 +270,7 @@ def stats(team_dir, agent: str, entries=()) -> dict[str, dict]:
             st = s(name)
             st["revisions"] += 1
             st["saved"] = ts
+            st["origin"] = _origin(r)
             for src in r.get("sources") or []:
                 if src == name or src not in out:
                     continue
@@ -260,8 +286,20 @@ def stats(team_dir, agent: str, entries=()) -> dict[str, dict]:
         if not st["created"]:
             st["known_since"] = min(filter(None, [e.when or None, st["saved"]]), default=None)
         st["saved"] = st["saved"] or (e.when or None)
+    for name, seen in outside(team_dir, agent).items():
+        if name in out:
+            out[name]["outside"] = seen
     names = {e.name for e in entries}
     return {k: v for k, v in out.items() if not names or k in names}
+
+
+def _origin(row: dict) -> dict | None:
+    """Who a save answers to: the turn and its mail, or the operator."""
+    if row.get("by"):
+        return {"by": row["by"]}
+    if not row.get("turn"):
+        return None
+    return {k: row[k] for k in ("turn", "from", "mail") if row.get(k)}
 
 
 def saves_since(team_dir, agent: str, since: str | None) -> int:
