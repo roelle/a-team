@@ -22,7 +22,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "evals"))
 
 from ateam.record import Record  # noqa: E402
-from ateam.runner_claude import ClaudeRunner  # noqa: E402
+from ateam.runner_claude import BUILT_IN, ClaudeRunner  # noqa: E402
 from ateam.supervisor import Supervisor  # noqa: E402
 from ateam.transport import load as load_transport  # noqa: E402
 from fake_anthropic import FakeAnthropic, status, use  # noqa: E402
@@ -378,6 +378,18 @@ def test_a_turn_that_reaches_its_budget_stops_and_says_so(team, api):
     bus = load_transport("coder")
     assert bus.peek() == [], "the mail came back, and would wake it again"
     bus.close()
+
+
+
+def test_an_agent_is_offered_only_what_it_may_call(team, api):
+    assert runner().wake("coder", "go") == "done"
+    req = api.requests[0]
+    names = {t["name"] for t in req["tools"]}
+    builtin = {n for n in names if not n.startswith("mcp__")}
+    assert builtin <= set(BUILT_IN), f"sent on every request and refused if called: {builtin - set(BUILT_IN)}"
+    assert {"Bash", "Read", "Write", "Edit", "Grep", "Glob"} <= builtin
+    mine = sum(len(json.dumps(t)) for t in req["tools"])
+    assert mine < 45_000, f"tool definitions have grown to {mine} characters on every request"
 
 
 

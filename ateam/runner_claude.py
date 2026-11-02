@@ -83,6 +83,12 @@ ALLOWED = ["Bash", "Read", "Write", "Edit", "NotebookEdit", "Glob", "Grep", "Web
            "WebSearch", "Agent", "TodoWrite", "mcp__ateam_memory__*", "mcp__ateam_bus__*",
            "mcp__ateam_tasks__*", "mcp__ateam_self__*"]
 
+# Offering only these is most of what a turn costs. Left to itself the CLI sends
+# every tool it has, each described in full on every request, and agents could
+# call none outside ALLOWED: measured, 86% of a request, and 47,800 tokens of
+# context for a turn that said one word.
+BUILT_IN = [t for t in ALLOWED if not t.startswith("mcp__")]
+
 # The keys that run the agents, unset at the start of each shell command. The
 # CLI has a setting that scrubs them, but it also sandboxes Bash: package.json,
 # node_modules, .env and .git/hooks go read-only, and with no network a coding
@@ -229,7 +235,7 @@ class ClaudeRunner(Runner):
                            "append": persona.brief(agent, agents, self.scopes.shared_dir())},
             setting_sources=self.config.get("setting_sources", []), skills=[],
             mcp_servers=self._mcp_servers(agent), strict_mcp_config=True,
-            permission_mode="dontAsk", allowed_tools=ALLOWED,
+            permission_mode="dontAsk", allowed_tools=ALLOWED, tools=BUILT_IN,
             disallowed_tools=self._withheld(spec), hooks=self._hooks(agent),
             # The session is named here rather than learned from the result:
             # identity is bound before the work is delivered (Runner.wake).

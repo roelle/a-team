@@ -7,6 +7,21 @@ the README for what counts as the public surface.
 
 ## [Unreleased]
 
+## [4.0.2] - 2026-11-01
+
+### Changed
+- **Claude turns cost about 60% less.** Agents are offered only the tools they
+  may call. A one-word turn's context fell from 47,800 tokens to 19,300.
+- On the board, **Waits for** takes task titles instead of ids, and a task's
+  detail says which open tasks overlap the paths it expects to write.
+- Someone with a link of their own no longer sees controls they cannot use, and
+  the sidebar calls the operator's tasks that.
+
+### Fixed
+- Every page still said agychat, agyboard, agyadmin or agywiki in its corner.
+- First run no longer shows a message box with nowhere to send to.
+- Wrapped text in Waiting on you lines up, and the status line reads plainly.
+
 ## [4.0.1] - 2026-11-01
 
 ### Fixed
@@ -683,7 +698,8 @@ MCP memory server.
 ## [1.0] - 2026-09-08
 Milestone tag (pre-semver).
 
-[Unreleased]: https://github.com/roelle/a-team/compare/v4.0.1...HEAD
+[Unreleased]: https://github.com/roelle/a-team/compare/v4.0.2...HEAD
+[4.0.2]: https://github.com/roelle/a-team/compare/v4.0.1...v4.0.2
 [4.0.1]: https://github.com/roelle/a-team/compare/v4.0.0...v4.0.1
 [4.0.0]: https://github.com/roelle/a-team/releases/tag/v4.0.0
 [3.24.0]: https://github.com/roelle/agy-team/compare/v3.23.0...v3.24.0

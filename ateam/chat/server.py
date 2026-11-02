@@ -239,7 +239,8 @@ class App:
         row = next((x for x in self.tasks(team) if x["id"] == task_id), None)
         if row is None:
             raise LookupError(f"no task {task_id}")
-        return {"task": row,
+        state = tasks_lib.snapshot(t.dir)
+        return {"task": row, "overlaps": tasks_lib.overlaps(state, state[task_id]),
                 "history": stamped([e for e in tasks_lib.read(t.dir) if e.get("id") == task_id]),
                 "messages": stamped([m for m in rec.bus() if m.get("task_id") == task_id][-200:]),
                 "reviews": stamped([r for r in rec.reviews() if r.get("task_id") == task_id])}

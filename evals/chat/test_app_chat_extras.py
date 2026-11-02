@@ -236,3 +236,12 @@ def test_sigterm_ends_the_server_promptly(tmp_path):
     p.stdout.readline()
     p.send_signal(signal.SIGTERM)
     assert p.wait(timeout=5) == 0
+
+
+def test_a_tasks_detail_names_what_it_overlaps(server):
+    app, *_ = server
+    a = app.task_action("demo", {"action": "create", "title": "api"})
+    b = app.task_action("demo", {"action": "create", "title": "docs"})
+    app.task_action("demo", {"action": "update", "id": a["id"], "writes": ["src/api"]})
+    app.task_action("demo", {"action": "update", "id": b["id"], "writes": ["src/api/README.md"]})
+    assert [o["title"] for o in app.task("demo", b["id"])["overlaps"]] == ["api"]

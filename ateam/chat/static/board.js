@@ -330,8 +330,9 @@ async function openDetail(id) {
       <div><label>&nbsp;</label><label class="inline-check"><input type="checkbox" name="auto_close" ${t.auto_close ? "checked" : ""}> close by itself when everything under it is done</label></div></div>
     <div class="row"><div><label>Project label</label><input type="text" name="project" value="${esc(t.project)}"></div>
       <div><label>Channel</label><select name="channel"><option value="">none</option>${chans.map((n) => `<option ${n === t.channel ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></div></div>
-    <label>Waits for <span class="hint">(task ids, comma-separated: it cannot start until they are done)</span></label><input type="text" name="blocked_by" value="${esc((t.blocked_by || []).join(", "))}">
+    <label>Waits for <span class="hint">(task titles, comma-separated: it cannot start until they are done)</span></label><input type="text" name="blocked_by" list="all-tasks" value="${esc((t.blocked_by || []).map((b) => byId(b)?.title || b).join(", "))}">
     <label>Expects to write <span class="hint">(paths, comma-separated: warns when open tasks overlap, locks nothing)</span></label><input type="text" name="writes" value="${esc((t.writes || []).join(", "))}">
+    ${(d.overlaps || []).map((o) => `<div class="hint overlap">Overlaps ${esc(o.title)} (${esc(nameOf(o.owner))}), which expects to write ${esc(o.writes.join(", "))}</div>`).join("")}
     <label>Deadline <span class="hint">(e.g. 3d, or 2026-11-01T17:00:00-07:00)</span></label><input type="text" name="deadline" value="${esc(t.deadline || "")}">
     <label>Note</label><textarea name="note" rows="5">${esc(t.note || "")}</textarea>
     <label>Links <span class="hint">(one per line: title | link — a web address, go link or path)</span></label>
@@ -424,10 +425,15 @@ async function saveDetail(t, fd) {
   const prioNow = fd.get("priority");
   if ((prioNow === "" ? null : Number(prioNow)) !== (t.priority ?? null)) change.priority = prioNow;
   if (!!fd.get("auto_close") !== !!t.auto_close) change.auto_close = !!fd.get("auto_close");
-  for (const k of ["blocked_by", "writes"]) {
-    const v = String(fd.get(k) || "").split(",").map((x) => x.trim()).filter(Boolean);
-    if (v.join() !== (t[k] || []).join()) change[k] = v;
+  const listed = (k) => String(fd.get(k) || "").split(",").map((x) => x.trim()).filter(Boolean);
+  const blockers = [];
+  for (const name of listed("blocked_by")) {
+    const found = byId(name) || S.tasks.find((x) => x.title === name && x.id !== t.id);
+    if (!found) return toast(`no task called “${name}”`, true);
+    blockers.push(found.id);
   }
+  if (blockers.join() !== (t.blocked_by || []).join()) change.blocked_by = blockers;
+  if (listed("writes").join() !== (t.writes || []).join()) change.writes = listed("writes");
   for (const k of ["title", "status", "owner", "project", "channel", "deadline", "note"]) {
     const v = (fd.get(k) ?? "").toString();
     if (v !== (t[k] || "")) change[k] = v;

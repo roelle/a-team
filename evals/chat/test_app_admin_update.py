@@ -104,7 +104,7 @@ def test_the_admin_page_is_served(server):
     c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
     c.request("GET", f"/admin?token={app.token}", headers={"Host": f"127.0.0.1:{port}"})
     r = c.getresponse()
-    assert r.status == 200 and b"agy<span>admin" in r.read()
+    assert r.status == 200 and b"admin.js" in r.read()
 
 
 def test_memories_come_with_their_history_and_an_archive_to_restore_from(server):

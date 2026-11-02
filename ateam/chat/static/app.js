@@ -124,6 +124,7 @@ function keyOf(m) {
 // The first run: no teams yet, so say what this machine can run and make one.
 async function renderSetup() {
   const { runtimes, teams_root } = await api("/api/setup");
+  $("#composer").classList.add("hidden");
   const ready = runtimes.filter((r) => r.ready);
   $("#messages").innerHTML = `<form class="setup" id="setup">
     <h2>Start your first team</h2>
@@ -205,7 +206,7 @@ async function refreshState() {
     if (ts > (S.seen[`${S.team}|${k}`] || "") && !(S.view && viewKey(S.view) === k)) S.atMe[k] = true;
   $("#me").textContent = `posting as ${S.state.author}`;
   document.querySelector('.nav-link[href^="/admin"]')?.classList.toggle("hidden", !!S.state.member);
-  for (const id of ["#sup-start", "#sup-stop", "#sup-restart"]) if (S.state.member) $(id)?.classList.add("hidden");
+  $("#new-channel")?.classList.toggle("hidden", !!S.state.member);
   renderSidebar(); renderAgents(); renderTasks(); renderSupervisor();
   if (S.view) { renderViewTasks(); renderBookmarks(); }
 }
@@ -220,7 +221,7 @@ function renderSupervisor() {
   }
   else if (st.supervisor) {
     const b = st.supervisor, src = b.source || {};
-    pill.textContent = `running (${b.mode || "pid " + b.pid})` + (b.runner ? ` · ${b.runner}` : "") + (b.manager ? ` · manager ${b.manager}` : "");
+    pill.textContent = "running" + (b.runner ? ` · ${b.runner}` : "");
     // Where the runner came from: "default" on a team that needs another
     // runner is the misconfiguration the roster's supervisor block fixes.
     pill.title = b.runner ? `runner ${b.runner_class || b.runner} (from ${src.runner || "?"}); manager ${b.manager || "none"}`
@@ -229,9 +230,9 @@ function renderSupervisor() {
   }
   else if (st.stopped) { pill.textContent = `stopped: ${st.stopped}`.slice(0, 60); pill.className = "pill bad"; }
   else { pill.textContent = "no supervisor: nothing will wake"; pill.className = "pill bad"; }
-  $("#sup-start").classList.toggle("hidden", !!st.supervisor);
-  $("#sup-stop").classList.toggle("hidden", !st.supervisor);
-  $("#sup-restart").classList.toggle("hidden", !st.supervisor || !!st.supervisor.draining);
+  $("#sup-start").classList.toggle("hidden", !!st.supervisor || !!S.state.member);
+  $("#sup-stop").classList.toggle("hidden", !st.supervisor || !!S.state.member);
+  $("#sup-restart").classList.toggle("hidden", !st.supervisor || !!st.supervisor.draining || !!S.state.member);
 }
 
 function navItem(v, label, extra = "", opts) {
@@ -253,7 +254,8 @@ function needsItem(n) {
     return row(n.kind === "blocker" ? "bad" : "", `<span class="what">${esc(nameOf(n.from))}</span> ${text(n.content)}`,
       `${n.kind} from ${n.from}: ${n.content}`, `data-view='${esc(JSON.stringify(v))}'`);
   }
-  const what = n.kind === "stuck" ? `${esc(nameOf(n.owner))} is blocked` : "Your task";
+  const what = n.kind === "stuck" ? `${esc(nameOf(n.owner))} is blocked`
+    : S.state.member ? "The operator's task" : "Your task";
   return row(n.kind === "stuck" ? "bad" : "", `<a href="${esc(boardURL(n.id))}"><span class="what">${what}</span> ${text(n.title)}</a>`, n.title, "");
 }
 

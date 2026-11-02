@@ -86,7 +86,7 @@ $("#pic-file").onchange = async (e) => {
 function renderQuiet() {
   const q = S.admin.quiet_mail;
   if (!q) { $("#quiet").textContent = "Needs a newer a-team."; return; }
-  if (!q.turns_with_quiet) { $("#quiet").textContent = `No quiet channel mail on ${q.turns} turns in the last ${q.days} days. Recorded from a-team 3.19.0 on.`; return; }
+  if (!q.turns_with_quiet) { $("#quiet").textContent = `No quiet channel mail on ${q.turns} turns in the last ${q.days} days.`; return; }
   const share = q.share == null ? "" : `, ${(q.share * 100).toFixed(1)}% of uncached input`;
   const top = Object.entries(q.channels).slice(0, 8).map(([c, b]) => `${c === "direct" ? "direct" : "#" + c} ~${Math.round(b / 4).toLocaleString()}`).join(" · ");
   $("#quiet").innerHTML = `Last ${q.days} days: ${q.msgs} posts that mentioned nobody reached agents on ${q.turns_with_quiet} of ${q.turns} turns, about ${q.est_tokens.toLocaleString()} tokens${share}. Each then stays in context, re-read at the cached rate, until compaction.<br>Tokens by channel: ${esc(top)}`;
