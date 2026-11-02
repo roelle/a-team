@@ -176,3 +176,19 @@ def test_memories_come_with_how_recall_has_gone(server):
     r = m["recall"]
     assert r["enabled"] is False and r["days"][-1]["wakes"] == 1 and r["days"][-1]["misses"] == 1
     assert r["memories"]["build"] == {"offered": 1, "hinted": 0, "missed": 1, "last_offered": now}
+
+
+def test_an_environment_without_pip_upgrades_through_uv(monkeypatch):
+    from ateam import update as up
+    monkeypatch.setattr(up.importlib.util, "find_spec", lambda name: None)
+    monkeypatch.setattr(up.shutil, "which", lambda name: "/bin/uv")
+    assert up.installer()[:3] == ["/bin/uv", "pip", "install"]
+
+
+def test_with_neither_it_says_so(monkeypatch):
+    import pytest
+    from ateam import update as up
+    monkeypatch.setattr(up.importlib.util, "find_spec", lambda name: None)
+    monkeypatch.setattr(up.shutil, "which", lambda name: None)
+    with pytest.raises(up.UpdateError, match="the way you installed it"):
+        up.installer()

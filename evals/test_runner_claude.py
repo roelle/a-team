@@ -21,7 +21,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "evals"))
 
+from ateam.record import Record  # noqa: E402
 from ateam.runner_claude import ClaudeRunner  # noqa: E402
+from ateam.supervisor import Supervisor  # noqa: E402
 from ateam.transport import load as load_transport  # noqa: E402
 from fake_anthropic import FakeAnthropic, status, use  # noqa: E402
 
@@ -345,6 +347,37 @@ def test_mail_that_arrives_mid_turn_reaches_the_model_at_the_next_step(team, api
     threading.Thread(target=deliver, daemon=True).start()
     assert runner().wake("coder", "go") == "done"
     assert "from user: Stop, wrong branch." in said_to_model(api.requests[-1])
+
+
+
+@pytest.mark.parametrize("api", [[use("Bash", {"command": "true"})] * 6 + ["done"]], indirect=True)
+def test_a_turn_that_reaches_its_budget_stops_and_says_so(team, api):
+    bus = load_transport("user")
+    bus.send("coder", "build it")
+    bus.close()
+    sup = Supervisor(["coder", "qa"], runner(max_budget_usd=0.000001), require_review=False,
+                     max_hops=3, quiet=True)
+    try:
+        for _ in range(400):
+            sup.step()
+            if not sup.inflight:
+                break
+            time.sleep(0.02)
+        assert not sup.inflight
+        first = len(api.requests)
+        sup.step()
+    finally:
+        sup.close()
+    assert len(api.requests) == first, "the capped turn was retried"
+    assert events(team, "failure") == [], "reaching a limit is not a failure"
+    turn = events(team, "turn")[-1]
+    assert turn["cost_usd"] > 0, "what the turn spent went unrecorded"
+    row = Record(team).needs_you()[0]
+    assert row["kind"] == "blocker" and row["from"] == "coder"
+    assert "not finished" in row["content"]
+    bus = load_transport("coder")
+    assert bus.peek() == [], "the mail came back, and would wake it again"
+    bus.close()
 
 
 

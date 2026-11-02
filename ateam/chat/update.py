@@ -72,8 +72,7 @@ def update_self(p: dict) -> str:
     if p["kind"] == "pip":
         if not p.get("target"):
             raise up.UpdateError(f"no release tags at {p['url']}")
-        up._run([sys.executable, "-m", "pip", "install", "--quiet", "--upgrade",
-                 f"a-team @ git+{p['url']}@{p['target']}"])
+        up._run([*up.installer(), f"a-team @ git+{p['url']}@{p['target']}"])
         return f"installed a-team {p['target']}"
     raise up.UpdateError("a-team is installed neither from a git checkout nor from "
                          "git with pip; update it the way you installed it")

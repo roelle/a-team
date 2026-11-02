@@ -21,9 +21,11 @@ it, and starts it again as `--daemon --team-dir <team>`; the team's roster
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -100,6 +102,17 @@ def plan(to: str | None = None, repo: Path | None = None) -> dict:
     return {"kind": "unknown"}
 
 
+def installer() -> list[str]:
+    """How to upgrade this environment. uv makes environments with no pip in them."""
+    if importlib.util.find_spec("pip"):
+        return [sys.executable, "-m", "pip", "install", "--quiet", "--upgrade"]
+    uv = shutil.which("uv")
+    if uv:
+        return [uv, "pip", "install", "--quiet", "--upgrade", "--python", sys.executable]
+    raise UpdateError("this environment has no pip and uv is not on the PATH; "
+                         "update a-team the way you installed it")
+
+
 def update_code(p: dict) -> str:
     """Bring the installed code to the plan's target. Returns what was done."""
     if p["kind"] in ("git", "git-tag") and p["dirty"]:
@@ -124,9 +137,8 @@ def update_code(p: dict) -> str:
         if not p["target"]:
             raise UpdateError(f"no release tags at {p['url']}")
         extra = "[sdk]" if _has_sdk() else ""
-        _run([sys.executable, "-m", "pip", "install", "--quiet", "--upgrade",
-              f"ateam{extra} @ git+{p['url']}@{p['target']}"])
-        return f"installed ateam {p['target']} from {p['url']}"
+        _run([*installer(), f"a-team{extra} @ git+{p['url']}@{p['target']}"])
+        return f"installed a-team {p['target']} from {p['url']}"
     raise UpdateError("ateam is installed neither from a git checkout nor from a git "
                       "URL with pip; update it the way you installed it, then run "
                       "`python -m ateam.update --no-code` to restart the teams")

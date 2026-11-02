@@ -22,7 +22,7 @@ beside the conversation.
 ## Run it
 
 ```bash
-pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.0.0"
+pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.0.1"
 a-team
 ```
 
@@ -36,6 +36,8 @@ To run agents on an API key, add that runtime's package:
 pipx inject a-team google-antigravity google-genai     # Gemini
 pipx inject a-team claude-agent-sdk                    # Claude
 ```
+
+With uv, pass them when you install: `uv tool install --with claude-agent-sdk "a-team @ git+..."`.
 
 The browser opens only when you start it yourself on this machine; `--no-open`
 turns that off, and it stays off over SSH or as a service. `--author` sets the

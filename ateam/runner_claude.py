@@ -46,6 +46,7 @@ from . import roster as roster_lib
 from . import scope
 from . import steer
 from .runner import Runner, with_retry
+from .transport import load as load_transport
 
 DEFAULT_MODEL = "claude-opus-5-5"
 MODELS = [{"id": "claude-opus-5-5", "label": "Claude Opus 5.5"},
@@ -56,6 +57,9 @@ MODELS = [{"id": "claude-opus-5-5", "label": "Claude Opus 5.5"},
 # Any of these lets the CLI reach a model on terms the SDK allows.
 CREDENTIALS = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_USE_BEDROCK",
                "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY")
+
+# A turn the operator's own limits ended, by the CLI's name for each.
+LIMITS = {"error_max_budget_usd": "${budget} budget", "error_max_turns": "limit of {turns} steps"}
 
 # Effort as a roster writes it, for any runtime, to what this one takes.
 EFFORT = {"minimal": "low", "low": "low", "medium": "medium", "high": "high",
@@ -264,6 +268,33 @@ class ClaudeRunner(Runner):
         except Exception:
             pass                        # accounting must never break a turn
 
+    def _limit_reached(self, agent: str, session: str, model: str, t0: float, result,
+                       last) -> str:
+        """A turn stopped by max_budget_usd or max_turns.
+
+        It is not a failure. Treated as one, it was retried, so a cap meant to
+        stop spending kept spending, measured at four attempts in 75 seconds,
+        and each attempt's cost went unrecorded. The turn ends here, its cost
+        goes on the record, and the user is told, because the work is unfinished
+        and nothing will wake the agent again. Its session is kept, so a reply
+        continues where it stopped.
+        """
+        self._record(agent, session, model, t0, result, last)
+        what = LIMITS[result.subtype].format(budget=self.config.get("max_budget_usd"),
+                                             turns=self.config.get("max_turns"))
+        spent = f" after spending ${result.total_cost_usd:.2f}" if result.total_cost_usd else ""
+        note = (f"I stopped: this turn reached its {what}{spent}. What you asked for is "
+                f"not finished. Reply to have me continue, or raise the limit first.")
+        try:
+            bus = load_transport(agent)
+            try:
+                bus.send_kind("user", note, kind="blocker")
+            finally:
+                bus.close()
+        except Exception:
+            pass                        # the record still shows the turn
+        return f"[stopped: {what}]"
+
     async def _query(self, agent: str, message: str) -> str:
         t0 = time.monotonic()
         spec = self._spec(agent)[0]
@@ -292,6 +323,8 @@ class ClaudeRunner(Runner):
                 return f"[error: {type(e).__name__}: {e}]"
         if result is None:
             return "[error: the turn ended with no result]"
+        if result.subtype in LIMITS:
+            return self._limit_reached(agent, session, model, t0, result, last)
         if result.is_error or result.stop_reason == "refusal":
             detail = "; ".join(result.errors or []) or result.result or result.stop_reason or ""
             status = f" {result.api_error_status}" if result.api_error_status else ""

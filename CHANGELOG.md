@@ -7,6 +7,15 @@ the README for what counts as the public surface.
 
 ## [Unreleased]
 
+## [4.0.1] - 2026-11-01
+
+### Fixed
+- **A Claude turn that reaches `max_budget_usd` or `max_turns` now stops.** It
+  was treated as a failure and retried, so a cap meant to limit spending kept
+  spending, with no cost recorded. The turn now ends, its cost is recorded, and
+  the agent tells you with a `blocker`. Reply to have it continue.
+- Update & restart works on a `uv tool` install, which has no pip.
+
 ## [4.0.0] - 2026-11-01
 
 agy-team and agy-chat are now one product, a-team, in a new repository. It is
@@ -674,7 +683,8 @@ MCP memory server.
 ## [1.0] - 2026-09-08
 Milestone tag (pre-semver).
 
-[Unreleased]: https://github.com/roelle/a-team/compare/v4.0.0...HEAD
+[Unreleased]: https://github.com/roelle/a-team/compare/v4.0.1...HEAD
+[4.0.1]: https://github.com/roelle/a-team/compare/v4.0.0...v4.0.1
 [4.0.0]: https://github.com/roelle/a-team/releases/tag/v4.0.0
 [3.24.0]: https://github.com/roelle/agy-team/compare/v3.23.0...v3.24.0
 [3.23.0]: https://github.com/roelle/agy-team/compare/v3.22.0...v3.23.0
