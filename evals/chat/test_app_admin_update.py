@@ -175,7 +175,8 @@ def test_memories_come_with_how_recall_has_gone(server):
     _, m = call(port, "GET", "/api/memories?team=demo&agent=coder", token=app.token)
     r = m["recall"]
     assert r["enabled"] is False and r["days"][-1]["wakes"] == 1 and r["days"][-1]["misses"] == 1
-    assert r["memories"]["build"] == {"offered": 1, "hinted": 0, "missed": 1, "last_offered": now}
+    assert r["memories"]["build"] == {"offered": 1, "hinted": 0, "missed": 1, "last_offered": now,
+                                      "used": 0, "ignored": 0, "overruled": 0}
 
 
 def test_an_environment_without_pip_upgrades_through_uv(monkeypatch):

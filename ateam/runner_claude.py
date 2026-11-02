@@ -33,6 +33,7 @@ import os
 import sys
 import time
 import uuid
+from urllib.parse import urlsplit
 from pathlib import Path
 
 from claude_agent_sdk import (AssistantMessage, ClaudeAgentOptions, ClaudeSDKError,
@@ -48,7 +49,11 @@ from . import steer
 from .runner import Runner, with_retry
 from .transport import load as load_transport
 
-DEFAULT_MODEL = "claude-opus-5-5"
+DEFAULT_MODEL = "claude-sonnet-5-5"
+#: The manager and whoever reviews: judgement there is worth what it costs.
+STRONG_MODEL = "claude-opus-5-5"
+#: Dollars a turn may spend. "max_budget_usd": null in the config turns it off.
+DEFAULT_TURN_BUDGET = 1.0
 MODELS = [{"id": "claude-opus-5-5", "label": "Claude Opus 5.5"},
           {"id": "claude-sonnet-5-5", "label": "Claude Sonnet 5.5"},
           {"id": "claude-haiku-5-5", "label": "Claude Haiku 5.5"},
@@ -103,6 +108,28 @@ KEYS = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", 
 PATH_ARGS = ("file_path", "path", "notebook_path")
 
 
+def _strong(agent: str, spec: dict) -> bool:
+    words = f"{agent} {spec.get('role') or ''}".lower()
+    return bool(spec.get("is_principal") or spec.get("principal")) or any(
+        w in words for w in ("manager", "faces outward", "review", "qa"))
+
+
+def _gateway_env(gateway: dict, model: str) -> dict:
+    """An Anthropic-shaped endpoint in place of Anthropic's: a vendor's own, or
+    a router's. Anthropic does not support this for other vendors' models, so
+    it is opt-in per agent, and a release of the CLI can break it."""
+    url, var = str(gateway.get("base_url") or ""), str(gateway.get("token_env") or "")
+    host = urlsplit(url).hostname or ""
+    if not url.startswith("https://") and host not in ("127.0.0.1", "localhost", "::1"):
+        raise ValueError(f"gateway base_url must be https or loopback, got {url!r}")
+    if not os.environ.get(var):
+        raise ValueError(f"gateway token_env {var!r} is not set in the supervisor's environment")
+    return {"ANTHROPIC_BASE_URL": url, "ANTHROPIC_AUTH_TOKEN": os.environ[var], "ANTHROPIC_API_KEY": "",
+            # Pre-release request fields, which a provider that is not Anthropic rejects.
+            "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
+            **{f"ANTHROPIC_DEFAULT_{tier}_MODEL": model for tier in ("OPUS", "SONNET", "HAIKU")}}
+
+
 def _team_tool(name: str) -> str:
     """mcp__ateam_bus__send_to_teammate is the policy's send_to_teammate."""
     return name.split("__", 2)[2] if name.startswith("mcp__") and name.count("__") >= 2 else name
@@ -121,13 +148,28 @@ class ClaudeRunner(Runner):
 
     def __init__(self, config=None, observer=None):
         super().__init__(config, observer=observer)
-        self.model = self.config.get("model", DEFAULT_MODEL)
+        self.model = self.config.get("model")
         self.effort = self.config.get("effort", "high")
         self.timeout = self.config.get("timeout", cfg.TURN_TIMEOUT_S)
         self.use_workers = self.config.get("workers", True)
         self.scopes = scope.load()
         self._live: dict[str, tuple] = {}       # agent -> (loop, task) of its turn
         self._started: dict[str, float] = {}    # tool_use_id -> when it was called
+
+    def _model_for(self, agent: str, spec: dict) -> str:
+        """The roster's choice, then the team's, then one by role."""
+        return spec.get("model") or self.model or (STRONG_MODEL if _strong(agent, spec) else DEFAULT_MODEL)
+
+    def _gateway(self, spec: dict) -> dict | None:
+        return spec.get("gateway") or self.config.get("gateway")
+
+    def _budget(self, spec: dict) -> float | None:
+        """Per turn. None behind a gateway: the CLI prices a model it does not
+        know as if it were Claude, so that cap would stop turns at the wrong
+        figure and read as if it were protecting anything."""
+        if self._gateway(spec):
+            return None
+        return spec.get("max_budget_usd", self.config.get("max_budget_usd", DEFAULT_TURN_BUDGET))
 
     @classmethod
     def list_models(cls, config=None):
@@ -174,6 +216,8 @@ class ClaudeRunner(Runner):
     def _hooks(self, agent: str) -> dict:
         """The team's policy and its record, on every tool call."""
         team_dir = self.team_dir
+        gateway = self._gateway(self._spec(agent)[0]) or {}
+        keys = " ".join(KEYS + ((gateway["token_env"],) if gateway.get("token_env") else ()))
 
         async def before(data, tool_use_id, context):
             raw, args = data["tool_name"], data.get("tool_input") or {}
@@ -192,7 +236,7 @@ class ClaudeRunner(Runner):
             if tool == "Bash" and args.get("command"):
                 return {"hookSpecificOutput": {
                     "hookEventName": "PreToolUse", "permissionDecision": "allow",
-                    "updatedInput": {**args, "command": f"unset {' '.join(KEYS)}; {args['command']}"}}}
+                    "updatedInput": {**args, "command": f"unset {keys}; {args['command']}"}}}
             return {}
 
         async def after(data, tool_use_id, context):
@@ -221,8 +265,13 @@ class ClaudeRunner(Runner):
                  resume: bool) -> ClaudeAgentOptions:
         spec, agents, spaces = self._spec(agent)
         cwd = spaces[0] if spaces else str(Path.cwd())
-        kept = {k: self.config[k] for k in ("max_turns", "max_budget_usd", "fallback_model")
+        kept = {k: self.config[k] for k in ("max_turns", "fallback_model")
                 if self.config.get(k) is not None}
+        if self._budget(spec) is not None:
+            kept["max_budget_usd"] = self._budget(spec)
+        gateway = self._gateway(spec)
+        if gateway:
+            kept.pop("fallback_model", None)        # a Claude name means nothing there
         return ClaudeAgentOptions(
             model=model, effort=EFFORT[effort], cwd=cwd,
             add_dirs=[*spaces[1:], str(self.scopes.agent_workspace(agent)),
@@ -248,7 +297,8 @@ class ClaudeRunner(Runner):
                  # The brief names the team tools: they have to be there to call.
                  "ENABLE_TOOL_SEARCH": "false",
                  # An agent's memory is ateam's, read and reviewed there.
-                 "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"},
+                 "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
+                 **(_gateway_env(gateway, model) if gateway else {})},
             **kept)
 
     def _record(self, agent: str, session: str, model: str, t0: float, result, last) -> None:
@@ -269,7 +319,9 @@ class ClaudeRunner(Runner):
                 agent=agent, conversation=session, duration_s=time.monotonic() - t0,
                 input_tokens=fresh, output_tokens=out, cache_read_tokens=cached,
                 total_tokens=None if fresh is None else fresh + (out or 0) + (cached or 0),
-                model=model, context_tokens=context, cost_usd=result.total_cost_usd,
+                model=model, context_tokens=context,
+                # The CLI prices by Claude's rates: wrong for anything else.
+                cost_usd=None if self._gateway(self._spec(agent)[0]) else result.total_cost_usd,
                 **self.meta_for(agent))
         except Exception:
             pass                        # accounting must never break a turn
@@ -286,7 +338,7 @@ class ClaudeRunner(Runner):
         continues where it stopped.
         """
         self._record(agent, session, model, t0, result, last)
-        what = LIMITS[result.subtype].format(budget=self.config.get("max_budget_usd"),
+        what = LIMITS[result.subtype].format(budget=self._budget(self._spec(agent)[0]),
                                              turns=self.config.get("max_turns"))
         spent = f" after spending ${result.total_cost_usd:.2f}" if result.total_cost_usd else ""
         note = (f"I stopped: this turn reached its {what}{spent}. What you asked for is "
@@ -304,7 +356,7 @@ class ClaudeRunner(Runner):
     async def _query(self, agent: str, message: str) -> str:
         t0 = time.monotonic()
         spec = self._spec(agent)[0]
-        model, effort = self.resolved_model(agent, spec.get("model", self.model),
+        model, effort = self.resolved_model(agent, self._model_for(agent, spec),
                                             spec.get("effort", self.effort))
         session = self.conversation_id(agent)
         resume = bool(session)
@@ -314,6 +366,11 @@ class ClaudeRunner(Runner):
         if (effort or self.effort) not in EFFORT:
             return f"[error: unknown effort {effort!r}; use one of {', '.join(sorted(EFFORT))}]"
         texts, result, last = [], None, None
+        try:
+            if self._gateway(spec):
+                _gateway_env(self._gateway(spec), model)
+        except ValueError as e:
+            return f"[error: {e}]"
         try:
             async for m in query(prompt=message, options=self._options(
                     agent, model, effort or self.effort, session, resume)):
@@ -363,7 +420,7 @@ class ClaudeRunner(Runner):
 
     def wake(self, agent: str, message: str) -> str:
         t0 = time.monotonic()
-        if not any(os.environ.get(k) for k in CREDENTIALS):
+        if not self._gateway(self._spec(agent)[0]) and not any(os.environ.get(k) for k in CREDENTIALS):
             out = (f"[error: {agent} cannot start: set ANTHROPIC_API_KEY, or configure "
                    f"Bedrock, Vertex or Foundry, in the supervisor's environment]")
         else:

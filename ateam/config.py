@@ -220,7 +220,11 @@ INFLIGHT_STALE_MULTIPLIER = float(os.environ.get("ATEAM_INFLIGHT_STALE_MULTIPLIE
 BUDGET_HALT_PATTERNS = tuple(p.strip().lower() for p in os.environ.get(
     "ATEAM_BUDGET_HALT_PATTERNS",
     "insufficient_quota,billing_hard_limit_reached,credit balance is too low,"
-    "payment required,http 402,error 402").split(",") if p.strip())
+    "payment required,http 402,error 402,"
+    # AI Studio says this in a 429, so it looks like a rate limit until read.
+    "prepayment credits are depleted,spend cap,spending cap,"
+    # OpenRouter's, for a gateway.
+    "insufficient credits,key limit exceeded").split(",") if p.strip())
 
 # What auto_cycle does to an agent whose context has grown past the
 # threshold: "cycle" (distill, then a fresh conversation), "distill_only"

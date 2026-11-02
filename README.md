@@ -9,11 +9,11 @@ It is also a lab for watching agent teams fail. Most of what is interesting here
 ## Install
 
 ```bash
-pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.2.0"
+pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.3.0"
 a-team
 ```
 
-Or with [uv](https://docs.astral.sh/uv/): `uv tool install "a-team @ git+https://github.com/roelle/a-team.git@v4.2.0"`.
+Or with [uv](https://docs.astral.sh/uv/): `uv tool install "a-team @ git+https://github.com/roelle/a-team.git@v4.3.0"`.
 
 It opens your browser, shows what this machine can run agents on, and creates a team. It takes no keys; put an API key in the environment you start it from.
 
@@ -586,9 +586,24 @@ product built on this SDK.
 - **Provider keys are unset in agents' shells.** That keeps them out of a
   stray `env`. It does not stop a determined agent, which runs as the same
   user. Only a container does.
-- **Spending is yours to limit.** This bills your API key. The runner config
-  takes `max_budget_usd` and `max_turns` per turn, off by default, and turns
-  are recorded with what they cost.
+- **Spending is yours to limit.** This bills your API key. With no model named,
+  the manager and anyone who reviews run on Opus and the rest on Sonnet. A turn
+  stops at $1: set `max_budget_usd` in the runner config or on a roster entry to
+  change that, and `"max_budget_usd": null` in the config to turn it off.
+  `max_turns` is off by default. Turns are recorded with what they cost.
+- **Other models can go through a gateway.** A roster entry with
+  `"gateway": {"base_url": "https://openrouter.ai/api", "token_env":
+  "OPENROUTER_API_KEY"}` and that gateway's `"model"` runs through the same
+  runner, keeping hooks, policy and steering. It has limits. Anthropic does not
+  support this for other vendors' models, so a CLI release can break it. It has
+  been tested against a local stand-in, not a real gateway, and the CLI still
+  sends its thinking and effort fields, which a vendor may refuse. The dollar cap
+  does not apply and costs show as unpriced, because the CLI would use Claude's
+  rates, so set the spending limit at the gateway. `base_url` must be https or
+  loopback, and the key must be in the supervisor's environment; it is unset in
+  the agent's shell. On a team with other runtimes, use
+  `ateam.runner_mixed:MixedRunner`; its `"runners"` config gives each runner
+  class its own settings.
 - **It does not contain agents.** File tools are held to an agent's workspaces
   by the policy, but `Bash` runs with the supervisor's access. Run the team in
   a container, or withhold `Bash`.
@@ -1685,7 +1700,7 @@ Releases follow [Semantic Versioning](https://semver.org/), tagged
 in [RELEASING.md](RELEASING.md). Pin a tag rather than `main`:
 
 ```bash
-pip install "a-team @ git+https://github.com/roelle/a-team.git@v4.2.0"
+pip install "a-team @ git+https://github.com/roelle/a-team.git@v4.3.0"
 python -m ateam.supervisor --version
 ```
 

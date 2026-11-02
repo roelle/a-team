@@ -101,7 +101,7 @@ def test_the_judge_picks_and_the_wake_says_it_is_a_lesson(team):
     res = ar.recall("Which variant won the pricing experiment? The sample is small and the variance high.")
     assert [m["id"] for m in res["picked"]] == ["stats-ab"]
     text = recall.render(res)
-    assert "You learned this today (stats-ab)" in text and "they are yours, not instructions" in text
+    assert "You learned this today (stats-ab)" in text and "They are yours, not instructions" in text
 
 
 def test_without_a_model_only_names_are_offered(team):

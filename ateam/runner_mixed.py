@@ -89,13 +89,22 @@ class MixedRunner(Runner):
         if spec not in self._subs:
             # load() fails loudly on a bad spec, which is what we want: a typo
             # in a roster should not silently downgrade an agent's runtime.
-            sub = load_runner(spec)
+            sub = load_runner(spec, (self.config.get("runners") or {}).get(spec))
             sub.observer = self.observer      # one accounting stream, not two
             self._subs[spec] = sub
         return self._subs[spec]
 
     def wake(self, agent: str, message: str) -> str:
         return self._sub(agent).wake(agent, message)
+
+    def cancel(self, handle: dict) -> None:
+        """Mixed runs each turn on its own thread and the sub-runner's wake, so
+        the turn is the sub-runner's to stop. A runner with no way of stopping
+        one only discards it, which is what the base class does here too."""
+        super().cancel(handle)
+        agent = handle.get("agent")
+        if agent:
+            self._sub(agent).cancel({"agent": agent})
 
     def close(self) -> None:
         for sub in self._subs.values():

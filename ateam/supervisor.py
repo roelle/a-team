@@ -21,6 +21,7 @@ import argparse
 import signal
 import json
 import os
+import random
 import re
 import sys
 import threading
@@ -1682,7 +1683,7 @@ class Supervisor:
         except Exception as e:
             self._log(f"    {agent}: recall failed ({type(e).__name__}: {e})")
             return ""
-        self._last_recall[agent] = {"query": query,
+        self._last_recall[agent] = {"query": query, "picked": res.get("picked") or [],
                                     "shown": {m["id"] for m in res.get("picked") or []}
                                     | {m["id"] for m in res.get("hints") or []}}
         try:
@@ -1716,7 +1717,15 @@ class Supervisor:
                                                                    candidates=text)).get("restates")
             except Exception:
                 continue
-            if hit and hit in {c["id"] for c in cands} and hit not in last["shown"]:
+            if hit and hit in {m["id"] for m in last.get("picked") or []}:
+                # It had the memory in front of it, and needed telling again.
+                # Asked for anyway, so this costs nothing extra.
+                try:
+                    self.observer.record_event("recall_ignored", agent=agent, memory=hit,
+                                               correction=m.content[:300])
+                except Exception:
+                    pass
+            elif hit and hit in {c["id"] for c in cands} and hit not in last["shown"]:
                 cues = ar.learn(hit, last["query"])
                 self._log(f"    {agent}: recall missed {hit!r}; learned {', '.join(cues[:6])}")
                 try:
@@ -1724,6 +1733,37 @@ class Supervisor:
                                                correction=m.content[:300], learned=cues)
                 except Exception:
                     pass
+
+    def _check_used(self, agent: str, turn: dict, reply: str) -> None:
+        """For a sample of turns that were offered memories, ask whether each
+        one shaped what the agent did. The bench shows what a model does with
+        a memory on prompts built for it; this is the same question on real
+        turns. Off the supervisor's thread, and never in a turn's way."""
+        last = self._last_recall.get(agent) or {}
+        picked = last.pop("picked", None)
+        cfg = recall_lib.config(self.team_dir)
+        if not picked or not cfg or random.random() >= cfg.get("used_sample", 0):
+            return
+        self._recall_pool().submit(self._used, agent, picked, last.get("query") or "",
+                                   turn.get("ts") or "", reply, cfg)
+
+    def _used(self, agent: str, picked: list, query: str, since: str, reply: str, cfg: dict) -> None:
+        try:
+            backend = recall_lib.backend_for(cfg)
+            actions = recall_lib.turn_actions(
+                [e for e in self.observer.events("tool_call")
+                 if e.get("agent") == agent and str(e.get("ts") or "") >= since], reply)
+            if not backend.available or not actions.strip():
+                return                  # no record of the turn is not a verdict on it
+            for m in picked:
+                ans = backend.ask(recall_lib.USED_PROMPT.format(
+                    memory=f"{m['description']}\n{m['body'][:1200]}", message=query[:4000],
+                    actions=actions))
+                self.observer.record_event("recall_used", agent=agent, memory=m["id"],
+                                           verdict=ans.get("verdict") or "na",
+                                           evidence=str(ans.get("evidence") or "")[:200])
+        except Exception as e:
+            self._log(f"    {agent}: use of recalled memories not checked ({type(e).__name__}: {e})")
 
     def _start_prepared(self) -> list[str]:
         """Begin the turns whose recall is ready (or has taken too long)."""
@@ -1781,6 +1821,8 @@ class Supervisor:
         dur = time.monotonic() - turn["started"]
         failed = reply.startswith("[error:")
         transport = self.transports.get(agent)
+        if not failed:
+            self._check_used(agent, turn, reply)
         if failed:
             self._log(f"    {agent}: {reply[:200]}")
         elif not self.quiet:

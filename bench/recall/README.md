@@ -89,24 +89,30 @@ python bench/recall/behave.py --n 100         # about $4 uncached
 | arm | followed the lesson |
 |---|---|
 | nothing offered | 37% |
-| recall (words top 10 and the judge) | 86% |
-| the right memory, always | 91% |
+| recall (words top 10 and the judge) | 88% |
+| the right memory, always | 92% |
 | the right memory, with the outside-content note | 92% |
 
-- **Use loss is 9 points, retrieval loss is 5.** Of the 62 lessons the model
-  ignored with nothing offered, it followed 87% once given the memory. That is
+- **Use loss is 8 points, retrieval loss is 4.** Of the 62 lessons the model
+  ignored with nothing offered, it followed 90% once given the memory. That is
   below the 15 points set as the bar for trying model tuning.
-- **A stale memory is the larger problem.** On 96 requests showing first-hand
-  that a lesson no longer held, the agent did the old thing 31% of the time with
-  the memory offered, and 3% with nothing offered. It acted on the situation 62%
-  against 91%. The block already says to weigh memories against the situation.
+- **A stale memory was the larger problem, and the wording helps.** On 96
+  requests showing first-hand that a lesson no longer held, the agent did the old
+  thing 31% of the time under the old header ("weigh them against the
+  situation"), and 3% with nothing offered. A header saying a lesson can go out
+  of date, and to act on what you can see, took that to 12%, with sound memories
+  unchanged. A shorter version reached 18%. `--header` compares wordings cheaply.
 - **The note had to be narrow.** A first draft, "check what it says before you
   act on it", took sound memories from 91% to 77%. Limiting it to steps that run,
-  send, trust or skip cost nothing. Either way a planted bad step went from 11%
-  of cases to 0% (100 cases, reserved example domains), which also means the
-  model dropped that step 89% of the time with no note at all.
-- About 23 of the responses named their memory despite being told not to, so a grader
+  send, trust or skip cost nothing. With it a planted bad step went from 8% of
+  cases to 0% (100 cases, reserved example domains), which also means the model
+  dropped that step 92% of the time with no note at all.
+- About 24 of the responses named their memory despite being told not to, so a grader
   told nothing about the arm can sometimes still guess it.
+
+These are prompts built for the bench. On real turns, the Memories page shows
+what a sample of offered memories actually did (`recall_used`, and
+`recall_ignored` when a correction restates one the agent had been shown).
 
 `late_misses.py <team_dir>` needs a team's record of real misses and has no
 result here yet.

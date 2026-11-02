@@ -209,11 +209,18 @@ def recalled(m: dict, request: str, pool: list[dict], trig: dict, cache: Path, m
 
 
 def act(wake_text: str, cache: Path, model: str) -> str:
-    ans = llm.ask_json(BEHAVE_TURN.format(wake=wake_text), cache, model=model)
+    """What the model says it will do; "" when it would not answer, since one
+    empty response should cost a case, not the run."""
+    try:
+        ans = llm.ask_json(BEHAVE_TURN.format(wake=wake_text), cache, model=model)
+    except RuntimeError:
+        return ""
     return str(ans.get("actions") if isinstance(ans, dict) else ans or "")
 
 
 def grade(m: dict, request: str, actions: str, cache: Path, model: str) -> str:
+    if not actions:
+        return "na"
     ans = llm.ask_json(BEHAVE_GRADE.format(lesson=lesson(m), request=request, actions=actions),
                        cache, model=model)
     return ans.get("verdict", "na") if isinstance(ans, dict) else "na"
@@ -226,6 +233,8 @@ def stale_case(m: dict, cache: Path, model: str) -> dict | None:
 
 
 def stale_grade(case: dict, actions: str, cache: Path, model: str) -> str:
+    if not actions:
+        return "other"
     ans = llm.ask_json(STALE_GRADE.format(actions=actions, **{k: case[k] for k in (
         "request", "changed", "old_action", "new_action")}), cache, model=model)
     return ans.get("verdict", "other") if isinstance(ans, dict) else "other"
@@ -240,6 +249,8 @@ def poison_case(m: dict, request: str, cache: Path, model: str) -> dict | None:
 
 
 def poison_grade(request: str, step: str, actions: str, cache: Path, model: str) -> str:
+    if not actions:
+        return "na"
     ans = llm.ask_json(POISON_GRADE.format(request=request, step=step, actions=actions), cache, model=model)
     return ans.get("verdict", "drops") if isinstance(ans, dict) else "drops"
 
@@ -284,8 +295,14 @@ def report(s: dict, stale: dict[str, Counter], poison: dict[str, Counter]) -> li
         for arm in POISON_ARMS:
             c, n = poison[arm], max(1, sum(poison[arm].values()))
             lines.append(f"  {arm:11} " + "  ".join(f"{v} {100 * c[v] / n:.0f}%"
-                                                    for v in ("takes", "checks", "drops")))
+                                                    for v in ("takes", "checks", "drops", "na")))
     return lines
+
+
+def report_stale(c: Counter) -> list[str]:
+    n = max(1, sum(c.values()))
+    return [f"stale, memory offered: {sum(c.values())} cases  "
+            + "  ".join(f"{v} {100 * c[v] / n:.0f}%" for v in ("current", "checks", "stale", "other"))]
 
 
 def main(argv=None) -> int:
@@ -296,9 +313,13 @@ def main(argv=None) -> int:
     ap.add_argument("--grade-model", default=llm.MODEL)
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--note", help="wording for the outside-content note, with {sources}")
+    ap.add_argument("--header", help="wording for the memory block's header; runs only "
+                                     "the oracle and stale arms, to compare headers cheaply")
     a = ap.parse_args(argv)
     if a.note:
         recall.OUTSIDE_NOTE = a.note
+    if a.header:
+        recall.MEMORY_HEADER = a.header
     mems, qs, _, trig = ev.load()
     targets = [m for m in mems if m["real"]]
     pool_of, _ = ev.pools(targets, [], "own")
@@ -335,6 +356,22 @@ def main(argv=None) -> int:
                                   act(wake(request, block([built], arm == "poison-note")), cache, a.model),
                                   cache, a.grade_model)
                 for arm in POISON_ARMS}
+
+    def one_oracle(case):
+        m, request = case
+        return grade(m, request, act(wake(request, block([m])), cache, a.model), cache, a.grade_model)
+
+    if a.header:
+        try:
+            followed = Counter(llm.pmap(one_oracle, cases, a.workers))
+            stale_rows = [r for r in llm.pmap(one_stale, cases, a.workers) if r]
+        except llm.OverBudget as e:
+            print(e, file=sys.stderr)
+            return 1
+        print(f"oracle follows {followed['follows']} ignores {followed['ignores']} na {followed['na']}")
+        print("\n".join(report_stale(Counter(r["stale"] for r in stale_rows))))
+        print(llm.cost())
+        return 0
 
     try:
         rows = llm.pmap(one, cases, a.workers)

@@ -285,12 +285,15 @@ class Record:
                 for e in entries]
 
     def recall_stats(self, agent: str, days: int = 14) -> dict:
-        """How recall has gone for one agent, from its `recall` and
-        `recall_miss` events: {"enabled", "days": [{"day", "wakes", "offered",
-        "memories", "hints", "errors", "misses"}] for the last `days` days
-        (oldest first, empty days included), "memories": {name: {"offered",
-        "hinted", "missed", "last_offered"}} over all time, and "misses": the
-        last ten misses, newest first}."""
+        """How recall has gone for one agent, from its `recall`, `recall_miss`,
+        `recall_used` and `recall_ignored` events: {"enabled", "days": [{"day",
+        "wakes", "offered", "memories", "hints", "errors", "misses"}] for the
+        last `days` days (oldest first, empty days included), "memories":
+        {name: {"offered", "hinted", "missed", "last_offered", "used",
+        "ignored", "overruled"}} over all time, "misses": the last ten misses,
+        newest first, "ignored": likewise, corrections that restated a memory
+        the agent had been shown, and "checks": totals of the sampled checks by
+        verdict}."""
         import datetime
         from . import recall as recall_lib
         today = datetime.date.today()
@@ -298,13 +301,27 @@ class Record:
         per_day = {d: {"day": d, "wakes": 0, "offered": 0, "memories": 0, "hints": 0,
                        "errors": 0, "misses": 0} for d in span}
         per_mem: dict[str, dict] = {}
-        misses = []
+        misses, ignored = [], []
+        checks = {"used": 0, "ignored": 0, "overruled": 0, "na": 0}
 
         def mem(name):
             return per_mem.setdefault(name, {"offered": 0, "hinted": 0, "missed": 0,
-                                             "last_offered": None})
+                                             "last_offered": None, "used": 0, "ignored": 0,
+                                             "overruled": 0})
         for e in self.events():
-            if e.get("agent") != agent or e.get("event") not in ("recall", "recall_miss"):
+            if e.get("agent") != agent or e.get("event") not in ("recall", "recall_miss", "recall_used",
+                                                                 "recall_ignored"):
+                continue
+            if e["event"] == "recall_used":
+                verdict = e.get("verdict")
+                if verdict in checks:
+                    checks[verdict] += 1
+                    if verdict != "na":
+                        mem(e.get("memory"))[verdict] += 1
+                continue
+            if e["event"] == "recall_ignored":
+                ignored.append(e)
+                mem(e.get("memory"))["ignored"] += 1
                 continue
             d = per_day.get(str(e.get("ts") or "")[:10])
             if e["event"] == "recall_miss":
@@ -330,7 +347,10 @@ class Record:
         return {"enabled": recall_lib.config(self.team_dir) is not None,
                 "days": list(per_day.values()), "memories": per_mem,
                 "misses": [{k: e.get(k) for k in ("ts", "memory", "correction", "learned")}
-                           for e in reversed(misses[-10:])]}
+                           for e in reversed(misses[-10:])],
+                "ignored": [{k: e.get(k) for k in ("ts", "memory", "correction")}
+                            for e in reversed(ignored[-10:])],
+                "checks": checks}
 
     def memory_archive(self, agent: str) -> list[dict]:
         from . import memory_log

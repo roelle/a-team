@@ -178,9 +178,11 @@ function memoryMeta(m) {
   const r = recallOf(m);
   const recalled = r.offered ? ` · recalled ${r.offered}×, last ${esc(day(r.last_offered))}` : "";
   const missed = r.missed ? ` · <span class="state-bad">missed ${r.missed}×</span>` : "";
+  const used = r.used ? ` · used ${r.used}×` : "";
+  const ignored = r.ignored ? ` · <span class="state-bad">ignored ${r.ignored}×</span>` : "";
   return `since ${esc(since)} · ${m.revisions || 0} revision${m.revisions === 1 ? "" : "s"} · `
     + `${m.reads ? `${m.reads} read${m.reads === 1 ? "" : "s"}, last ${esc(day(m.last_read))}` : `<span class="state-warn">never read</span>`}`
-    + recalled + missed + memoryOrigin(m);
+    + recalled + used + ignored + missed + memoryOrigin(m);
 }
 function memoryOrigin(m) {
   const from = m.origin?.by ? ` · saved by ${esc(m.origin.by)}`
@@ -216,13 +218,20 @@ function renderRecall() {
   const misses = (r.misses || []).map((x) => `<li><strong>${esc(x.memory || "?")}</strong>
     <span class="sub">${esc(x.ts || "")}${x.learned?.length ? ` · learned: ${esc(x.learned.slice(0, 8).join(", "))}` : ""}</span>
     ${x.correction ? `<div class="sub">“${esc(x.correction.slice(0, 200))}”</div>` : ""}</li>`).join("");
+  const c = r.checks || {}; const checked = (c.used || 0) + (c.ignored || 0) + (c.overruled || 0);
+  const useLine = checked ? `<div class="sub">Of ${plural(checked, "offer")} checked on real turns: ${c.used || 0} used, ${c.ignored || 0} ignored, ${c.overruled || 0} overruled on visible evidence.</div>` : "";
+  const ignoredList = (r.ignored || []).map((x) => `<li><strong>${esc(x.memory || "?")}</strong>
+    <span class="sub">${esc(x.ts || "")}</span>
+    ${x.correction ? `<div class="sub">“${esc(x.correction.slice(0, 200))}”</div>` : ""}</li>`).join("");
   box.innerHTML = `<div class="recall-head"><strong>Recall, last ${days.length} days</strong>
       <span class="sub">${plural(tot.wakes, "wake")}; ${tot.offered} offered ${plural(tot.memories, "memory")}; ${plural(tot.misses, "miss")}${tot.errors ? `; ${plural(tot.errors, "judge error")}` : ""}${r.enabled ? "" : " · now off"}</span>
       <span class="recall-legend"><span><i style="background:var(--accent)"></i>memories offered</span>
         <span><i style="background:var(--line)"></i>nothing offered</span>
         <span><i class="miss" style="background:var(--bad)"></i>miss</span></span></div>
     <div class="recall-chart" role="img" aria-label="Wakes per day for the last ${days.length} days, split by whether memories were offered">${cols}</div>
-    ${misses ? `<details><summary class="sub">Recent misses: a correction restated a memory the agent was not shown</summary><ul class="recall-misses">${misses}</ul></details>` : ""}`;
+    ${useLine}
+    ${misses ? `<details><summary class="sub">Recent misses: a correction restated a memory the agent was not shown</summary><ul class="recall-misses">${misses}</ul></details>` : ""}
+    ${ignoredList ? `<details><summary class="sub">Shown and still corrected: a correction restated a memory the agent had in front of it</summary><ul class="recall-misses">${ignoredList}</ul></details>` : ""}`;
 }
 async function loadMemories() {
   const agent = $("#mem-agent").value; if (!agent) { $("#memories").innerHTML = ""; return; }

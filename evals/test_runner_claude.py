@@ -67,7 +67,7 @@ def events(td, kind):
 def test_a_turn_reaches_the_model_with_the_brief_and_the_team_tools(team, api):
     assert runner().wake("coder", "build it") == "done"
     req = api.requests[0]
-    assert req["model"] == "claude-opus-5-5"
+    assert req["model"] == "claude-sonnet-5-5"
     system = json.dumps(req["system"])
     assert "coder" in system and "implements" in system, "the brief did not reach the model"
     tools = {t["name"] for t in req["tools"]}
@@ -114,7 +114,7 @@ def test_a_tool_call_reaches_the_team_and_the_record(team, api):
     call = events(team, "tool_call")[-1]
     assert call["tool"] == "send_to_teammate" and call["agent"] == "coder"
     turn = events(team, "turn")[-1]
-    assert turn["model"] == "claude-opus-5-5" and turn["output_tokens"] == 20
+    assert turn["model"] == "claude-sonnet-5-5" and turn["output_tokens"] == 20
     assert turn["input_tokens"] == 240 and turn["cache_read_tokens"] == 2000, "two requests add up"
     assert turn["context_tokens"] == 1120, "how full the context is, from the last request"
 
@@ -289,6 +289,86 @@ def test_an_agent_can_run_on_claude_beside_a_team_on_another_runtime(team, api, 
     assert isinstance(m._sub("coder"), ClaudeRunner) and isinstance(m._sub("qa"), ScriptedRunner)
     assert m.wake("coder", "go") == "done"
     assert api.requests[0]["model"] == "claude-haiku-5-5"
+
+
+def test_most_agents_get_sonnet_and_the_manager_and_reviewer_get_opus(team):
+    from ateam.runner_claude import _strong
+    r = runner()
+    assert r._model_for("coder", {"role": "implements"}) == "claude-sonnet-5-5"
+    assert r._model_for("qa", {"role": "reviews"}) == "claude-opus-5-5"
+    assert r._model_for("lead", {"is_principal": True}) == "claude-opus-5-5"
+    assert r._model_for("qa", {"model": "claude-haiku-5-5"}) == "claude-haiku-5-5"
+    assert runner(model="claude-fable-5-1")._model_for("qa", {}) == "claude-fable-5-1"
+    assert not _strong("coder", {"role": "builds the backend"})
+
+
+def test_a_turn_has_a_dollar_cap_unless_the_config_turns_it_off(team):
+    assert runner()._budget({}) == 1.0
+    assert runner(max_budget_usd=5)._budget({}) == 5
+    assert runner(max_budget_usd=None)._budget({}) is None
+    assert runner()._budget({"max_budget_usd": 2}) == 2
+
+
+GATEWAY = {"token_env": "ROUTER_KEY"}
+
+
+def on_gateway(team, api, monkeypatch, **extra):
+    monkeypatch.setenv("ROUTER_KEY", "not-a-real-router-key")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    write_roster(team, model="vendor/model-1", gateway={**GATEWAY, "base_url": api.url, **extra})
+
+
+def test_an_agent_can_reach_another_model_through_a_gateway(team, api, monkeypatch):
+    on_gateway(team, api, monkeypatch)
+    assert runner().wake("coder", "go") == "done"
+    assert api.requests[0]["model"] == "vendor/model-1"
+    assert api.headers["Authorization"] == "Bearer not-a-real-router-key"
+
+
+def test_a_gateways_turn_has_no_claude_prices_and_no_dollar_cap(team, api, monkeypatch):
+    on_gateway(team, api, monkeypatch)
+    r = runner()
+    assert r._budget({"gateway": GATEWAY}) is None
+    r.wake("coder", "go")
+    turn = events(team, "turn")[-1]
+    assert turn["model"] == "vendor/model-1" and not turn.get("cost_usd")
+
+
+def test_a_gateways_key_is_kept_from_the_agents_shell(team, api, monkeypatch, tmp_path):
+    on_gateway(team, api, monkeypatch)
+    out = tmp_path / "env.txt"
+    api.script[:] = [use("Bash", {"command": f"env > {out}"}), "ok"]
+    runner().wake("coder", "go")
+    seen = out.read_text()
+    assert "ATEAM_AGENT=coder" in seen and "not-a-real-router-key" not in seen
+
+
+def test_a_gateway_with_no_key_or_a_plain_url_says_so(team, api, monkeypatch):
+    monkeypatch.delenv("ROUTER_KEY", raising=False)
+    write_roster(team, gateway={**GATEWAY, "base_url": "https://router.example/api"})
+    assert "ROUTER_KEY" in runner().wake("coder", "go")
+    monkeypatch.setenv("ROUTER_KEY", "x")
+    write_roster(team, gateway={**GATEWAY, "base_url": "http://router.example/api"})
+    assert "https" in runner().wake("coder", "go")
+    assert api.requests == []
+
+
+def test_cancelling_reaches_the_claude_turn_on_a_mixed_team(team, api):
+    from ateam.runner_mixed import MixedRunner
+    write_roster(team, runner="ateam.runner_claude:ClaudeRunner")
+    m = MixedRunner({"default": "fixture_runner:ScriptedRunner"})
+    seen = []
+    m._sub("coder").cancel = seen.append
+    m.cancel({"id": "x", "agent": "coder"})
+    assert seen == [{"agent": "coder"}]
+
+
+def test_mixed_passes_each_runner_its_own_config(team, api):
+    from ateam.runner_mixed import MixedRunner
+    spec = "ateam.runner_claude:ClaudeRunner"
+    write_roster(team, runner=spec)
+    m = MixedRunner({"default": "fixture_runner:ScriptedRunner", "runners": {spec: {"max_budget_usd": 3}}})
+    assert m._sub("coder")._budget({}) == 3
 
 
 def test_an_agent_can_do_ordinary_work_without_a_prompt(team, api, tmp_path):

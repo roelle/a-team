@@ -7,6 +7,41 @@ the README for what counts as the public surface.
 
 ## [Unreleased]
 
+## [4.3.0] - 2026-11-02
+
+### Added
+- **Recall checks whether a memory was used on real turns.** After a sample of
+  turns that were offered memories (`memory_recall.used_sample`, 0.25 by
+  default, 0 to turn it off), the judge compares each memory with what the turn
+  did and logs `recall_used`: used, ignored, overruled on visible evidence, or
+  not bearing. A turn with no record of its actions gets no verdict, which
+  includes agy CLI turns with an empty final text. A correction that restates a
+  memory the agent had been shown is logged as `recall_ignored`, at no extra
+  model cost. The Memories page shows both.
+- **Gateways.** A `gateway` on a roster entry or the Claude runner's config
+  points that agent at an Anthropic-shaped endpoint, for other vendors' models.
+  See the README for what it does not do; it has not yet run against a real
+  gateway.
+- `MixedRunner` takes `"runners": {spec: config}`, so each runner class can
+  have its own settings.
+
+### Changed
+- **The memory block says a lesson can go out of date**, and to act on what the
+  agent can see when the two disagree. In the bench, following a stale memory
+  fell from 31% to 12%, and sound memories stayed at 92%.
+- **New Claude defaults.** With no model named, the manager and anyone who
+  reviews run on Opus 5.5 and everyone else on Sonnet 5.5, where everyone used
+  to get Opus. A turn stops at $1 unless `max_budget_usd` says otherwise, where
+  there used to be no cap. Set `model` and `max_budget_usd` to keep the old
+  behaviour.
+- Running out of AI Studio credit now stops the team. Google reports it as a
+  429, which looked like a rate limit, so agents kept retrying and failing.
+  OpenRouter's credit errors are recognised too.
+
+### Fixed
+- Cancelling a turn on a mixed team now reaches `ClaudeRunner`, which stops the
+  turn where it runs. Before, the result was only discarded.
+
 ## [4.2.0] - 2026-11-02
 
 ### Added
@@ -738,7 +773,8 @@ MCP memory server.
 ## [1.0] - 2026-09-08
 Milestone tag (pre-semver).
 
-[Unreleased]: https://github.com/roelle/a-team/compare/v4.2.0...HEAD
+[Unreleased]: https://github.com/roelle/a-team/compare/v4.3.0...HEAD
+[4.3.0]: https://github.com/roelle/a-team/compare/v4.2.0...v4.3.0
 [4.2.0]: https://github.com/roelle/a-team/compare/v4.1.0...v4.2.0
 [4.1.0]: https://github.com/roelle/a-team/compare/v4.0.2...v4.1.0
 [4.0.2]: https://github.com/roelle/a-team/compare/v4.0.1...v4.0.2
