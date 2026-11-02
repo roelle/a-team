@@ -105,7 +105,7 @@ function msgHTML(m, opts = {}) {
   const fr = !opts.inThread && S.fresh[m.id];
   const freshText = fr ? ` <span class="fresh">· ${fr.n} new</span>${fr.at ? ` <span class="at-you" title="a reply mentions you">@ you</span>` : ""}` : "";
   const replies = !opts.inThread && n ? `<div class="replies ${fr ? "new" : ""}" data-thread="${esc(m.id)}">${n} repl${n === 1 ? "y" : "ies"}${freshText}</div>` :
-                  !opts.inThread && m.id ? `<div class="replies faint"><span data-thread="${esc(m.id)}">reply in thread</span><span class="mk-task" data-mktask="${esc(m.id)}">make a task</span></div>` : "";
+                  !opts.inThread && m.id ? `<div class="replies faint">${m.from === "supervisor" ? "" : `<span data-thread="${esc(m.id)}">reply in thread</span>`}<span class="mk-task" data-mktask="${esc(m.id)}">make a task</span></div>` : "";
   return `<div class="msg ${quiet ? "quiet" : ""} ${LOUD.has(kind) ? kind : ""} ${mentionsMe(m) ? "mentions-me" : ""}" data-id="${esc(m.id || "")}">
     ${avatarHTML(who, m.from)}
     <div><div><span class="who">${esc(who)}</span>${to}<span class="when" title="${esc(m.ts)} (the team's clock)">${esc(fmtTime(m.t, m.ts))}</span>${badge}${task}</div>
@@ -244,14 +244,17 @@ function navItem(v, label, extra = "", opts) {
 }
 
 // What needs a person, first and only when there is something: a-team decides
-// what counts, and a reply or a closed task clears it.
+// what counts, and a reply, a closed task or the × clears it. A notice has no
+// one to reply to, so the × and "Clear all" are the way to clear one.
 function needsItem(n) {
   const text = (s) => esc(String(s || "").replace(/\s+/g, " ").slice(0, 90));
   const row = (cls, label, title, attrs) => `<li class="need ${cls}" title="${esc(title || "")}" ${attrs}>${label}</li>`;
   if (n.kind === "stopped") return row("bad", `<span class="what">Team stopped</span> ${text(n.reason)}`, n.reason, "");
   if (n.kind === "question" || n.kind === "blocker") {
     const v = n.channel ? { type: "channel", id: n.channel } : { type: "dm", pair: ["user", n.dm] };
-    return row(n.kind === "blocker" ? "bad" : "", `<span class="what">${esc(nameOf(n.from))}</span> ${text(n.content)}`,
+    const clear = n.id && !S.state.member
+      ? `<button class="need-clear" data-clear="${esc(n.id)}" title="Clear without replying. It stays in the conversation, and ${n.from === "supervisor" ? "nothing is sent" : esc(nameOf(n.from)) + " is not told"}." aria-label="Clear">×</button>` : "";
+    return row(n.kind === "blocker" ? "bad" : "", `${clear}<span class="what">${esc(nameOf(n.from))}</span> ${text(n.content)}`,
       `${n.kind} from ${n.from}: ${n.content}`, `data-view='${esc(JSON.stringify(v))}'`);
   }
   const what = n.kind === "stuck" ? `${esc(nameOf(n.owner))} is blocked`
@@ -264,7 +267,17 @@ function renderNeeds() {
   $("#needs-head").classList.toggle("hidden", !rows.length);
   $("#needs").classList.toggle("hidden", !rows.length);
   $("#needs-count").textContent = rows.length;
-  $("#needs").innerHTML = rows.map(needsItem).join("");
+  const notices = rows.filter((n) => n.from === "supervisor" && n.id).length;
+  $("#needs").innerHTML = (notices > 1 && !S.state.member
+    ? `<li class="need-all"><button data-clear-notices>Clear all ${notices} notices</button></li>` : "")
+    + rows.map(needsItem).join("");
+}
+
+async function clearWaiting(id) {
+  try {
+    await api("/api/clear_waiting", id ? { team: S.team, ids: [id] } : { team: S.team, from: "supervisor" });
+    await refreshState();
+  } catch (err) { toast(err.message, true); }
 }
 
 function renderSidebar() {
@@ -368,7 +381,7 @@ async function openView(v) {
     const mine = v.pair.includes("user") && other !== "supervisor";
     $("#view-title").textContent = mine ? nameOf(other) : v.pair.map(nameOf).join(" ↔ ");
     $("#view-sub").textContent = mine ? "direct messages — every message wakes them" :
-      other === "supervisor" ? "notices from the supervisor" : "agent-to-agent conversation (read-only)";
+      other === "supervisor" ? "notices from the supervisor — nothing reads a reply; clear them under Waiting on you" : "agent-to-agent conversation (read-only)";
     $("#input").placeholder = mine ? `Message ${nameOf(other)}` : "Read-only";
     $("#edit-members").classList.add("hidden");
     $("#new-task").classList.add("hidden");
@@ -558,7 +571,7 @@ async function openThread(id) {
     if (S.fresh[id]) renderMessages();
   }
   const where = root?.channel ? { channel: root.channel } : { to: (root?.from === "user" ? root?.to : root?.from) };
-  const canReply = root && (root.channel || root.from === "user" || root.to === "user");
+  const canReply = root && root.from !== "supervisor" && (root.channel || root.from === "user" || root.to === "user");
   $("#drawer-thread").innerHTML = messages.map((m) => msgHTML(m, { inThread: true })).join("") +
     (canReply ? `<form class="thread-compose" data-where='${esc(JSON.stringify(where))}'><textarea rows="2" placeholder="Reply in thread — Enter sends, Shift+Enter for a new line"></textarea>
       <div class="composer-row"><span class="hint">${root.channel ? "mention to wake" : "wakes " + esc(where.to)}</span><button class="btn small">Reply</button></div></form>` : "");
@@ -830,6 +843,8 @@ window.addEventListener("focus", () => { document.title = "a-team"; });
 // --- clicks ---------------------------------------------------------------------------
 
 document.addEventListener("click", async (e) => {
+  const clear = e.target.closest("[data-clear], [data-clear-notices]");
+  if (clear) return clearWaiting(clear.dataset.clear);
   const nav = e.target.closest("[data-view]");
   if (nav) { e.preventDefault(); return openView(JSON.parse(nav.dataset.view)); }
   const pnl = e.target.closest("[data-panel]");

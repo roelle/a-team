@@ -9,11 +9,11 @@ It is also a lab for watching agent teams fail. Most of what is interesting here
 ## Install
 
 ```bash
-pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.0.2"
+pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.1.0"
 a-team
 ```
 
-Or with [uv](https://docs.astral.sh/uv/): `uv tool install "a-team @ git+https://github.com/roelle/a-team.git@v4.0.2"`.
+Or with [uv](https://docs.astral.sh/uv/): `uv tool install "a-team @ git+https://github.com/roelle/a-team.git@v4.1.0"`.
 
 It opens your browser, shows what this machine can run agents on, and creates a team. It takes no keys; put an API key in the environment you start it from.
 
@@ -1677,7 +1677,7 @@ Releases follow [Semantic Versioning](https://semver.org/), tagged
 in [RELEASING.md](RELEASING.md). Pin a tag rather than `main`:
 
 ```bash
-pip install "a-team @ git+https://github.com/roelle/a-team.git@v4.0.2"
+pip install "a-team @ git+https://github.com/roelle/a-team.git@v4.1.0"
 python -m ateam.supervisor --version
 ```
 

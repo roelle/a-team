@@ -82,7 +82,7 @@ def test_the_operator_is_not_left_as_the_last_person_on_the_thread(server, alice
     ("POST", "/api/supervisor", {"team": "demo", "action": "stop"}),
     ("POST", "/api/model", {"team": "demo"}), ("POST", "/api/channel", {"team": "demo"}),
     ("POST", "/api/new_team", {"name": "x", "runtime": "agy"}),
-    ("POST", "/api/avatar", {"team": "demo"}),
+    ("POST", "/api/avatar", {"team": "demo"}), ("POST", "/api/clear_waiting", {"team": "demo"}),
     ("POST", "/api/task", {"team": "demo", "action": "waive", "id": "x"}),
     ("POST", "/api/task", {"team": "demo", "action": "migrate_labels"})])
 def test_what_is_the_operators_stays_the_operators(server, alice, method, path, body):

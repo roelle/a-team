@@ -307,6 +307,10 @@ class App:
                                          thread=body.get("thread") or None, kind=kind)}
         raise actions.OperatorError("say where: a channel or an agent")
 
+    def clear_waiting(self, team: str, body: dict) -> dict:
+        return {"cleared": actions.clear_waiting(self.team(team).dir, ids=body.get("ids") or (),
+                                                 sender=body.get("from"), by=self.author)}
+
     def channel(self, team: str, body: dict) -> dict:
         t = self.team(team)
         action = body.get("action")
@@ -724,7 +728,8 @@ class Handler(BaseHTTPRequestHandler):
                      "/api/task": self.app.task_action, "/api/agent": self.app.agent,
                      "/api/norms": self.app.norms, "/api/memory": self.app.memory,
                      "/api/update": self.app.update, "/api/attach": self.app.attach,
-                     "/api/avatar": self.app.avatar, "/api/bookmarks": self.app.bookmarks}
+                     "/api/avatar": self.app.avatar, "/api/bookmarks": self.app.bookmarks,
+                     "/api/clear_waiting": self.app.clear_waiting}
             if path == "/api/new_team":
                 return self._json(self.app.new_team(body))
             fn = route.get(path)

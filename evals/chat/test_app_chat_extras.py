@@ -120,6 +120,18 @@ def test_state_lists_what_is_waiting_on_a_person(server):
     assert row["kind"] == "question" and row["from"] == "coder" and row["dm"] == "coder"
 
 
+def test_notices_clear_over_http(server):
+    app, port, td, _ = server
+    bus = FileTransport("supervisor", {"team_dir": str(td)})
+    bus.send("user", "one", kind="blocker")
+    bus.send("user", "two", kind="blocker")
+    first = app.state("demo")["needs_you"][0]["id"]
+    _, r = call(port, "POST", "/api/clear_waiting", {"team": "demo", "ids": [first]}, token=app.token)
+    assert r["cleared"] == 1
+    _, r = call(port, "POST", "/api/clear_waiting", {"team": "demo", "from": "supervisor"}, token=app.token)
+    assert r["cleared"] == 1 and app.state("demo")["needs_you"] == []
+
+
 def test_nothing_waiting_is_an_empty_list(server):
     assert server[0].state("demo")["needs_you"] == []
 

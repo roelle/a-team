@@ -221,6 +221,12 @@ body.dragging.col { cursor: col-resize; } body.dragging.row { cursor: row-resize
 .nav.needs li .what { font-weight: 700; color: #f6c744; }
 .nav.needs li.bad .what { color: #ff9b8e; }
 .nav.needs { margin-bottom: 8px; }
+.nav.needs li .need-clear { float: right; margin-left: 6px; padding: 0 5px; border: 0; background: none;
+  color: inherit; opacity: .6; font: inherit; line-height: 1.2; cursor: pointer; }
+.nav.needs li .need-clear:hover { opacity: 1; }
+.nav.needs li.need-all { padding-top: 2px; padding-bottom: 2px; }
+.nav.needs li.need-all button { padding: 0; border: 0; background: none; color: inherit; font: inherit;
+  text-decoration: underline; cursor: pointer; }
 .needs-head .count { margin-left: auto; font-size: 11px; }
 .nav li.mentioned { font-weight: 700; color: #f6c744; }
 .nav li .at { margin-left: auto; font-size: 11px; font-weight: 700; color: #fff; background: var(--bad); border-radius: 999px; padding: 0 6px; }

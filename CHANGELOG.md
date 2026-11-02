@@ -7,6 +7,21 @@ the README for what counts as the public surface.
 
 ## [Unreleased]
 
+## [4.1.0] - 2026-11-02
+
+### Added
+- **Waiting on you can be cleared.** Supervisor notices had nobody to reply to,
+  so they stayed on the list for good. Each message now has an ×, and notices
+  have **Clear all**. A cleared message stays where it was sent, and an agent
+  whose question is cleared is not told. `actions.clear_waiting` and
+  `POST /api/clear_waiting` do this, for the operator only; `cleared.jsonl` in
+  the team directory records it.
+- A notice that an agent keeps failing clears itself once that agent's turn
+  works. It carries the new message field `failing`.
+
+### Fixed
+- Notices no longer offer a thread reply, which had nowhere to go.
+
 ## [4.0.2] - 2026-11-01
 
 ### Changed
@@ -698,7 +713,8 @@ MCP memory server.
 ## [1.0] - 2026-09-08
 Milestone tag (pre-semver).
 
-[Unreleased]: https://github.com/roelle/a-team/compare/v4.0.2...HEAD
+[Unreleased]: https://github.com/roelle/a-team/compare/v4.1.0...HEAD
+[4.1.0]: https://github.com/roelle/a-team/compare/v4.0.2...v4.1.0
 [4.0.2]: https://github.com/roelle/a-team/compare/v4.0.1...v4.0.2
 [4.0.1]: https://github.com/roelle/a-team/compare/v4.0.0...v4.0.1
 [4.0.0]: https://github.com/roelle/a-team/releases/tag/v4.0.0
