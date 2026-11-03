@@ -7,6 +7,34 @@ the README for what counts as the public surface.
 
 ## [Unreleased]
 
+## [4.7.0] - 2026-11-03
+
+### Added
+- **A fast path for recall, in shadow.** A scorer that ranks every memory with
+  no model call (`ateam/recall_fast.py`), trained by the judge on every wake
+  and by what followed: a memory the agent opened that recall had not
+  offered, the used-check's verdict, and corrections that restate a memory.
+  Each memory keeps its own bounded evidence; six shared weights take smaller
+  steps as they learn and are pulled back toward where they started. On by
+  default when recall is on, as `"fast": "shadow"`: it records what it would
+  have offered (`fast` on each `recall` event) and offers nothing; `"fast":
+  "off"` turns it off. Agents still see only the judge's choice.
+- The judge also grades up to two memories the fast path adds to its
+  candidates (`fast_explore`, default 2), so the fast path learns beyond what
+  it already ranks high. The judge can now find a memory the candidates
+  missed.
+- `bench/recall/fast_report.py`: how often the fast path agrees with the judge,
+  by day, from a team's record; `--replay` reruns it from nothing over the
+  recorded requests, with no model calls.
+- Each `recall` event carries its request (`query`, the first 2000
+  characters), an id (`rid`), and every candidate rather than the first ten.
+  `recall_miss`, `recall_ignored` and `recall_used` name the recall they are
+  about (`recall`).
+
+### Fixed
+- `bench/recall/late_misses.py` joins a miss to the turn it corrects by that
+  id: since 4.6.0 a miss can be logged after the next wake's recall.
+
 ## [4.6.0] - 2026-11-03
 
 ### Changed
@@ -865,7 +893,8 @@ MCP memory server.
 ## [1.0] - 2026-09-08
 Milestone tag (pre-semver).
 
-[Unreleased]: https://github.com/roelle/a-team/compare/v4.6.0...HEAD
+[Unreleased]: https://github.com/roelle/a-team/compare/v4.7.0...HEAD
+[4.7.0]: https://github.com/roelle/a-team/compare/v4.6.0...v4.7.0
 [4.6.0]: https://github.com/roelle/a-team/compare/v4.5.0...v4.6.0
 [4.5.0]: https://github.com/roelle/a-team/compare/v4.4.0...v4.5.0
 [4.4.0]: https://github.com/roelle/a-team/compare/v4.3.0...v4.4.0

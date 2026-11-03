@@ -22,7 +22,7 @@ beside the conversation.
 ## Run it
 
 ```bash
-pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.6.0"
+pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.7.0"
 a-team
 ```
 

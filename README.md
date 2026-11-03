@@ -9,11 +9,11 @@ It is also a lab for watching agent teams fail. Most of what is interesting here
 ## Install
 
 ```bash
-pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.6.0"
+pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.7.0"
 a-team
 ```
 
-Or with [uv](https://docs.astral.sh/uv/): `uv tool install "a-team @ git+https://github.com/roelle/a-team.git@v4.6.0"`.
+Or with [uv](https://docs.astral.sh/uv/): `uv tool install "a-team @ git+https://github.com/roelle/a-team.git@v4.7.0"`.
 
 It opens your browser, shows what this machine can run agents on, and creates a team. It takes no keys; put an API key in the environment you start it from.
 
@@ -1227,6 +1227,27 @@ Check sample size and variance before calling a winner. ...
   agent was not shown, that is a miss. It is recorded as a `recall_miss`
   event, and the previous request's distinctive words become *learned* cues
   on that memory. Every offer is a `recall` event, with the candidates.
+- **Fast path.** Recall picks candidates from embeddings (or words) and a
+  model "judge" chooses which to put in front of the agent. The judge is
+  careful but costs a model call per wake, which a turn may wait on. The
+  fast path scores every memory with no model call. Each memory keeps its
+  own evidence: a few requests it applied to and a few it did not, as
+  small vectors, and how often the judge chose it as a candidate. Six
+  shared weights combine closeness in meaning, word match, closeness to
+  those requests, and the base rate. It learns from the judge's choice on
+  every wake, from memories the agent opened that recall had not offered,
+  from the used-check verdict, and from corrections that restate a memory.
+  Evidence has a fixed size, each update is smaller than the last, and a
+  new memory does not disturb what others learned. The judge also grades
+  up to two memories the fast path adds (`fast_explore`, default 2), so
+  it learns beyond what it already ranks high. `"fast": "shadow"` is the
+  default: it learns and records what it would have offered with each
+  `recall` event, and offers nothing. `"fast": "off"` turns it off. It
+  works without an embedding key, on hashed words. On a synthetic test
+  with requests that never use a memory's own words, it matched the
+  judge 67% of the time over the first 50 requests and 100% over the
+  next 100. Offering its answer first, with the judge's following, waits
+  until a team's record shows the two agree.
 - **Measured, not guessed.** `bench/recall` tests the operator's real
   memories with paraphrased, oblique and decoy requests, and with up to
   10,000 distractor memories. Up to 1,000 memories the judge kept the
@@ -1798,7 +1819,7 @@ Releases follow [Semantic Versioning](https://semver.org/), tagged
 in [RELEASING.md](RELEASING.md). Pin a tag rather than `main`:
 
 ```bash
-pip install "a-team @ git+https://github.com/roelle/a-team.git@v4.6.0"
+pip install "a-team @ git+https://github.com/roelle/a-team.git@v4.7.0"
 python -m ateam.supervisor --version
 ```
 

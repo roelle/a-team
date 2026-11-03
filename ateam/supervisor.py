@@ -22,6 +22,7 @@ import signal
 import json
 import os
 import random
+import uuid
 import re
 import sys
 import threading
@@ -82,6 +83,7 @@ from . import steer
 from . import distill_queue
 from . import receipts
 from . import recall as recall_lib
+from . import recall_fast
 from . import second_review
 from . import tasks as tasks_lib
 from .transport import Message, wakes
@@ -1733,15 +1735,17 @@ class Supervisor:
         except Exception as e:
             self._log(f"    {agent}: recall failed ({type(e).__name__}: {e})")
             return ""
-        self._last_recall[agent] = {"query": query, "picked": res.get("picked") or [],
+        rid = uuid.uuid4().hex[:12]     # what a later miss or verdict names
+        self._last_recall[agent] = {"query": query, "rid": rid, "picked": res.get("picked") or [],
                                     "shown": {m["id"] for m in res.get("picked") or []}
                                     | {m["id"] for m in res.get("hints") or []}}
         try:
-            self.observer.record_event("recall", agent=agent, how=res.get("how"), ms=res.get("ms"),
+            self.observer.record_event("recall", agent=agent, rid=rid, how=res.get("how"), ms=res.get("ms"),
                                        picked=[m["id"] for m in res.get("picked") or []],
                                        hints=[m["id"] for m in res.get("hints") or []],
-                                       candidates=res.get("candidates", [])[:10],
-                                       error=res.get("error"))
+                                       candidates=res.get("candidates", []),
+                                       error=res.get("error"), query=query[:2000],
+                                       fast=res.get("fast"))
         except Exception:
             pass
         return recall_lib.render(res, cfg.get("body_chars", 1200))
@@ -1774,15 +1778,18 @@ class Supervisor:
                 # Asked for anyway, so this costs nothing extra.
                 try:
                     self.observer.record_event("recall_ignored", agent=agent, memory=hit,
-                                               correction=m.content[:300])
+                                               correction=m.content[:300], recall=last.get("rid"))
                 except Exception:
                     pass
+                self._teach(ar, agent, last["query"], [(hit, 1, recall_fast.MISS_W)])
             elif hit and hit in {c["id"] for c in cands} and hit not in last["shown"]:
+                self._teach(ar, agent, last["query"], [(hit, 1, recall_fast.MISS_W)])
                 cues = ar.learn(hit, last["query"])
                 self._log(f"    {agent}: recall missed {hit!r}; learned {', '.join(cues[:6])}")
                 try:
                     self.observer.record_event("recall_miss", agent=agent, memory=hit,
-                                               correction=m.content[:300], learned=cues)
+                                               correction=m.content[:300], learned=cues,
+                                               recall=last.get("rid"))
                 except Exception:
                     pass
 
@@ -1801,7 +1808,42 @@ class Supervisor:
         if not picked or not cfg or random.random() >= cfg.get("used_sample", 0):
             return
         self._background(self._used, agent, picked, last.get("query") or "",
-                         turn.get("ts") or "", reply, cfg)
+                         turn.get("ts") or "", reply, cfg, last.get("rid"))
+
+    def _teach(self, ar, agent: str, query: str, labels) -> None:
+        """Tell the fast path what happened after a recall."""
+        try:
+            ar.teach(query, labels)
+        except Exception as e:
+            self._log(f"    {agent}: fast recall not taught ({type(e).__name__}: {e})")
+
+    def _check_found(self, agent: str, turn: dict) -> None:
+        """A memory the agent opened itself in a turn, when recall had not
+        offered it, is one the fast path should have ranked: a label that
+        costs no model call."""
+        last = self._last_recall.get(agent) or {}
+        cfg = recall_lib.config(self.team_dir)
+        if not cfg or not last.get("query") or last.get("found_checked"):
+            return
+        last["found_checked"] = True
+        since, shown = str(turn.get("ts") or ""), set(last.get("shown") or ())
+        opened = []
+        for e in self.observer.events("tool_call"):
+            if e.get("agent") != agent or str(e.get("ts") or "") < since \
+                    or not str(e.get("tool") or "").endswith("read_memory") or e.get("error"):
+                continue
+            args = e.get("args")
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except ValueError:
+                    args = {}
+            name = (args or {}).get("name") if isinstance(args, dict) else None
+            if name and name not in shown and name not in opened:
+                opened.append(name)
+        if opened:
+            self._background(self._teach, recall_lib.AgentRecall(self.team_dir, agent, cfg), agent,
+                             last["query"], [(n, 1, recall_fast.FOUND_W) for n in opened])
 
     def _second_start(self) -> None:
         """Where the change a second review sees begins: each workspace's HEAD now."""
@@ -1856,7 +1898,8 @@ class Supervisor:
             except Exception:
                 pass
 
-    def _used(self, agent: str, picked: list, query: str, since: str, reply: str, cfg: dict) -> None:
+    def _used(self, agent: str, picked: list, query: str, since: str, reply: str, cfg: dict,
+              rid: str | None = None) -> None:
         try:
             backend = recall_lib.backend_for(cfg)
             actions = recall_lib.turn_actions(
@@ -1868,9 +1911,16 @@ class Supervisor:
                 ans = backend.ask(recall_lib.USED_PROMPT.format(
                     memory=f"{m['description']}\n{m['body'][:1200]}", message=query[:4000],
                     actions=actions))
+                verdict = ans.get("verdict") or "na"
                 self.observer.record_event("recall_used", agent=agent, memory=m["id"],
-                                           verdict=ans.get("verdict") or "na",
+                                           verdict=verdict, recall=rid,
                                            evidence=str(ans.get("evidence") or "")[:200])
+                # Ignored still bore on the turn; overruled says nothing of
+                # whether it should have been offered.
+                y = {"used": 1, "ignored": 1, "na": 0}.get(verdict)
+                if y is not None:
+                    self._teach(recall_lib.AgentRecall(self.team_dir, agent, cfg), agent, query,
+                                [(m["id"], y, recall_fast.USED_W)])
         except Exception as e:
             self._log(f"    {agent}: use of recalled memories not checked ({type(e).__name__}: {e})")
 
@@ -1958,6 +2008,7 @@ class Supervisor:
         failed = reply.startswith("[error:")
         transport = self.transports.get(agent)
         if not failed:
+            self._check_found(agent, turn)
             self._check_used(agent, turn, reply)
             self._check_second()
         if failed:

@@ -166,7 +166,8 @@ API = "https://generativelanguage.googleapis.com/v1beta/"
 DEFAULTS = {"embed": "gemini-embedding-2", "judge": "gemini-3.8-flash", "dims": 768,
             "candidates": "auto", "max": 3, "body_chars": 1200, "key_env": "GEMINI_API_KEY",
             "timeout": 20, "judge_via": "auto", "agy_model": "gemini-3.8-flash-low",
-            "agy_binary": "agy", "used_sample": 0.25, "wait": 5}
+            "agy_binary": "agy", "used_sample": 0.25, "wait": 5,
+            "fast": "shadow", "fast_explore": 2}
 
 JUDGE_PROMPT = """An AI agent on a team is about to handle this message:
 
@@ -549,7 +550,7 @@ class AgentRecall:
         with_vec = [mid for mid in mems if (cache.get(mid) or {}).get("vec")]
         if with_vec and _can_embed(self.backend):
             try:
-                q = _norm(self.backend.embed([query[:6000]], "RETRIEVAL_QUERY")[0])
+                q = self._embed_query(query)
                 ranked = sorted(with_vec, key=lambda mid: -_dot(q, cache[mid]["vec"]))[:k]
                 # Saved since the index was refreshed, so no vector yet:
                 # found by words until the refresh after the turn catches up.
@@ -560,6 +561,75 @@ class AgentRecall:
             except Exception:
                 pass
         return self._by_words(list(mems.values()), cache, query, k)
+
+    def _embed_query(self, query: str) -> list[float]:
+        """The query's vector, asked for once however many paths use it."""
+        memo = getattr(self, "_qvec", None)
+        if memo and memo[0] == query:
+            return memo[1]
+        v = _norm(self.backend.embed([query[:6000]], "RETRIEVAL_QUERY")[0])
+        self._qvec = (query, v)
+        return v
+
+    # --- the fast path (recall_fast.py) ----------------------------------------
+
+    def _fast_space(self) -> str | None:
+        mode = self.cfg.get("fast", "shadow")
+        if not mode or mode == "off":
+            return None
+        from .recall_fast import HASH_DIMS
+        return (f"embed:{self.cfg['embed']}:{self.cfg['dims']}" if _can_embed(self.backend)
+                else f"hashed:{HASH_DIMS}")
+
+    def _fast_path(self) -> Path:
+        return self.path.with_name(self.path.stem + ".fast.json")
+
+    def _fast_inputs(self, query: str, mems: dict, cache: dict, space: str):
+        """(query vector, {id: memory vector or None}, {id: word score})."""
+        from .recall_fast import hashed
+        if space.startswith("embed:"):
+            qv = self._embed_query(query)
+            mvecs = {mid: (cache.get(mid) or {}).get("vec") for mid in mems}
+        else:
+            qv = hashed(query[:6000])
+            mvecs = {mid: hashed(self._doc_text(m, cache.get(mid) or {})) for mid, m in mems.items()}
+        words = {r["id"]: r["norm"] for r in self._by_words(list(mems.values()), cache, query, len(mems))}
+        return qv, mvecs, words
+
+    def _fast_rank(self, query: str, mems: dict, cache: dict) -> dict | None:
+        space = self._fast_space()
+        if not space or not mems:
+            return None
+        from .recall_fast import Fast
+        try:
+            qv, mvecs, words = self._fast_inputs(query, mems, cache, space)
+        except Exception:
+            return None                 # no query vector this time: no fast path, no lesson
+        model = Fast(self._fast_path(), space)
+        return {"space": space, "qv": qv, "ranked": model.rank(qv, mvecs, words), "model": model}
+
+    def _fast_learn(self, space: str, qv, labels, feats: dict, keep, judged: bool) -> None:
+        from .recall_fast import Fast
+        with _lock_for(self._fast_path()):
+            f = Fast(self._fast_path(), space)      # fresh: another thread may have learned
+            f.learn(qv, labels, feats, judged=judged)
+            f.save(keep=keep)
+
+    def teach(self, query: str, labels: list[tuple[str, int, float]]) -> None:
+        """Teach the fast path what happened after a recall: [(memory id,
+        1 if it applied, weight)] for the request `query`."""
+        space = self._fast_space()
+        if not space or not query:
+            return
+        from .recall_fast import Fast
+        mems = {m["id"]: m for m in self.memories()}
+        labels = [l for l in labels if l[0] in mems]
+        if not labels:
+            return
+        qv, mvecs, words = self._fast_inputs(query, mems, self._cache(), space)
+        f = Fast(self._fast_path(), space)
+        feats = {mid: f.features(qv, mid, mvecs.get(mid), words.get(mid, 0.0)) for mid, _, _ in labels}
+        self._fast_learn(space, qv, labels, feats, set(mems), judged=False)
 
     @staticmethod
     def _by_words(mems: list[dict], cache: dict, query: str, k: int) -> list[dict]:
@@ -579,6 +649,15 @@ class AgentRecall:
         best word matches are only named, for the agent to open if it wants."""
         t0 = time.monotonic()
         cands = self.candidates(query)
+        mems = {m["id"]: m for m in self.memories()}
+        fast = self._fast_rank(query, mems, self._cache())
+        explored = []
+        if fast and self.backend.available:
+            # The judge grades the fast path's own top picks too, or it would
+            # learn only from what the candidates already were.
+            explored = fast["model"].explore(fast["ranked"], {c["id"] for c in cands},
+                                             int(self.cfg.get("fast_explore") or 0))
+            cands = cands + [{**mems[i], "how": "fast"} for i in explored]
         out = {"picked": [], "hints": [], "candidates": [c["id"] for c in cands],
                "how": cands[0]["how"] if cands else "none"}
         if cands and self.backend.available:
@@ -590,12 +669,27 @@ class AgentRecall:
                 keep = [i for i in (ans.get("apply") or []) if i in {c["id"] for c in cands}]
                 out["picked"] = [c for c in cands if c["id"] in keep][: self.cfg["max"]]
                 out["how"] += "+judge"
+                if fast:
+                    from .recall_fast import JUDGE_W
+                    chosen = {c["id"] for c in out["picked"]}
+                    feats = {r["id"]: r["f"] for r in fast["ranked"]}
+                    try:
+                        self._fast_learn(fast["space"], fast["qv"],
+                                         [(c["id"], int(c["id"] in chosen), JUDGE_W) for c in cands],
+                                         feats, set(mems), judged=True)
+                    except Exception as e:
+                        out["fast_error"] = f"{type(e).__name__}: {e}"
             except Exception as e:
                 out["error"] = f"{type(e).__name__}: {e}"
                 out["hints"] = cands[:3]
         elif cands:
             out["hints"] = [c for c in cands if c.get("norm", 1) >= 0.2][:3]
         out["ms"] = int(1000 * (time.monotonic() - t0))
+        if fast:
+            from .recall_fast import Fast
+            out["fast"] = {"picks": Fast.picks(fast["ranked"], self.cfg["max"]),
+                           "top": [[r["id"], round(r["score"], 3)] for r in fast["ranked"][:5]],
+                           "explored": explored, "space": fast["space"]}
         if out["picked"]:
             from . import memory_log
             read = memory_log.outside(self.team_dir, self.agent)

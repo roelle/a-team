@@ -116,3 +116,12 @@ what a sample of offered memories actually did (`recall_used`, and
 
 `late_misses.py <team_dir>` needs a team's record of real misses and has no
 result here yet.
+
+`bench/recall/fast_report.py <team_dir>` reports by day how often the fast
+path chose what the judge chose, how often it offered something when the
+judge chose nothing, and how many judge choices came through exploration.
+With `--replay` it starts a fast path from nothing and replays the team's
+recorded requests in order (predict, compare, learn), on hashed words,
+with no model calls, so a change to the fast path can be checked against
+real requests. It sees memories as they are today, and only recalls
+recorded since this shipped carry their request.

@@ -95,6 +95,17 @@ def test_a_miss_is_joined_to_the_turn_it_corrects(tmp_path):
     assert [c["args"]["file"] for c in miss["calls"]] == ["f0", "f2"]
 
 
+def test_a_miss_logged_after_the_next_recall_still_finds_its_turn(tmp_path):
+    """The miss check runs beside the next wake, so it can be logged after
+    that wake's recall; it names the recall it corrects."""
+    rows = late_misses.events(record(tmp_path, [
+        {"event": "recall", "agent": "coder", "rid": "r1"}, call("coder", 0),
+        {"event": "recall", "agent": "coder", "rid": "r2"}, call("coder", 1),
+        {"event": "recall_miss", "agent": "coder", "memory": "m", "recall": "r1"}]))
+    [miss] = late_misses.missed_turns(rows)
+    assert [c["args"]["file"] for c in miss["calls"]] == ["f0"]
+
+
 def test_a_long_turn_is_sampled_across_its_length():
     calls = [{"tool": "Read", "args": {"file": f"f{i}"}} for i in range(100)]
     qs = late_misses.queries(calls, every=10, most=4)

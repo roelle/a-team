@@ -51,20 +51,25 @@ def events(team_dir: Path) -> list[dict]:
 def missed_turns(rows: list[dict]) -> list[dict]:
     """Each miss, with the tool calls made since the recall before it.
 
-    A wake's order in the record is recall, the turn's calls, then the next
-    wake's recall, and the miss is logged before that recall: so the calls
-    between one agent's last recall and its miss are the turn being corrected.
+    A wake's order in the record is recall, then the turn's calls. A miss
+    names the recall of the turn it corrects (`recall`, its id), since it is
+    checked beside the next wake and may be logged after that wake's recall.
+    One from before ids were recorded was logged before the next recall, so
+    it corrects the agent's latest one.
     """
-    out, calls, seen = [], {}, set()
+    out, calls, by_rid, seen = [], {}, {}, set()
     for e in rows:
         agent, kind = e.get("agent"), e.get("event")
         if kind == "recall":
             calls[agent] = []
             seen.add(agent)
+            if e.get("rid"):
+                by_rid[e["rid"]] = calls[agent]
         elif kind == "tool_call" and agent in seen:
             calls[agent].append(e)
         elif kind == "recall_miss":
-            out.append({**e, "calls": list(calls.get(agent, []))})
+            turn = by_rid.get(e.get("recall")) if e.get("recall") else calls.get(agent, [])
+            out.append({**e, "calls": list(turn or [])})
     return out
 
 
