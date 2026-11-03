@@ -7,6 +7,16 @@ the README for what counts as the public surface.
 
 ## [Unreleased]
 
+## [4.8.1] - 2026-11-03
+
+### Fixed
+- **@user in a channel is a mention of you.** Agents are told to address
+  'user', so in a channel they write @user. Only the roster `operator`'s own
+  handles were recorded as a mention of the operator, so on a roster without
+  one (or a post that used @user anyway) the app showed the channel as unread
+  but never with the red @. @user now always counts; it still wakes nobody,
+  and the brief tells agents it shows you the post.
+
 ## [4.8.0] - 2026-11-03
 
 ### Fixed
@@ -920,7 +930,8 @@ MCP memory server.
 ## [1.0] - 2026-09-08
 Milestone tag (pre-semver).
 
-[Unreleased]: https://github.com/roelle/a-team/compare/v4.8.0...HEAD
+[Unreleased]: https://github.com/roelle/a-team/compare/v4.8.1...HEAD
+[4.8.1]: https://github.com/roelle/a-team/compare/v4.8.0...v4.8.1
 [4.8.0]: https://github.com/roelle/a-team/compare/v4.7.0...v4.8.0
 [4.7.0]: https://github.com/roelle/a-team/compare/v4.6.0...v4.7.0
 [4.6.0]: https://github.com/roelle/a-team/compare/v4.5.0...v4.6.0
