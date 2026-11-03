@@ -87,8 +87,8 @@ def test_a_turn_with_no_record_is_not_given_a_verdict(team, sup, monkeypatch):
     monkeypatch.setattr(recall, "backend_for", lambda cfg: backend)
     offered(sup)
     sup._check_used(AGENT, {"ts": "2000-01-01 00:00:00"}, "")
-    sup._pool.shutdown(wait=True)
-    sup._pool = None
+    sup._bg.shutdown(wait=True)
+    sup._bg = None
     assert backend.asked == [] and sum(checks(team).values()) == 0
 
 
@@ -109,8 +109,8 @@ def test_each_offer_is_checked_once(team, sup, monkeypatch):
     sup._check_used(AGENT, {"ts": "2000-01-01 00:00:00"}, "done")
     sup._check_used(AGENT, {"ts": "2000-01-01 00:00:00"}, "done")
     assert wait_for(lambda: checks(team)["used"] == 1)
-    sup._pool.shutdown(wait=True)
-    sup._pool = None
+    sup._bg.shutdown(wait=True)
+    sup._bg = None
     assert len(backend.asked) == 1
 
 
@@ -120,7 +120,7 @@ def test_a_long_turn_keeps_its_end():
     assert len(text) < recall.USED_CHARS + 100 and '"f999"' in text and text.endswith("done")
 
 
-def test_a_correction_of_a_memory_it_was_shown_counts_as_ignored(team, sup):
+def test_a_correction_of_a_memory_it_was_shown_counts_as_ignored(team, sup, monkeypatch):
     from ateam.transport import Message
 
     class Ar:
@@ -132,8 +132,14 @@ def test_a_correction_of_a_memory_it_was_shown_counts_as_ignored(team, sup):
         def learn(self, *a):
             raise AssertionError("the words were not what failed: it was shown")
     Ar.backend.ask = lambda prompt: {"restates": "run-it"}
+    monkeypatch.setattr(recall, "AgentRecall", lambda *a, **k: Ar())
+    (team / "roster.json").write_text(json.dumps({"agents": [{"name": AGENT, "role": "x"}],
+                                                  "memory_recall": {"used_sample": 0}}))
     offered(sup)
-    sup._check_miss(AGENT, Ar(), [Message(ts="t", sender="user", to=AGENT, content="run it, as I said")])
+    # The turn it was shown in ends, as turns do, before the correction comes.
+    sup._check_used(AGENT, {"ts": "x"}, "reply")
+    sup._check_miss(AGENT, {}, [Message(ts="t", sender="user", to=AGENT, content="run it, as I said")],
+                    sup._last_recall[AGENT])
     stats = Record(team).recall_stats(AGENT)
     assert [i["memory"] for i in stats["ignored"]] == ["run-it"] and stats["misses"] == []
     assert stats["memories"]["run-it"]["ignored"] == 1

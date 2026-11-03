@@ -559,11 +559,17 @@ function openDrawer(tab) {
   if (tab === "tasks") renderPanelTasks();
 }
 
+// A reply arriving re-renders the thread's messages only: the reply box, and
+// what is being typed in it, stays as it is. What is typed is also kept under
+// the thread (S.drafts), so another thread or a reload does not lose it.
 async function openThread(id) {
   S.thread = id;
+  const box = $("#drawer-thread");
+  const kept = box.querySelector(`.thread-compose[data-thread="${CSS.escape(id)}"]`);
   const pop = $("#mention-box");               // keep the popover out of what is re-rendered
-  if (pop && pop.closest("#drawer")) { pop.classList.add("hidden"); $("#composer").insertBefore(pop, $("#composer").firstChild); S.ta = null; }
+  if (!kept && pop && pop.closest("#drawer")) { pop.classList.add("hidden"); $("#composer").insertBefore(pop, $("#composer").firstChild); S.ta = null; }
   const { messages } = await api(`/api/messages?${q({ thread: id })}`);
+  if (S.thread !== id) return;                 // another thread was opened meanwhile
   const root = messages.find((m) => m.id === id) || messages[0];
   const last = messages.reduce((a, m) => (m.ts > a ? m.ts : a), "");
   if (last && last !== S.tseen[tKey(id)]) {
@@ -572,10 +578,24 @@ async function openThread(id) {
   }
   const where = root?.channel ? { channel: root.channel } : { to: (root?.from === "user" ? root?.to : root?.from) };
   const canReply = root && root.from !== "supervisor" && (root.channel || root.from === "user" || root.to === "user");
-  $("#drawer-thread").innerHTML = messages.map((m) => msgHTML(m, { inThread: true })).join("") +
-    (canReply ? `<form class="thread-compose" data-where='${esc(JSON.stringify(where))}'><textarea rows="2" placeholder="Reply in thread — Enter sends, Shift+Enter for a new line"></textarea>
-      <div class="composer-row"><span class="hint">${root.channel ? "mention to wake" : "wakes " + esc(where.to)}</span><button class="btn small">Reply</button></div></form>` : "");
+  const html = messages.map((m) => msgHTML(m, { inThread: true })).join("");
+  if (kept && box.querySelector(".thread-msgs")) {
+    box.querySelector(".thread-msgs").innerHTML = html;
+  } else {
+    box.innerHTML = `<div class="thread-msgs">${html}</div>` +
+      (canReply ? `<form class="thread-compose" data-thread="${esc(id)}" data-where='${esc(JSON.stringify(where))}'><textarea rows="2" placeholder="Reply in thread — Enter sends, Shift+Enter for a new line"></textarea>
+        <div class="composer-row"><span class="hint">${root.channel ? "mention to wake" : "wakes " + esc(where.to)}</span><button class="btn small">Reply</button></div></form>` : "");
+    const ta = box.querySelector(".thread-compose textarea");
+    if (ta) ta.value = S.drafts[threadDraftKey(id)] || "";
+  }
   openDrawer("thread");
+}
+
+function threadDraftKey(id) { return `${S.team}|thread:${id}`; }
+function keepThreadDraft(ta) {
+  const id = ta.closest(".thread-compose")?.dataset.thread; if (!id) return;
+  if (ta.value.trim()) S.drafts[threadDraftKey(id)] = ta.value; else delete S.drafts[threadDraftKey(id)];
+  save("agychat.drafts", S.drafts);
 }
 
 async function openArtifact(path) {
@@ -691,7 +711,7 @@ function useBox(ta) {
   if (form && box.parentElement !== form) form.insertBefore(box, form.firstChild);
 }
 document.addEventListener("input", (e) => {
-  if (e.target.matches?.(".thread-compose textarea")) { useBox(e.target); mentionSuggest(); }
+  if (e.target.matches?.(".thread-compose textarea")) { useBox(e.target); mentionSuggest(); keepThreadDraft(e.target); }
 });
 document.addEventListener("keydown", (e) => {
   if (!e.target.matches?.(".thread-compose textarea")) return;
@@ -871,7 +891,8 @@ document.addEventListener("click", async (e) => {
 document.addEventListener("submit", async (e) => {
   const form = e.target.closest(".thread-compose"); if (!form) return;
   e.preventDefault(); const ta = form.querySelector("textarea"); const text = ta.value.trim(); if (!text) return;
-  try { await send(text, JSON.parse(form.dataset.where), S.thread); ta.value = ""; } catch (err) { toast(err.message, true); }
+  try { await send(text, JSON.parse(form.dataset.where), form.dataset.thread); ta.value = ""; keepThreadDraft(ta); }
+  catch (err) { toast(err.message, true); }
 });
 $("#open-panel").onclick = () => {
   const v = S.view;

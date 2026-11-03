@@ -76,8 +76,8 @@ def second(td, change=None, review=True, **kw):
         if review:
             approve(td, **kw)
         sup._check_second()
-        if getattr(sup, "_pool", None) is not None:
-            sup._pool.shutdown(wait=True)
+        if getattr(sup, "_bg", None) is not None:
+            sup._bg.shutdown(wait=True)
     finally:
         sup.close()
     rows = [json.loads(l) for l in (td / "events.jsonl").read_text().splitlines()] \

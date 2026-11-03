@@ -7,6 +7,35 @@ the README for what counts as the public surface.
 
 ## [Unreleased]
 
+## [4.6.0] - 2026-11-03
+
+### Changed
+- **Recall no longer makes a turn wait for three model calls.** Before a turn,
+  recall wrote cues for memories saved since last time, checked the mail for a
+  miss, and asked the judge, one after another, while the turn waited; with
+  the agy CLI judge that was 15-50 seconds. Now cues, vectors and the miss
+  check run in the background, after each turn and beside each wake, and only
+  the judge is on the turn's path.
+- **A turn waits for the judge at most 5 seconds** (`"wait"` under
+  `memory_recall`; it was `2 * timeout + 10`, 50 seconds by default). A slower
+  judge's choice reaches the agent at its next step, like mid-turn mail, and is
+  recorded as a `recall_late` event, with `delivered` false if the turn had
+  already ended. `"wait": 0` never waits.
+- A memory saved since the index was last refreshed is found by its words
+  until its vector is written; before, with embeddings on, it was not found.
+
+### Fixed
+- **A reply arriving in a thread no longer clears what you are typing in it.**
+  Each new message in an open thread rebuilt the whole panel, reply box
+  included, and the draft was lost. Now only the messages are redrawn: the
+  box keeps its text, cursor and focus. A thread reply's draft is also kept
+  per thread in the browser, so another thread or a reload does not lose it.
+- `recall_ignored` was never recorded: the check of whether an offered memory
+  was used took the offer off the record when the turn ended, so a later
+  correction of it looked like a memory never shown.
+- The used-memory check and the second review run in a background pool of
+  their own, so a 3-minute second review can no longer hold a turn's judge.
+
 ## [4.5.0] - 2026-11-02
 
 ### Added
@@ -836,7 +865,8 @@ MCP memory server.
 ## [1.0] - 2026-09-08
 Milestone tag (pre-semver).
 
-[Unreleased]: https://github.com/roelle/a-team/compare/v4.5.0...HEAD
+[Unreleased]: https://github.com/roelle/a-team/compare/v4.6.0...HEAD
+[4.6.0]: https://github.com/roelle/a-team/compare/v4.5.0...v4.6.0
 [4.5.0]: https://github.com/roelle/a-team/compare/v4.4.0...v4.5.0
 [4.4.0]: https://github.com/roelle/a-team/compare/v4.3.0...v4.4.0
 [4.3.0]: https://github.com/roelle/a-team/compare/v4.2.0...v4.3.0
