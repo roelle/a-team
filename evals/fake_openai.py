@@ -72,6 +72,14 @@ class FakeOpenAI:
                         "message": reply["message"], "type": reply["kind"], "code": reply["kind"]}})
                 if api.hold is not None:
                     api.hold.wait(30)
+                if not body.get("stream"):
+                    text = reply if isinstance(reply, str) else reply.get("text") or ""
+                    return self._json(200, {
+                        "id": f"resp_{uuid.uuid4().hex[:20]}", "object": "response",
+                        "model": body.get("model"), "status": "completed", "usage": api.usage,
+                        "output": [{"type": "message", "role": "assistant", "status": "completed",
+                                    "content": [{"type": "output_text", "text": text,
+                                                 "annotations": []}]}]})
                 self.send_response(200)
                 self.send_header("Content-Type", "text/event-stream")
                 self.end_headers()

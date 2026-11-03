@@ -269,6 +269,13 @@ def test_mail_that_arrives_mid_turn_reaches_the_model_at_the_next_step(team, api
     assert "Stop, wrong branch." in json.dumps(api.requests[-1]["input"])
 
 
+def test_a_codex_too_old_says_what_to_install(team, tmp_path):
+    old = tmp_path / "codex"
+    old.write_text("#!/bin/sh\necho \"error: unrecognized subcommand 'app-server'\" >&2\nexit 2\n")
+    old.chmod(0o755)
+    out = CodexRunner({"codex": str(old), "timeout": 30}).wake("coder", "go")
+    assert "too old" in out and "0.166" in out, out
+
 def test_the_surface_leaves_out_what_an_unattended_agent_must_not_have():
     for f in ("computer_use", "browser_use", "plugins", "apps", "daemon_auto_start"):
         assert f in FEATURES_OFF

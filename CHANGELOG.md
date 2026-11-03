@@ -7,12 +7,42 @@ the README for what counts as the public surface.
 
 ## [Unreleased]
 
+## [4.5.0] - 2026-11-02
+
 ### Added
+- **A second review from another vendor's model on approved code**
+  (`"second_review": {"model": "gpt-6-astra"}` in roster.json, or under
+  `"policy"`; off unless the team asks). A reviewer on the same model as the
+  author shares its blind spots. After a turn records an approved code review
+  (one with a proof file), one call to OpenAI's Responses API (`store: false`;
+  key from `OPENAI_API_KEY` in the supervisor's environment only; `"provider"`
+  for another endpoint that speaks it, https or loopback) is given the review
+  and what git says moved in each workspace since the episode began, committed
+  or not, plus new files, up to 60,000 characters (`max_chars`), and asked for
+  defects. `"paths"` limits it to changes touching those globs. It is findings
+  only: it cannot block, approve or reopen. Findings go to the reviewer who
+  approved, as a message from the supervisor, to check against the code and
+  reopen the work if one holds; "No findings." sends nothing. Every check,
+  skip and error is a `second_review` event, with tokens. It runs off the
+  supervisor's thread, so it holds up neither the team nor the answer to the
+  user: if the lead reports straight after the approval, the findings arrive
+  after the report. Without git nothing is sent. 8 tests against a local
+  stand-in; live on `gpt-6-astra` it found both planted bugs in a password
+  check a review had approved, in 8 seconds and about 700 tokens. See the
+  README for the rest.
 - The image is built and checked on Docker Engine on every push and tag
   (`.github/workflows/container.yml`), with `evals/container_smoke.sh`, which
   runs the same checks under podman: it serves only with its token, refuses a
   foreign Host header, runs as the `ateam` user, and keeps teams across a
   restart. No key is passed in, so no agent runs.
+
+### Fixed
+- **The roster guard could keep an empty copy of a roster an agent rewrote
+  during a turn.** It read the file while the agent was half way through
+  writing it. The change was still put back; only the evidence was blank,
+  about one time in fifteen. It now waits for the file to stop changing first.
+- `CodexRunner` says when the `codex` it found is too old to have the
+  app-server, and what to install.
 
 ## [4.4.0] - 2026-11-02
 
@@ -806,7 +836,8 @@ MCP memory server.
 ## [1.0] - 2026-09-08
 Milestone tag (pre-semver).
 
-[Unreleased]: https://github.com/roelle/a-team/compare/v4.4.0...HEAD
+[Unreleased]: https://github.com/roelle/a-team/compare/v4.5.0...HEAD
+[4.5.0]: https://github.com/roelle/a-team/compare/v4.4.0...v4.5.0
 [4.4.0]: https://github.com/roelle/a-team/compare/v4.3.0...v4.4.0
 [4.3.0]: https://github.com/roelle/a-team/compare/v4.2.0...v4.3.0
 [4.2.0]: https://github.com/roelle/a-team/compare/v4.1.0...v4.2.0

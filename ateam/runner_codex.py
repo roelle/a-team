@@ -451,6 +451,9 @@ class CodexRunner(Runner):
         except LookupError as e:
             return f"[error: codex: {e}]"
         except RuntimeError as e:
+            if "unrecognized subcommand" in str(e):
+                return (f"[error: {e}: this codex is too old for the runner; install 0.166 "
+                        f"or later (npm install -g @openai/codex) or name one in \"codex\"]")
             return f"[error: {e}]"
         except queue.Empty:
             return f"[error: codex did not answer within {self.timeout:.0f}s]"

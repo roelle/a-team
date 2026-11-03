@@ -81,6 +81,7 @@ from . import scope
 from . import distill_queue
 from . import receipts
 from . import recall as recall_lib
+from . import second_review
 from . import tasks as tasks_lib
 from .transport import Message, wakes
 from .transport import load as load_transport
@@ -1189,6 +1190,22 @@ class Supervisor:
         except OSError:
             return None
 
+    def _settled_roster(self, cur: bytes | None) -> bytes | None:
+        """The roster once whoever is writing it has finished.
+
+        A writer that truncates and then writes, as most do, leaves a moment
+        when the file is empty or half there. Read then, the change is reverted
+        all the same, but the copy kept as evidence is blank: measured, about
+        one guard in fifteen in the test that rewrites it from a turn.
+        """
+        for _ in range(20):
+            time.sleep(0.05)
+            again = self._read_roster()
+            if again == cur:
+                return cur
+            cur = again
+        return cur
+
     def _pin_roster(self) -> None:
         """Accept the roster as it is now: the operator just started us."""
         self._roster_pin = self._read_roster()
@@ -1222,6 +1239,9 @@ class Supervisor:
             self._roster_history_at = roster_lib.history_size(self._roster_path)
             return
 
+        cur = self._settled_roster(cur)
+        if cur == pin:
+            return
         changed = roster_lib.changed_entries(pin, cur)
         kept = None
         if cur is not None:
@@ -1747,6 +1767,59 @@ class Supervisor:
         self._recall_pool().submit(self._used, agent, picked, last.get("query") or "",
                                    turn.get("ts") or "", reply, cfg)
 
+    def _second_start(self) -> None:
+        """Where the change a second review sees begins: each workspace's HEAD now."""
+        self._second_base, self._second_seen = {}, len(_jsonl_rows(self.reviews_path))
+        try:
+            if second_review.config(self.team_dir):
+                doc = roster_lib.load(self.team_dir / "roster.json")
+                spaces = [*doc.get("workspaces", []),
+                          *(w for a in doc.get("agents", []) for w in a.get("workspaces") or [])]
+                self._second_base = second_review.bases(spaces)
+        except Exception as e:
+            self._log(f"[second review: workspaces not read ({type(e).__name__}: {e})]")
+
+    def _check_second(self) -> None:
+        """Send each newly approved code review to the second reviewer."""
+        base = getattr(self, "_second_base", None)
+        cfg = second_review.config(self.team_dir) if base else None
+        if not cfg:
+            return
+        rows = _jsonl_rows(self.reviews_path)
+        new, self._second_seen = rows[self._second_seen:], len(rows)
+        for r in new:
+            if (r.get("verdict") == "approved" and r.get("kind", "work") == "work"
+                    and r.get("proof_file")):
+                self._recall_pool().submit(self._second, r, cfg, dict(base))
+
+    def _second(self, review: dict, cfg: dict, base: dict) -> None:
+        what, reviewer = str(review.get("what") or "")[:200], review.get("reviewer")
+        try:
+            diff, paths = second_review.change(base)
+            if not second_review.wanted(cfg, paths):
+                self.observer.record_event("second_review", what=what, reviewer=reviewer,
+                                           skipped="no change" if not paths else "no path asked for")
+                return
+            ans = second_review.ask(cfg, review, diff)
+            found = bool(ans["text"]) and not ans["text"].lower().startswith("no findings")
+            if found and reviewer:
+                bus = load_transport("supervisor")
+                try:
+                    bus.send_kind(reviewer, second_review.note(cfg, review, ans["text"]), kind="review")
+                finally:
+                    bus.close()
+            self.observer.record_event("second_review", what=what, reviewer=reviewer,
+                                       model=cfg["model"], findings=found,
+                                       text=ans["text"][:2000], input_tokens=ans["input_tokens"],
+                                       output_tokens=ans["output_tokens"])
+        except Exception as e:
+            self._log(f"[second review of \"{what[:80]}\" not done ({type(e).__name__}: {str(e)[:200]})]")
+            try:
+                self.observer.record_event("second_review", what=what, reviewer=reviewer,
+                                           error=f"{type(e).__name__}: {str(e)[:300]}")
+            except Exception:
+                pass
+
     def _used(self, agent: str, picked: list, query: str, since: str, reply: str, cfg: dict) -> None:
         try:
             backend = recall_lib.backend_for(cfg)
@@ -1823,6 +1896,7 @@ class Supervisor:
         transport = self.transports.get(agent)
         if not failed:
             self._check_used(agent, turn, reply)
+            self._check_second()
         if failed:
             self._log(f"    {agent}: {reply[:200]}")
         elif not self.quiet:
@@ -2128,6 +2202,7 @@ class Supervisor:
             self.observer.record_event("episode_start")
         except Exception:
             pass
+        self._second_start()
         while True:
             begun, reaped = self._pass()
             total += len(begun)

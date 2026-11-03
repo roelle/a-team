@@ -9,11 +9,11 @@ It is also a lab for watching agent teams fail. Most of what is interesting here
 ## Install
 
 ```bash
-pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.4.0"
+pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.5.0"
 a-team
 ```
 
-Or with [uv](https://docs.astral.sh/uv/): `uv tool install "a-team @ git+https://github.com/roelle/a-team.git@v4.4.0"`.
+Or with [uv](https://docs.astral.sh/uv/): `uv tool install "a-team @ git+https://github.com/roelle/a-team.git@v4.5.0"`.
 
 It opens your browser, shows what this machine can run agents on, and creates a team. It takes no keys; put an API key in the environment you start it from.
 
@@ -661,8 +661,45 @@ and says what is missing.
   stand-in for the Responses API, with no key and no cost. Live, two turns on
   `gpt-6-luna` with a real key on a scratch team wrote and ran a file,
   messaged a teammate through the bus, and resumed the same thread on a second
-  wake. Not yet run: a full supervised team on Codex, the strong model live,
-  a non-OpenAI endpoint.
+  wake. A supervised three-vendor team has run too: lead on Claude Sonnet,
+  coder on Codex, qa on Gemini 3.8 Flash, in one `MixedRunner` team. Not yet
+  run: `gpt-6-astra` as a Codex agent, a non-OpenAI endpoint.
+
+**A second review from another vendor's model.** A reviewer on the same model
+as the author shares its blind spots. So, when a team asks for it, every
+approved code review is followed by one call to a model from somewhere else,
+given the review and the change, asking for defects. Put
+`"second_review": {"model": "gpt-6-astra"}` in roster.json, or under
+`"policy"`; it is off unless the team asks. It is findings only: it cannot
+block, approve or reopen anything.
+
+- **When it runs.** After a turn in which an approved code review (one with a
+  proof file) was recorded. Reviews that ask for changes, and document
+  reviews, are not sent.
+- **What is sent.** The review (what, author, reviewer, findings, proof file)
+  and the change: what git says moved in each workspace since the episode
+  began, committed or not, plus new files, up to 8,000 characters each. Up to
+  60,000 characters in all (`max_chars`). Without git there is no change, and
+  nothing is sent.
+- **`"paths": [globs]`** limits it to changes touching those paths, for only
+  the risky ones.
+- **One call, key from the environment only.** One call to OpenAI's Responses
+  API with `store: false`; the key is `OPENAI_API_KEY` in the supervisor's
+  environment and nowhere else. `"provider": {"base_url": ..., "env_key": ...}`
+  points it at another endpoint that speaks the Responses API, https or
+  loopback only.
+- **What comes back.** If it finds something, the reviewer who approved gets a
+  message from the supervisor, kind `review`, saying it is findings only and
+  to check each against the code and reopen the work if one holds. "No
+  findings." sends nothing. Every check, skip and error goes on the record as
+  a `second_review` event, with tokens.
+- **It does not hold up the team.** It runs off the supervisor's thread. It
+  does not hold the answer to the user either: if the lead reports straight
+  after the approval, the findings arrive after the report.
+- **What has run.** 8 tests against a local stand-in. Live, on `gpt-6-astra`:
+  given a password check with two planted bugs that a review had approved (a
+  missing hash lets any password in; the stored hash itself is accepted as a
+  password), it found both, in 8 seconds and about 700 tokens.
 
 **`HostRunner` is for a runtime that owns the agent loop** — an IDE or hosted
 agent platform whose whole surface is "start a conversation", "deliver a
@@ -1754,7 +1791,7 @@ Releases follow [Semantic Versioning](https://semver.org/), tagged
 in [RELEASING.md](RELEASING.md). Pin a tag rather than `main`:
 
 ```bash
-pip install "a-team @ git+https://github.com/roelle/a-team.git@v4.4.0"
+pip install "a-team @ git+https://github.com/roelle/a-team.git@v4.5.0"
 python -m ateam.supervisor --version
 ```
 
