@@ -9,11 +9,11 @@ It is also a lab for watching agent teams fail. Most of what is interesting here
 ## Install
 
 ```bash
-pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.3.0"
+pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.4.0"
 a-team
 ```
 
-Or with [uv](https://docs.astral.sh/uv/): `uv tool install "a-team @ git+https://github.com/roelle/a-team.git@v4.3.0"`.
+Or with [uv](https://docs.astral.sh/uv/): `uv tool install "a-team @ git+https://github.com/roelle/a-team.git@v4.4.0"`.
 
 It opens your browser, shows what this machine can run agents on, and creates a team. It takes no keys; put an API key in the environment you start it from.
 
@@ -562,6 +562,7 @@ they decide *how* an agent is woken:
 | `ateam.runner_agy:AgyRunner` (library default) | `agy --conversation <id> -p "<message>"` | the agy CLI |
 | `ateam.runner_sdk:SdkRunner` (what `./run` uses with a Gemini key) | a persistent SDK session per agent | `google-antigravity` |
 | `ateam.runner_claude:ClaudeRunner` | a Claude Agent SDK session per agent, resumed each turn | `pip install "a-team[claude]"`, `ANTHROPIC_API_KEY` |
+| `ateam.runner_codex:CodexRunner` | a Codex `app-server` thread per agent, resumed each turn | the Codex CLI (0.166 or later), `OPENAI_API_KEY` |
 | `ateam.runner_mixed:MixedRunner` | per-agent runner from `roster.json` | whatever those runners need |
 | `ateam.runner_host:HostRunner` | a host's own start / deliver / stop-hook commands, from config | any hosted runtime |
 | your own | anything | — |
@@ -570,7 +571,7 @@ they decide *how* an agent is woken:
 `ATEAM_RUNNER=ateam.runner_claude:ClaudeRunner` and `ANTHROPIC_API_KEY` in
 the supervisor's environment, or put one agent on it in a mixed team:
 `{"name": "qa", "runner": "ateam.runner_claude:ClaudeRunner", "model":
-"claude-opus-5-5", "effort": "high"}`. The default model is `claude-opus-5-5`.
+"claude-opus-5-5", "effort": "high"}`.
 Bedrock, Vertex and Foundry work too, through their usual `CLAUDE_CODE_USE_*`
 settings. A claude.ai login does not: Anthropic does not allow one in a
 product built on this SDK.
@@ -609,6 +610,59 @@ product built on this SDK.
   a container, or withhold `Bash`.
 - **Recall needs a judge of its own.** With no Gemini key and no agy CLI, set
   `"judge_via"` to a command that calls Claude (see Recall).
+
+**`CodexRunner` runs agents on OpenAI models**, through Codex's `app-server`.
+Set `ATEAM_RUNNER=ateam.runner_codex:CodexRunner` and `OPENAI_API_KEY` in the
+supervisor's environment, or put one agent on it in a mixed team:
+`{"name": "qa", "runner": "ateam.runner_codex:CodexRunner", "model":
+"gpt-6-astra", "effort": "high"}`. It needs the Codex CLI, 0.166 or later
+(`npm install -g @openai/codex`, or `"codex": "/path"` in the runner config
+naming one), and no Python package. Codex rather than the openai library
+because Codex is the agent loop (shell, patch tool, MCP client, threads that
+resume and compact), as Claude Code is for `ClaudeRunner`; the library alone
+would leave a-team writing and maintaining all of that. Each turn starts
+`codex app-server`, resumes the agent's thread, runs one turn and exits, so a
+supervisor restart loses nothing. First-run setup lists OpenAI as a runtime
+and says what is missing.
+
+- **Same team, same tools.** Agents get the same MCP servers, brief, memory
+  and roster policy as on any runtime. Mid-turn notes (new mail, repeated
+  calls) reach the model through Codex's turn/steer.
+- **The key is read from the environment only.** The runner defines its own
+  model provider with `env_key`, so a ChatGPT sign-in on the machine is never
+  used and nothing is written to Codex's `auth.json`.
+- **Threads live in `<team_dir>/codex`,** apart from your own `~/.codex`.
+- **Commands run in Codex's own sandbox.** Writes are held to the agent's
+  workspaces (plus its own and the shared directory) by the kernel: a write to
+  `/etc` failed with "Read-only file system". Reads are not held, so this is
+  not containment. Network is on; `"network": false` turns it off. Nobody is
+  asked anything mid-turn: a command the sandbox refuses just fails, and the
+  agent sees that.
+- **Provider keys are unset in agents' shells.** OpenAI, Anthropic and Gemini
+  keys are excluded; `echo $OPENAI_API_KEY` printed nothing.
+- **`tools_off` takes any runtime's names.** `run_command` withholds the
+  shell, `search_web` web search, `invoke_subagent` sub-agents; any other name
+  withholds that team tool. Codex's own extras that an unattended agent should
+  not have are off: browser, computer use, plugins, apps, image generation and
+  its background daemon.
+- **Spending is yours to limit.** This bills your API key. With no model named,
+  the manager and anyone who reviews run on `gpt-6-astra` and the rest on
+  `gpt-6.1-sol`; effort defaults to medium. Codex reports tokens, not prices,
+  so turns are recorded with tokens and no cost. A turn stops at 1,000,000
+  tokens not counting cached input: set `max_turn_tokens` in the runner config
+  or on a roster entry to change that, and `null` to turn it off. As with the
+  Claude cap, a stopped turn is not retried; you get a note, and a reply
+  continues it. Running out of credit stops the team, as on the other
+  runtimes.
+- **Other endpoints.** `"provider": {"base_url": ..., "env_key": ...}` in the
+  runner config points the runner at any endpoint that speaks OpenAI's
+  Responses API. Only OpenAI's own has been tried.
+- **What has run.** 16 tests run the real `codex app-server` against a local
+  stand-in for the Responses API, with no key and no cost. Live, two turns on
+  `gpt-6-luna` with a real key on a scratch team wrote and ran a file,
+  messaged a teammate through the bus, and resumed the same thread on a second
+  wake. Not yet run: a full supervised team on Codex, the strong model live,
+  a non-OpenAI endpoint.
 
 **`HostRunner` is for a runtime that owns the agent loop** — an IDE or hosted
 agent platform whose whole surface is "start a conversation", "deliver a
@@ -1636,7 +1690,7 @@ All subsystems support configuration through environment variables:
 | Environment Variable | Description | Default |
 |---|---|---|
 | `GEMINI_API_KEY` | Google Gemini API key for model inference | None (prompted by `./run`) |
-| `ATEAM_RUNNER` | Agent execution runner (`ateam.runner_agy:AgyRunner`, `ateam.runner_sdk:SdkRunner`, `ateam.runner_mixed:MixedRunner`, `ateam.runner_host:HostRunner`, or your own) | `ateam.runner_agy:AgyRunner`; `./run` selects the SDK runner when a Gemini key is configured |
+| `ATEAM_RUNNER` | Agent execution runner (`ateam.runner_agy:AgyRunner`, `ateam.runner_sdk:SdkRunner`, `ateam.runner_claude:ClaudeRunner`, `ateam.runner_codex:CodexRunner`, `ateam.runner_mixed:MixedRunner`, `ateam.runner_host:HostRunner`, or your own) | `ateam.runner_agy:AgyRunner`; `./run` selects the SDK runner when a Gemini key is configured |
 | `ATEAM_HOP_WINDOW` | A running team's hop budget window, in seconds: at most `--max-hops` agent-to-agent wakes in any window this long | `600` |
 | `ATEAM_RUNNER_CONFIG` | JSON configuration passed to runner constructor | `{}` |
 | `ATEAM_BUS_TRANSPORT` | Pluggable A2A messaging transport class | `ateam.transport_file:FileTransport` |
@@ -1700,7 +1754,7 @@ Releases follow [Semantic Versioning](https://semver.org/), tagged
 in [RELEASING.md](RELEASING.md). Pin a tag rather than `main`:
 
 ```bash
-pip install "a-team @ git+https://github.com/roelle/a-team.git@v4.3.0"
+pip install "a-team @ git+https://github.com/roelle/a-team.git@v4.4.0"
 python -m ateam.supervisor --version
 ```
 

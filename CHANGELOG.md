@@ -7,6 +7,32 @@ the README for what counts as the public surface.
 
 ## [Unreleased]
 
+## [4.4.0] - 2026-11-02
+
+### Added
+- **`CodexRunner` runs agents on OpenAI models** through Codex's `app-server`
+  (`ateam.runner_codex:CodexRunner`; needs the Codex CLI 0.166 or later and
+  `OPENAI_API_KEY`, no Python package). The key is read from the environment
+  only; a ChatGPT sign-in on the machine is never used. Each turn starts the
+  app-server, resumes the agent's thread and exits, so a supervisor restart
+  loses nothing. Commands run in Codex's sandbox, which holds writes to the
+  agent's workspaces; reads are not held. With no model named, the manager and
+  anyone who reviews run on `gpt-6-astra` and everyone else on `gpt-6.1-sol`.
+  Turns are recorded with tokens and no cost, and stop at 1,000,000 tokens
+  unless `max_turn_tokens` says otherwise. `"provider"` in the runner config
+  points it at another Responses API endpoint; only OpenAI's own has been
+  tried. Tested against a local stand-in and on two live turns; a full
+  supervised team on Codex has not yet run. See the README for the rest.
+- First-run setup lists OpenAI as a runtime, saying what is missing.
+
+### Fixed
+- **Mid-turn notes were lost on Codex's code mode.** The team's MCP servers
+  added notes (new mail, repeated calls) to a team tool's result, but on code
+  mode the model only sees what its script prints, so a note was marked
+  delivered and never read. A runner that delivers notes itself now sets
+  `ATEAM_NOTES_BY_RUNNER=1` for its MCP servers, and `CodexRunner` delivers
+  them through Codex's turn/steer.
+
 ## [4.3.0] - 2026-11-02
 
 ### Added
@@ -773,7 +799,8 @@ MCP memory server.
 ## [1.0] - 2026-09-08
 Milestone tag (pre-semver).
 
-[Unreleased]: https://github.com/roelle/a-team/compare/v4.3.0...HEAD
+[Unreleased]: https://github.com/roelle/a-team/compare/v4.4.0...HEAD
+[4.4.0]: https://github.com/roelle/a-team/compare/v4.3.0...v4.4.0
 [4.3.0]: https://github.com/roelle/a-team/compare/v4.2.0...v4.3.0
 [4.2.0]: https://github.com/roelle/a-team/compare/v4.1.0...v4.2.0
 [4.1.0]: https://github.com/roelle/a-team/compare/v4.0.2...v4.1.0

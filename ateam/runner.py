@@ -8,6 +8,7 @@ lives in a shared database, changing any one without touching the others.
     ATEAM_RUNNER=ateam.runner_agy:AgyRunner        # default
     ATEAM_RUNNER=ateam.runner_sdk:SdkRunner        # where the SDK is installed
     ATEAM_RUNNER=ateam.runner_claude:ClaudeRunner  # on Claude, with an API key
+    ATEAM_RUNNER=ateam.runner_codex:CodexRunner    # on OpenAI, through Codex
     ATEAM_RUNNER_CONFIG='{"binary": "agy"}'          # optional, JSON
 
 Why this exists: without it, delivery is passive — mail sits in an inbox until

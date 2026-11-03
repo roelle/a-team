@@ -132,8 +132,13 @@ def serve(server_name: str, tools: list[dict], dispatch, footer=None) -> None:
     """Run the stdio loop. `dispatch(tool_name, args) -> str`.
 
     `footer()`, if given, is added to the end of each result: it is how a note
-    reaches an agent on a host with no hook of its own (ateam.steer).
+    reaches an agent on a host with no hook of its own (ateam.steer). A runner
+    that delivers notes itself sets ATEAM_NOTES_BY_RUNNER=1: where a result is
+    not shown to the model as it stands, as in Codex's code mode, a note added
+    to it is marked delivered and never read.
     """
+    if os.environ.get("ATEAM_NOTES_BY_RUNNER") == "1":
+        footer = None
     def reply(msg_id, result=None, error=None):
         body = {"jsonrpc": "2.0", "id": msg_id}
         body.update({"error": error} if error else {"result": result})

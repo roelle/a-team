@@ -19,6 +19,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -96,7 +97,25 @@ def runtimes() -> list[dict]:
             row("claude", "Claude, with an Anthropic API key",
                 "ateam.runner_claude:ClaudeRunner",
                 needs("claude-agent-sdk", "claude", "claude_agent_sdk", claude_key,
-                      "ANTHROPIC_API_KEY"))]
+                      "ANTHROPIC_API_KEY")),
+            row("codex", "OpenAI, through Codex, with an OpenAI API key",
+                "ateam.runner_codex:CodexRunner", " and ".join(
+                    ([] if _codex_ready() else
+                     ["the codex command, 0.166 or later (npm install -g @openai/codex)"])
+                    + ([] if os.environ.get("OPENAI_API_KEY") else
+                       ["OPENAI_API_KEY in the environment you start this from"])))]
+
+
+def _codex_ready() -> bool:
+    """A codex new enough to have the app-server the runner speaks to."""
+    path = shutil.which("codex")
+    if not path:
+        return False
+    try:
+        return subprocess.run([path, "app-server", "--help"], capture_output=True,
+                              timeout=10).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
 
 
 def create_team(teams_root, name: str, runner: str | None = None) -> Path:
