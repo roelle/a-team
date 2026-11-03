@@ -1,0 +1,23 @@
+# The image on Docker Engine, which a laptop with podman-docker never runs:
+# a root daemon, its own volume ownership and networking.
+name: container
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Docker Engine
+        run: docker version
+      - name: Build, serve, restart
+        run: ENGINE=docker evals/container_smoke.sh

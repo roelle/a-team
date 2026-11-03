@@ -7,6 +7,13 @@ the README for what counts as the public surface.
 
 ## [Unreleased]
 
+### Added
+- The image is built and checked on Docker Engine on every push and tag
+  (`.github/workflows/container.yml`), with `evals/container_smoke.sh`, which
+  runs the same checks under podman: it serves only with its token, refuses a
+  foreign Host header, runs as the `ateam` user, and keeps teams across a
+  restart. No key is passed in, so no agent runs.
+
 ## [4.4.0] - 2026-11-02
 
 ### Added
