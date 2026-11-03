@@ -252,8 +252,9 @@ function needsItem(n) {
   if (n.kind === "stopped") return row("bad", `<span class="what">Team stopped</span> ${text(n.reason)}`, n.reason, "");
   if (n.kind === "question" || n.kind === "blocker") {
     const v = n.channel ? { type: "channel", id: n.channel } : { type: "dm", pair: ["user", n.dm] };
-    const clear = n.id && !S.state.member
-      ? `<button class="need-clear" data-clear="${esc(n.id)}" title="Clear without replying. It stays in the conversation, and ${n.from === "supervisor" ? "nothing is sent" : esc(nameOf(n.from)) + " is not told"}." aria-label="Clear">×</button>` : "";
+    const key = n.key || n.id;   // key: also for a message from before ids
+    const clear = key && !S.state.member
+      ? `<button class="need-clear" data-clear="${esc(key)}" title="Clear without replying. It stays in the conversation, and ${n.from === "supervisor" ? "nothing is sent" : esc(nameOf(n.from)) + " is not told"}." aria-label="Clear">×</button>` : "";
     return row(n.kind === "blocker" ? "bad" : "", `${clear}<span class="what">${esc(nameOf(n.from))}</span> ${text(n.content)}`,
       `${n.kind} from ${n.from}: ${n.content}`, `data-view='${esc(JSON.stringify(v))}'`);
   }
@@ -267,7 +268,7 @@ function renderNeeds() {
   $("#needs-head").classList.toggle("hidden", !rows.length);
   $("#needs").classList.toggle("hidden", !rows.length);
   $("#needs-count").textContent = rows.length;
-  const notices = rows.filter((n) => n.from === "supervisor" && n.id).length;
+  const notices = rows.filter((n) => n.from === "supervisor" && (n.key || n.id)).length;
   $("#needs").innerHTML = (notices > 1 && !S.state.member
     ? `<li class="need-all"><button data-clear-notices>Clear all ${notices} notices</button></li>` : "")
     + rows.map(needsItem).join("");
@@ -318,10 +319,24 @@ function renderAgents() {
     const tip = bad ? `${m.model} is not offered by this team's runner: every turn will fail. Click to choose another.`
       : fallsBack ? `${m.source}. When it expires, ${a.name} goes back to the roster's ${m.roster_model}, which this runner does not offer.`
       : (m.source || "");
+    const qt = quotaText(m.quota);
     return `<li data-agent="${esc(a.name)}"><span class="dot ${esc(p.state || "offline")}"></span><span class="name" title="${esc(a.name)}">${esc(nameOf(a.name))}${a.alias ? ` <span class="alias-of">${esc(a.name)}</span>` : ""}</span>
-      <button class="model ${over ? "override" : ""} ${bad ? "unavailable" : ""}" data-agent="${esc(a.name)}" title="${esc(tip)}">${bad || fallsBack ? "⚠ " : ""}${esc(m.model || "default")}${m.effort ? "·" + esc(m.effort) : ""}</button>
+      <button class="model ${over ? "override" : ""} ${bad ? "unavailable" : ""}" data-agent="${esc(a.name)}" title="${esc([tip, qt].filter(Boolean).join(" — "))}">${bad || fallsBack ? "⚠ " : ""}${esc(m.model || "default")}${m.effort ? "·" + esc(m.effort) : ""}${m.quota?.low ? `<span class="quota-low">${m.quota.remaining != null ? Math.round(m.quota.remaining * 100) + "%" : "limit"}</span>` : ""}</button>
       <span class="state" title="${esc(state)}">${esc(state)}</span>${loadHTML(a.load)}</li>`;
   }).join("");
+}
+
+// What is known of a model's quota (ateam.quota): how much is left of the
+// tightest limit, when it resets, a credit balance. "" when nothing is.
+function quotaText(qu) {
+  if (!qu) return "";
+  const parts = [];
+  if (qu.remaining != null) parts.push(`${Math.round(qu.remaining * 100)}% left${qu.window ? ` of the ${qu.window.replace(/_/g, " ")} limit` : ""}`);
+  else if (qu.status === "rejected") parts.push("at its limit");
+  else if (qu.status === "allowed_warning") parts.push("near its limit");
+  if (qu.resets_at) parts.push(`resets ${fmtTime(Date.parse(qu.resets_at) / 1000, qu.resets_at)}`);
+  if (qu.credits != null) parts.push(`credits ${qu.credits}`);
+  return parts.join("; ");
 }
 
 // The same figures agents get from list_teammates, to see who has room.
@@ -1050,6 +1065,15 @@ function taskModal({ fromMessage } = {}) {
 }
 $("#new-task").onclick = () => taskModal();
 
+// A listed model's quota and price, where its runner knows them.
+function modelExtras(o) {
+  const bits = [];
+  if (o.remaining != null) bits.push(`${Math.round(o.remaining * 100)}% left`);
+  if (o.resets_at) bits.push(`resets ${fmtTime(Date.parse(o.resets_at) / 1000, o.resets_at, "short")}`);
+  if (o.cost) bits.push(`$${o.cost.input}/$${o.cost.output} per M tokens`);
+  return bits.length ? esc(` (${bits.join(", ")})`) : "";
+}
+
 async function modelModal(agent) {
   const a = S.state.agents.find((x) => x.name === agent); const m = a.model || {};
   let offered = null, runnerLabel = "";
@@ -1058,12 +1082,12 @@ async function modelModal(agent) {
   const current = over ? m.model : "";
   const picker = offered
     ? `<select name="model"><option value="">the roster's choice${m.roster_model ? ` (${esc(m.roster_model)}${m.roster_available === false ? " — NOT offered, turns would fail" : ""})` : " (runner default)"}</option>
-        ${offered.map((o) => `<option value="${esc(o.id)}" ${o.id === current ? "selected" : ""}>${esc(o.label)} — ${esc(o.id)}</option>`).join("")}</select>
+        ${offered.map((o) => `<option value="${esc(o.id)}" ${o.id === current ? "selected" : ""}>${esc(o.label)} — ${esc(o.id)}${modelExtras(o)}</option>`).join("")}</select>
        <div class="hint">${offered.length} models offered by the ${esc(runnerLabel)} runner</div>`
     : `<input type="text" name="model" value="${esc(current)}" placeholder="model id">
        <div class="hint">This runner cannot list its models; type the id it expects.</div>`;
   modal(`<h3>${esc(agent)}'s model</h3>
-    <div class="hint">now: ${esc(m.model || "runner default")} — ${esc(m.source || "")}${m.available === false ? " — <b>not offered by this runner</b>" : ""}</div>
+    <div class="hint">now: ${esc(m.model || "runner default")} — ${esc(m.source || "")}${m.available === false ? " — <b>not offered by this runner</b>" : ""}${m.quota && quotaText(m.quota) ? ` — ${esc(quotaText(m.quota))}` : ""}</div>
     <label>Model</label>${picker}
     <label>Until</label><select name="until"><option value="">until I change it</option><option>4h</option><option>1d</option><option selected>3d</option><option>7d</option></select>
     <div class="hint" style="margin-top:8px">Applied at ${esc(agent)}'s next idle moment: it distills, then starts a fresh conversation on the new model.

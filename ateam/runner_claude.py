@@ -37,7 +37,7 @@ from urllib.parse import urlsplit
 from pathlib import Path
 
 from claude_agent_sdk import (AssistantMessage, ClaudeAgentOptions, ClaudeSDKError,
-                              HookMatcher, ResultMessage, TextBlock, query)
+                              HookMatcher, RateLimitEvent, ResultMessage, TextBlock, query)
 
 from . import config as cfg
 from . import hook_pre_tool_use
@@ -379,6 +379,8 @@ class ClaudeRunner(Runner):
                     last = m.usage or last
                 elif isinstance(m, ResultMessage):
                     result = m
+                elif isinstance(m, RateLimitEvent):
+                    self._quota(model, m.rate_limit_info)
         except ClaudeSDKError as e:
             # A single query raises after yielding an error result, and the
             # result says more. Anything else never got as far as a result.
@@ -394,6 +396,16 @@ class ClaudeRunner(Runner):
             return f"[error: {result.subtype}{status}: {str(detail)[:500]}]"
         self._record(agent, session, model, t0, result, last)
         return "\n".join(texts) or str(result.result or "")
+
+    def _quota(self, model: str, info) -> None:
+        """A subscription limit, from the CLI: the five-hour and weekly
+        windows hold for every model, the per-family weekly ones for theirs."""
+        kind = getattr(info, "rate_limit_type", None) or "limit"
+        used = getattr(info, "utilization", None)
+        self.note_quota(model, kind, remaining=None if used is None else 1 - used,
+                        resets_at=getattr(info, "resets_at", None),
+                        status=getattr(info, "status", None),
+                        applies={"seven_day_opus": "opus", "seven_day_sonnet": "sonnet"}.get(kind))
 
     async def _bounded(self, agent: str, message: str) -> str:
         """One turn, cancellable from another thread and held to the timeout."""

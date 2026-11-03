@@ -305,7 +305,13 @@ def main(argv=None) -> int:
             if offered is None:
                 print(f"the configured runner ({getattr(cls, 'label', '?')}) cannot list its models")
             for m in offered or []:
-                print(f"  {m['id']:32} {m['label']}")
+                extra = []
+                if m.get("remaining") is not None:
+                    extra.append(f"{round(m['remaining'] * 100)}% left"
+                                 + (f", resets {m['resets_at']}" if m.get("resets_at") else ""))
+                if m.get("cost"):
+                    extra.append(f"${m['cost']['input']}/${m['cost']['output']} per M tokens")
+                print(f"  {m['id']:32} {m['label']}" + (f"  ({'; '.join(extra)})" if extra else ""))
         elif a.command == "list":
             from . import runner as runner_lib
             roster = {x["name"]: x for x in _roster(td).get("agents", []) if isinstance(x, dict)}

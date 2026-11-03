@@ -132,6 +132,22 @@ def test_notices_clear_over_http(server):
     assert r["cleared"] == 1 and app.state("demo")["needs_you"] == []
 
 
+def test_notices_from_before_ids_clear_over_http(server):
+    """Notices written before messages had ids: the × and Clear all use each
+    row's key, which every message has."""
+    app, port, td, _ = server
+    with (Path(td) / "bus.jsonl").open("a") as f:
+        for n in range(2):
+            f.write(json.dumps({"ts": f"2026-10-02 09:00:0{n}", "from": "supervisor", "to": "user",
+                                "kind": "blocker", "content": f"waiting for you {n}"}) + "\n")
+    first = app.state("demo")["needs_you"][0]
+    assert first["key"] and not first["id"]
+    _, r = call(port, "POST", "/api/clear_waiting", {"team": "demo", "ids": [first["key"]]}, token=app.token)
+    assert r["cleared"] == 1
+    _, r = call(port, "POST", "/api/clear_waiting", {"team": "demo", "from": "supervisor"}, token=app.token)
+    assert r["cleared"] == 1 and app.state("demo")["needs_you"] == []
+
+
 def test_nothing_waiting_is_an_empty_list(server):
     assert server[0].state("demo")["needs_you"] == []
 

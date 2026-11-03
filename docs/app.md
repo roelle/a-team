@@ -22,7 +22,7 @@ beside the conversation.
 ## Run it
 
 ```bash
-pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.7.0"
+pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.8.0"
 a-team
 ```
 
@@ -196,8 +196,11 @@ untick that and pick some.
   and model sit in the lower left. Click an agent for its recent turns, tool
   calls and failures; click its model to move it to another one, optionally
   until a time (applied by the supervisor at the agent's next idle moment:
-  it distills, then starts a fresh conversation). Tasks are grouped by
-  status, with review state and reminders.
+  it distills, then starts a fresh conversation). The picker shows each
+  model's remaining quota and cost. When an agent's model is low, its model
+  button gets a small badge with the percent left; the button's tooltip says
+  which limit and when it resets. Tasks are grouped by status, with review
+  state and reminders.
 - **The board** (`/board`) is a Kanban of the team's work: Icebox, To do,
   In progress, Blocked, Review and Done, with failed and cancelled behind a
   toggle.

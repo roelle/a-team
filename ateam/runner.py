@@ -345,8 +345,22 @@ class Runner(ABC):
         """The models this runtime can run, as [{"id", "label"}], or None if
         it cannot say. `id` is exactly what model_id() produces for a choice,
         so a roster or override can be checked against it before a turn
-        fails on it. Classmethod: answering must not need a session."""
+        fails on it. Classmethod: answering must not need a session.
+
+        An entry may also carry "remaining", "resets_at" and "cost" (see
+        ateam.quota); list_models() below adds what turns have shown."""
         return None
+
+    def note_quota(self, model: str | None, window: str, **seen) -> None:
+        """Report a limit seen during a turn: how much is left ("remaining",
+        0-1), when it resets ("resets_at"), and the rest of quota.note's
+        fields. The app and the model listing show it; for a host adapter,
+        this is how its runtime's quota reaches them."""
+        from . import quota
+        try:
+            quota.note(self.team_dir, self.label, model, window, **seen)
+        except Exception as e:      # never the reason a turn fails
+            print(f"    quota not recorded: {type(e).__name__}: {e}", flush=True)
 
     @classmethod
     def model_id(cls, model: str | None, effort: str | None = None) -> str | None:
@@ -588,7 +602,8 @@ def list_models(spec: str | None = None, config: dict | None = None,
                 max_age: float = 600, team_dir=None) -> list[dict] | None:
     """The configured runner's models (see Runner.list_models), cached for
     `max_age` seconds: the CLI fetches its list over the network. With
-    `team_dir` and no `spec`, the team's runner (team_runner)."""
+    `team_dir` and no `spec`, the team's runner (team_runner), and each model
+    carries what is known of its quota and cost (ateam.quota)."""
     if os.environ.get("ATEAM_MODEL_CHECK", "1").strip().lower() in ("0", "false", "no", "off"):
         return None                 # asked not to query the runtime
     spec, config = _resolve(spec, config, team_dir)
@@ -600,15 +615,20 @@ def list_models(spec: str | None = None, config: dict | None = None,
             config = {}
     key = spec + json.dumps(config, sort_keys=True, default=str)
     hit = _MODEL_CACHE.get(key)
-    if hit and time.monotonic() - hit[0] < max_age:
-        return hit[1]
     cls = runner_class(spec)
-    try:
-        models = cls.list_models(config) if cls else None
-    except Exception:
-        models = None
-    _MODEL_CACHE[key] = (time.monotonic(), models)
-    return models
+    if hit and time.monotonic() - hit[0] < max_age:
+        models = hit[1]
+    else:
+        try:
+            models = cls.list_models(config) if cls else None
+        except Exception:
+            models = None
+        _MODEL_CACHE[key] = (time.monotonic(), models)
+    if team_dir is None:
+        return models
+    # Quota is read fresh: it changes turn by turn, the listing does not.
+    from . import quota
+    return quota.annotate(models, team_dir, getattr(cls, "label", None))
 
 
 def model_available(model: str | None, effort: str | None = None,

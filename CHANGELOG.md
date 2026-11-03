@@ -7,6 +7,33 @@ the README for what counts as the public surface.
 
 ## [Unreleased]
 
+## [4.8.0] - 2026-11-03
+
+### Fixed
+- **Notices from before messages had ids can be cleared.** Clearing went by a
+  message's id, and notices written before ids had none, so neither the × nor
+  Clear all could take them off Waiting on you. Each question and blocker row
+  of `Record.needs_you()` now carries a `key`: its id, or for a message
+  without one, a key made from the message itself, the same on every read.
+  `actions.clear_waiting` and the app go by keys. What was cleared before
+  still is.
+
+### Added
+- **How much quota a model has left, and what it costs.** A runner's model
+  listing may carry `remaining` (0-1, of the tightest limit that applies),
+  `resets_at`, `window`, `status`, `credits` and `cost` (USD per million
+  tokens, from the pricing table), each where known. The Claude runner
+  records the CLI's rate-limit events (a subscription's five-hour and weekly
+  limits); the Codex runner the app-server's account limits and credit
+  balance. A host's adapter reports its own with `Runner.note_quota`, or on
+  its config's `models` entries. Kept in `quota.json`; a limit past its reset
+  is dropped. `runner.list_models(team_dir=...)`, `ateam.models available`
+  and the app's model picker show them.
+- **A badge on an agent whose model is low**: under the roster's `quota_low`
+  (0.2 unless set) left, or refused. `Record.models()` gives each agent's
+  `quota`, with `low`.
+- `key` on question and blocker rows of `Record.needs_you()`.
+
 ## [4.7.0] - 2026-11-03
 
 ### Added
@@ -893,7 +920,8 @@ MCP memory server.
 ## [1.0] - 2026-09-08
 Milestone tag (pre-semver).
 
-[Unreleased]: https://github.com/roelle/a-team/compare/v4.7.0...HEAD
+[Unreleased]: https://github.com/roelle/a-team/compare/v4.8.0...HEAD
+[4.8.0]: https://github.com/roelle/a-team/compare/v4.7.0...v4.8.0
 [4.7.0]: https://github.com/roelle/a-team/compare/v4.6.0...v4.7.0
 [4.6.0]: https://github.com/roelle/a-team/compare/v4.5.0...v4.6.0
 [4.5.0]: https://github.com/roelle/a-team/compare/v4.4.0...v4.5.0

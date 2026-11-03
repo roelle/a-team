@@ -396,6 +396,8 @@ class CodexRunner(Runner):
                 if cap and spent and spent["fresh"] > cap and not state["capped"] and state["turn"]:
                     state["capped"] = True
                     srv.send("turn/interrupt", {"threadId": state["thread"], "turnId": state["turn"]})
+            elif method == "account/rateLimits/updated":
+                self._quota(model, p.get("rateLimits") or {})
             elif method == "error" and not p.get("willRetry"):
                 state["error"] = p.get("error")
             elif method == "turn/completed":
@@ -491,6 +493,22 @@ class CodexRunner(Runner):
             # Mid-turn, as a message the model reads before its next step.
             srv.send("turn/steer", {"threadId": state["thread"], "expectedTurnId": state["turn"],
                                     "input": [{"type": "text", "text": note, "text_elements": []}]})
+
+    def _quota(self, model: str, snap: dict) -> None:
+        """The account's limits: a ChatGPT plan's two windows, as percent
+        used, and a credit balance. A snapshot naming a model is that
+        model's own limit. Updates are sparse: what is missing is unchanged."""
+        applies = snap.get("normalModelSlug") or None
+        for kind in ("primary", "secondary"):
+            w = snap.get(kind)
+            if isinstance(w, dict) and w.get("usedPercent") is not None:
+                name = f"{snap.get('limitId') or ''}:{kind}".lstrip(":")
+                self.note_quota(model, name, remaining=1 - w["usedPercent"] / 100,
+                                resets_at=w.get("resetsAt"), applies=applies,
+                                status="rejected" if w["usedPercent"] >= 100 else "allowed")
+        credits = snap.get("credits")
+        if isinstance(credits, dict) and credits.get("balance") is not None:
+            self.note_quota(model, "", credits=credits["balance"])
 
     @staticmethod
     def _spent(usage: dict) -> dict | None:

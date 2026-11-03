@@ -9,11 +9,11 @@ It is also a lab for watching agent teams fail. Most of what is interesting here
 ## Install
 
 ```bash
-pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.7.0"
+pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.8.0"
 a-team
 ```
 
-Or with [uv](https://docs.astral.sh/uv/): `uv tool install "a-team @ git+https://github.com/roelle/a-team.git@v4.7.0"`.
+Or with [uv](https://docs.astral.sh/uv/): `uv tool install "a-team @ git+https://github.com/roelle/a-team.git@v4.8.0"`.
 
 It opens your browser, shows what this machine can run agents on, and creates a team. It takes no keys; put an API key in the environment you start it from.
 
@@ -1457,6 +1457,39 @@ the model through the same override, and each turn records the model that ran
 it. Overrides are the operator's: they are refused from inside an agent's
 session, and no agent is offered a tool for them.
 
+Before moving an agent, see how much of each model is left. `python -m
+ateam.models available` shows each model's remaining quota and its cost;
+the app's model picker shows the same per model, and an agent whose model
+is low gets a badge with the percent left. Each runner fills this in from
+what it sees during turns: the Claude runner records the Claude CLI's
+rate-limit events (a subscription's five-hour and weekly limits, including
+the Opus-only and Sonnet-only weekly ones); the Codex runner records the
+app-server's account limits (two windows) and its credit balance. The agy
+CLI and the Gemini SDK runner report nothing, so for them only cost is
+filled, where the model is in the pricing table in `ateam/config.py`; on a
+subscription that is what the tokens would cost on the API, not what is
+billed. Limits live in `quota.json` in the team directory, and one whose
+reset time has passed is dropped. `Record.models()` gives each agent a
+`"quota"` with what is known for its current model, and `"low": true`
+under the roster's `"quota_low"` (0.2 unless set) or when the limit
+refused.
+
+A host runner's adapter reports its runtime's quota with
+`Runner.note_quota(model, window, remaining=..., resets_at=...)`, or puts
+the fields on its config's `"models"` entries. A field a runner sets
+itself is never overwritten.
+
+```json
+{"id": "local-70b", "label": "Local 70B", "remaining": 0.4,
+ "resets_at": "2026-11-03T18:00:00-07:00", "window": "daily"}
+```
+
+Besides `id` and `label`, an entry may carry `remaining` (0–1, the
+fraction left of the tightest limit that applies), `resets_at` (ISO 8601
+with offset), `window` (which limit), `status` (`allowed`,
+`allowed_warning`, `rejected`), `credits` (a prepaid balance) and `cost`
+(`{"input", "output"}`, USD per million tokens).
+
 `"policy": {"model_allowance": {"<model>": <tokens per week>}}` in the roster
 gives a model a weekly budget; the supervisor tells you once when it passes 80%
 and again at 100%. It never switches a model on its own.
@@ -1819,7 +1852,7 @@ Releases follow [Semantic Versioning](https://semver.org/), tagged
 in [RELEASING.md](RELEASING.md). Pin a tag rather than `main`:
 
 ```bash
-pip install "a-team @ git+https://github.com/roelle/a-team.git@v4.7.0"
+pip install "a-team @ git+https://github.com/roelle/a-team.git@v4.8.0"
 python -m ateam.supervisor --version
 ```
 
