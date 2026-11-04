@@ -341,13 +341,13 @@ def create(team_dir: Path | str, project: str, title: str,
     it in the icebox; anything else starts queued.
 
     `parent` puts it under another task (see "the tree" below); a task with
-    a parent takes the parent's project label when it is given none."""
+    a parent is in the parent's project, whether or not it names one."""
     parent = (parent or "").strip() or None
     if parent:
         up = get(team_dir, parent)
         if up is None:
             raise TaskError(f"no task {parent!r} to put this under")
-        project = project or up.get("project") or ""
+        project = _inherit(up, project)
     if not title or not title.strip():
         raise TaskError("title is required")
     if until:
@@ -464,6 +464,14 @@ def update(team_dir: Path | str, task_id: str, by: str, *,
             return None
         if parent is not None and parent.strip():
             _check_parent(state, task_id, parent.strip())
+        # A subtask is in its parent's project: moved under a task, it takes
+        # that task's; its project changed, so does everything under it.
+        new_parent = (parent.strip() or None) if parent is not None else current.get("parent")
+        if (parent is not None or project is not None) and new_parent in state:
+            inherited = (_inherit(state[new_parent], project) if project is not None
+                         else (state[new_parent].get("project") or "").strip()
+                         or (current.get("project") or ""))
+            project = inherited if inherited != (current.get("project") or "") else project
         if current.get("owner") and current["owner"] != by and by != OPERATOR:
             raise TaskError(f"task {task_id} is owned by '{current['owner']}', "
                             f"not '{by}'")
@@ -530,6 +538,12 @@ def update(team_dir: Path | str, task_id: str, by: str, *,
         if writes is not None:
             entry["writes"] = _paths(writes)
         _append(team_dir, entry)
+        old = (current.get("project") or "").strip()
+        if project is not None and project.strip() != old:
+            for tid in _subtree(state, task_id):
+                if (state[tid].get("project") or "").strip() == old:
+                    _append(team_dir, {"id": tid, "kind": _KIND_UPDATED, "ts": _now(),
+                                       "by": by, "project": project.strip()})
     t = get(team_dir, task_id)
     if t and status in TERMINAL and current.get("status") not in TERMINAL:
         _children_closed(team_dir, t)
@@ -811,6 +825,34 @@ def level_names(team_dir) -> list[str]:
     except (OSError, ValueError):
         pass
     return list(DEFAULT_LEVEL_NAMES)
+
+
+def _inherit(up: dict, project: str | None) -> str:
+    """A subtask's project: its parent's. Naming another is an error, not a
+    silent choice -- a project is how work is scoped (roster
+    allowed_task_projects), and a subtree split across two would be in
+    neither."""
+    theirs = (up.get("project") or "").strip()
+    mine = (project or "").strip()
+    if mine and theirs and mine != theirs:
+        raise TaskError(f"a subtask is in its parent's project, {theirs!r}, not "
+                        f"{mine!r}: leave project out, or put it under a task in {mine!r}")
+    return theirs or mine
+
+
+def _subtree(state: dict, task_id: str) -> list[str]:
+    """Every task under `task_id`, at any depth."""
+    kids: dict[str, list[str]] = {}
+    for tid, t in state.items():
+        if t.get("parent"):
+            kids.setdefault(t["parent"], []).append(tid)
+    out, todo = [], list(kids.get(task_id, []))
+    while todo:
+        tid = todo.pop()
+        if tid not in out and tid != task_id:
+            out.append(tid)
+            todo += kids.get(tid, [])
+    return out
 
 
 def _check_parent(state: dict, task_id: str, parent: str) -> None:

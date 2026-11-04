@@ -273,3 +273,29 @@ def test_a_tasks_detail_names_what_it_overlaps(server):
     app.task_action("demo", {"action": "update", "id": a["id"], "writes": ["src/api"]})
     app.task_action("demo", {"action": "update", "id": b["id"], "writes": ["src/api/README.md"]})
     assert [o["title"] for o in app.task("demo", b["id"])["overlaps"]] == ["api"]
+
+
+def test_start_runs_the_rosters_launch_command(tmp_path, monkeypatch):
+    """A host whose supervisor needs its own interpreter or wrapper says how
+    to start it, and the Start button runs that instead of guessing."""
+    import sys
+    from ateam import actions
+    monkeypatch.delenv("ATEAM_AGENT", raising=False)
+    td = tmp_path / "home" / "team"
+    td.mkdir(parents=True)
+    script = ("import os, sys; open(sys.argv[1], 'w').write("
+              "' '.join(sys.argv[2:]) + ' ' + os.environ['ATEAM_TEAM_DIR'])")
+    (td / "roster.json").write_text(json.dumps({"agents": [], "supervisor": {
+        "launch": [sys.executable, "-c", script, "{team_dir}/launched.txt", "{team}", "--daemon"]}}))
+    team = Team(td)
+    got = team.start_supervisor()
+    assert got["started"]
+    out = td / "launched.txt"
+    for _ in range(100):
+        if out.exists() and out.read_text():
+            break
+        time.sleep(0.05)
+    assert out.read_text() == f"home --daemon {td.resolve()}"
+    (td / "roster.json").write_text(json.dumps({"agents": [], "supervisor": {"launch": "run-it"}}))
+    with pytest.raises(actions.OperatorError, match="list of strings"):
+        team.start_supervisor()

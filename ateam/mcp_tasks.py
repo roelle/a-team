@@ -55,7 +55,9 @@ TOOLS = [
           "priority": string("P0 (most urgent) to P4"),
           "auto_close": boolean("true to close this task by itself once every task "
                                 "under it is done; otherwise its owner is told"),
-          "project": string("An optional label; a subtask takes its parent's"),
+          "project": string("A project label. Under a parent, leave it out: a subtask "
+                            "is always in its parent's project, and naming another "
+                            "is an error"),
           "owner": string("Teammate who owns it (default: you)"),
           "note": string("What you started, where its output will land, and "
                          "anything a later check-in will need"),
@@ -98,7 +100,10 @@ TOOLS = [
           "collaborators": string("Comma-separated teammates whose work this needs"),
           "evidence": string("Where the result can be checked: a path, or a review"),
           "note": string("Replace the task's note with this"),
-          "parent": string("Move it under this task (its id), or 'none' for top level"),
+          "parent": string("Move it under this task (its id), or 'none' for top level; "
+                           "it takes that task's project"),
+          "project": string("Change its project; everything under it that was in the "
+                            "same project moves with it"),
           "level": string("0 a task, 1 a project, 2 a program...; 'auto' to work it "
                           "out from what is under it"),
           "priority": string("P0 (most urgent) to P4"),
@@ -275,6 +280,24 @@ def _policy(agent: str, team_dir: Path, tool_name: str, args: dict) -> str | Non
                                     check_paths=False)
 
 
+def _scope(agent: str, team_dir: Path, task_id: str, what: str) -> str | None:
+    """A refusal if the task is in a project outside the agent's (roster
+    allowed_task_projects); None if it is in scope, or unknown."""
+    roster = policy.load_roster(team_dir)
+    if policy.allowed_task_projects(agent, roster) is None:
+        return None
+    t = tasks_lib.get(team_dir, task_id)
+    return policy.task_project_refusal(agent, roster, t.get("project"), what) if t else None
+
+
+def _in_scope(agent: str, team_dir: Path, rows: list[dict]) -> list[dict]:
+    allowed = policy.allowed_task_projects(agent, policy.load_roster(team_dir))
+    if allowed is None:
+        return rows
+    import fnmatch
+    return [r for r in rows if any(fnmatch.fnmatchcase(r.get("project") or "", p) for p in allowed)]
+
+
 def _create_task(agent: str, team_dir: Path, a: dict) -> str:
     project, title = _text(a, "project"), _text(a, "title")
     if not title:
@@ -295,6 +318,19 @@ def _create_task(agent: str, team_dir: Path, a: dict) -> str:
     refusal = _policy(agent, team_dir, "create_task", {"owner": owner})
     if refusal:
         return refusal
+    roster = policy.load_roster(team_dir)
+    allowed = policy.allowed_task_projects(agent, roster)
+    if allowed is not None:
+        up = tasks_lib.get(team_dir, parent) if parent else None
+        if up is not None:
+            effective = up.get("project") or project
+        elif not project and len(allowed) == 1 and not any(c in allowed[0] for c in "*?["):
+            project = effective = allowed[0]
+        else:
+            effective = project
+        refusal = policy.task_project_refusal(agent, roster, effective, "this task")
+        if refusal:
+            return refusal
     try:
         until = tasks_lib.parse_until(_text(a, "until")) if _text(a, "until") else None
         t = tasks_lib.create(team_dir, project, title, owner=owner, created_by=agent,
@@ -322,6 +358,9 @@ def _claim_task(agent: str, team_dir: Path, a: dict) -> str:
     task_id = _text(a, "task_id")
     if not task_id:
         return "[error: claim_task is missing required argument: task_id]"
+    refusal = _scope(agent, team_dir, task_id, f"task {task_id}")
+    if refusal:
+        return refusal
     t = tasks_lib.claim(team_dir, task_id, agent)
     if t is None:
         return f"[error: no task with id '{task_id}']"
@@ -341,6 +380,14 @@ def _update_task(agent: str, team_dir: Path, a: dict) -> str:
         refusal = _policy(agent, team_dir, "update_task", {"owner": owner})
         if refusal:
             return refusal
+    refusal = _scope(agent, team_dir, task_id, f"task {task_id}")
+    if not refusal and _parent_arg(a):
+        refusal = _scope(agent, team_dir, _parent_arg(a), f"task {_parent_arg(a)}, its new parent")
+    if not refusal and isinstance(a.get("project"), str):
+        refusal = policy.task_project_refusal(agent, policy.load_roster(team_dir),
+                                              a["project"].strip(), "the project it would move to")
+    if refusal:
+        return refusal
     raw = _text(a, "check_after")
     clear = raw.lower() == "clear"
     try:
@@ -359,6 +406,7 @@ def _update_task(agent: str, team_dir: Path, a: dict) -> str:
                          until=until, poll_every=_text(a, "poll_every") or None,
                          deadline=_text(a, "deadline") or None,
                          parent=_parent_arg(a),
+                         project=a["project"] if isinstance(a.get("project"), str) else None,
                          level=_text(a, "level") or None,
                          priority=_text(a, "priority") or None,
                          auto_close=flag(a, "auto_close") if "auto_close" in a else None,
@@ -391,6 +439,9 @@ def _complete_task(agent: str, team_dir: Path, a: dict) -> str:
     if not note:
         return ("[error: complete_task needs a closing note: what was done and "
                 "where the result is. It replaces the task's old note]")
+    refusal = _scope(agent, team_dir, task_id, f"task {task_id}")
+    if refusal:
+        return refusal
     t = tasks_lib.complete(team_dir, task_id, agent, note,
                            evidence=_text(a, "evidence") or None)
     if t is None:
@@ -413,13 +464,16 @@ def _complete_task(agent: str, team_dir: Path, a: dict) -> str:
     return out
 
 
-def _list_tasks(team_dir: Path, a: dict) -> str:
+def _list_tasks(team_dir: Path, a: dict, agent: str = "") -> str:
     shape = tasks_lib.tree(team_dir)
     if _text(a, "under"):
         root = _text(a, "under")
         state = tasks_lib.snapshot(team_dir)
         if root not in state:
             return f"[error: no task with id '{root}']"
+        refusal = _scope(agent, team_dir, root, f"task {root}") if agent else None
+        if refusal:
+            return refusal
         order, depth = [], {}
 
         def walk(tid, d):
@@ -435,6 +489,8 @@ def _list_tasks(team_dir: Path, a: dict) -> str:
     rows = tasks_lib.list_tasks(
         team_dir, project=_text(a, "project") or None, owner=_text(a, "owner") or None,
         status=tasks_lib.normalize_status(_text(a, "status") or None))
+    if agent:
+        rows = _in_scope(agent, team_dir, rows)
     if _text(a, "task_id"):
         rows = [r for r in rows if r["id"] == _text(a, "task_id")]
     elif not flag(a, "archived"):
@@ -454,7 +510,7 @@ def main(agent: str, team_dir: Path | None = None):
         "claim_task": lambda a: _claim_task(agent, td, a),
         "update_task": lambda a: _update_task(agent, td, a),
         "complete_task": lambda a: _complete_task(agent, td, a),
-        "list_tasks": lambda a: _list_tasks(td, a),
+        "list_tasks": lambda a: _list_tasks(td, a, agent),
     }
 
     def dispatch(name, args):

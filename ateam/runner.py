@@ -46,6 +46,22 @@ RETRY_ATTEMPTS = int(os.environ.get("ATEAM_RETRY_ATTEMPTS", 4))
 RETRY_BASE_SECONDS = float(os.environ.get("ATEAM_RETRY_BASE", 5))
 
 
+#: Of those, the ones that say this model has no room just now -- out of
+#: quota, or out of capacity -- rather than that the call went wrong. Another
+#: model may well have room.
+CAPACITY = ("429", "503", "529", "overloaded", "unavailable", "high demand",
+            "resource_exhausted", "rate limit", "rate_limit", "too many requests")
+#: How long a model that refused for capacity is passed over, when the
+#: roster names models to fall back to and no `fallback_cooldown` is set.
+COOLDOWN_S = 600
+
+
+def is_capacity(text: str) -> bool:
+    """True if this failure says the model is out of room for now."""
+    low = (text or "").lower()
+    return is_retryable(text) and any(k in low for k in CAPACITY)
+
+
 def is_retryable(text: str) -> bool:
     """True if this failure is worth waiting out rather than reporting."""
     low = (text or "").lower()
@@ -56,11 +72,16 @@ def is_retryable(text: str) -> bool:
     return any(k in low for k in RETRYABLE)
 
 
-def with_retry(fn, *, attempts: int | None = None, on_wait=None):
+def with_retry(fn, *, attempts: int | None = None, on_wait=None, on_capacity=None):
     """Run fn(), retrying transient provider failures with backoff.
 
     fn returns a result; a result that is a string starting with "[error:" is
     treated as a failure, since that is how runners report rather than raise.
+
+    `on_capacity(error)`, on a failure that says the model is out of room:
+    True if the next attempt will run on another model, which is then tried
+    at once -- waiting out one model's limit is pointless when the next
+    attempt is not on it.
     """
     attempts = attempts or RETRY_ATTEMPTS
     last = None
@@ -75,6 +96,8 @@ def with_retry(fn, *, attempts: int | None = None, on_wait=None):
             if not is_retryable(str(e)):
                 raise
             last = f"[error: {type(e).__name__}: {e}]"
+        if i < attempts - 1 and on_capacity and is_capacity(last) and on_capacity(last):
+            continue
         if i < attempts - 1:
             # Jittered exponential backoff: a capacity spike hits every agent at
             # once, and synchronised retries reproduce the spike.
@@ -379,9 +402,73 @@ class Runner(ABC):
         from . import models
         try:
             m, e, _ = models.resolve(self.team_dir, agent, model, effort)
-            return m, e
         except Exception:
-            return model, effort
+            m, e = model, effort
+        m = self._past_cooldowns(agent, m)
+        if not hasattr(self, "_ran_on"):
+            self._ran_on = {}
+        self._ran_on[agent] = m
+        return m, e
+
+    # --- falling back when a model has no room ----------------------------
+    #
+    # A 429 or a 503 says this model has no room for now, not that the call
+    # was wrong; retrying the same model waits out a limit that another model
+    # does not have. With "fallback_models" in the roster -- top level, or
+    # an agent's own entry, which wins -- such a failure cools the model down
+    # for "fallback_cooldown" seconds (COOLDOWN_S unless set), team-wide,
+    # and every agent on it runs on the first of its fallbacks that is not
+    # cooling and that this runner offers, until it is over. With none named,
+    # nothing changes: the same model, retried with backoff.
+
+    def _roster_setting(self, agent: str, key: str):
+        from . import roster as roster_lib
+        try:
+            doc = roster_lib.load(Path(self.team_dir) / "roster.json")
+        except Exception:
+            return None
+        entry = next((a for a in doc.get("agents", []) if a.get("name") == agent), {})
+        return entry[key] if key in entry else doc.get(key)
+
+    def fallback_models(self, agent: str) -> list[str]:
+        """The models `agent` may move to when its own has no room, in order."""
+        v = self._roster_setting(agent, "fallback_models") if self.team_dir else None
+        return [str(m) for m in (v if isinstance(v, list) else [v] if v else []) if m]
+
+    def _past_cooldowns(self, agent: str, model: str | None) -> str | None:
+        if not model or not self.team_dir:
+            return model
+        from . import quota
+        if not quota.cooling(self.team_dir, model):
+            return model
+        for alt in self.fallback_models(agent):
+            if alt != model and not quota.cooling(self.team_dir, alt) \
+                    and model_available(alt, team_dir=self.team_dir) is not False:
+                return alt
+        return model
+
+    def cool_down(self, agent: str, error: str) -> bool:
+        """`agent`'s turn was refused for capacity: cool the model it ran on,
+        if it has somewhere to fall back to. True if its next attempt runs on
+        another model."""
+        ran = getattr(self, "_ran_on", {}).get(agent)
+        if not ran or not self.fallback_models(agent) or not is_capacity(error):
+            return False
+        from . import quota
+        secs = self._roster_setting(agent, "fallback_cooldown")
+        secs = secs if isinstance(secs, (int, float)) and not isinstance(secs, bool) else COOLDOWN_S
+        quota.cool(self.team_dir, ran, secs, error)
+        nxt = self._past_cooldowns(agent, ran)
+        if nxt == ran:
+            return False
+        print(f"    {agent}: {ran} has no room ({error[:120]}); running on {nxt} "
+              f"for the next {secs / 60:g} min", flush=True)
+        try:
+            self.observer.record_event("model_fallback", agent=agent, model=ran,
+                                       to=nxt, seconds=secs, error=error[:300])
+        except Exception:
+            pass
+        return True
 
     def set_turn_model(self, agent: str, model: str, effort: str | None = None) -> None:
         """Run `agent`'s next turns on this model until clear_turn_model --

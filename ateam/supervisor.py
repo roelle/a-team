@@ -1428,6 +1428,80 @@ class Supervisor:
             parts.append(" ".join(bits))
         return PULL_PROMPT.format(n=len(msgs), summary="; ".join(parts)) + self._task_context(msgs)
 
+    def _wake_notes(self, agent: str, msgs) -> str:
+        """What the roster asks to be added to a wake, after the messages.
+
+        `operator_reminder`: a line added whenever the operator wrote to the
+        agent -- a direct message, or a post that woke it. The operator's
+        standing instructions ("answer me in the thread", "say which branch
+        you are on") otherwise live in a brief read once, many turns ago.
+
+        `memory_nudge_tokens`: once an agent's conversation passes that many
+        tokens of context, its next wake asks it, once, to save what it has
+        learned before the conversation is compacted or cycled. Distilling
+        (auto-cycle) saves for it at the threshold; this asks earlier, while
+        the agent still knows what was hard.
+
+        Each is set for the team at the roster's top level, and per agent
+        in its entry, which wins ("" or 0 there turns it off for that one).
+        """
+        try:
+            doc = roster_lib.load(self.team_dir / "roster.json")
+        except Exception:
+            return ""
+        entry = next((a for a in doc.get("agents", []) if a.get("name") == agent), {})
+
+        def setting(key):
+            return entry[key] if key in entry else doc.get(key)
+        out = []
+        reminder = setting("operator_reminder")
+        if isinstance(reminder, str) and reminder.strip() and any(
+                m.sender == "user" and m.wakes for m in msgs):
+            out.append(f"[Reminder from the operator] {reminder.strip()}")
+        limit = setting("memory_nudge_tokens")
+        if isinstance(limit, int) and not isinstance(limit, bool) and limit > 0:
+            conv = getattr(self.runner, "conversation_id", lambda a: None)(agent)
+            size = self._context_size(agent, conv) if conv else None
+            if size and size > limit and self._nudged().get(agent) != conv:
+                out.append(f"[Your conversation holds {size:,} tokens. Before it is "
+                           f"compacted or cycled, save what you have learned that a "
+                           f"later you would need -- decisions, pitfalls, where "
+                           f"things are -- with save_memory. This reminder comes "
+                           f"once per conversation.]")
+                self._nudged(agent, conv)
+        return "".join(f"\n\n{x}" for x in out)
+
+    def _context_size(self, agent: str, conv: str) -> int | None:
+        """How full `conv` was at its last turn: context_tokens when the
+        runner reports it, else input_tokens."""
+        try:
+            turns = [ev for ev in self.observer.events("turn")
+                     if ev.get("agent") == agent and ev.get("conversation") == conv]
+        except Exception:
+            return None
+        if not turns:
+            return None
+        last = turns[-1]
+        size = last.get("context_tokens")
+        return size if size is not None else last.get("input_tokens")
+
+    def _nudged(self, agent: str | None = None, conv: str | None = None) -> dict:
+        """{agent: the conversation last nudged to save memory}, kept on disk
+        so a restarted supervisor does not nudge the same one again."""
+        path = self.team_dir / "memory_nudges.json"
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8"))
+            doc = doc if isinstance(doc, dict) else {}
+        except (OSError, ValueError):
+            doc = {}
+        if agent:
+            doc[agent] = conv
+            try:
+                path.write_text(json.dumps(doc, indent=1), encoding="utf-8")
+            except OSError:
+                pass
+        return doc
+
     def _task_context(self, msgs) -> str:
         """Where the tasks these messages name sit in the tree: the chain of
         larger work above each, and the top one's note. A task read alone
@@ -1661,7 +1735,8 @@ class Supervisor:
                 continue
             receipts.open_turn(self.team_dir, agent)
             try:
-                turn["handle"] = self.runner.begin(agent, self.wake_prompt(msgs, deferred))
+                turn["handle"] = self.runner.begin(agent, self.wake_prompt(msgs, deferred)
+                                                   + self._wake_notes(agent, msgs))
             except Exception as e:          # the runner could not even start it
                 turn["handle"] = {"raised": repr(e)}
                 self._finish(agent, turn, f"[error: {type(e).__name__}: {e}]")
@@ -1945,7 +2020,8 @@ class Supervisor:
             turn = prep["turn"]
             receipts.open_turn(self.team_dir, agent)
             try:
-                turn["handle"] = self.runner.begin(agent, self.wake_prompt(turn["msgs"], prep["deferred"]) + block)
+                turn["handle"] = self.runner.begin(agent, self.wake_prompt(turn["msgs"], prep["deferred"])
+                                                   + self._wake_notes(agent, turn["msgs"]) + block)
             except Exception as e:
                 turn["handle"] = {"raised": repr(e)}
                 self._finish(agent, turn, f"[error: {type(e).__name__}: {e}]")
@@ -2078,6 +2154,14 @@ class Supervisor:
             # make sure the failure is on the record whoever reported it.
             delay = min(config.WAKE_BACKOFF_BASE_S * (2 ** (streak - 1)),
                         config.WAKE_BACKOFF_MAX_S)
+            # Out of room on its model, with a fallback named: the next
+            # turn runs on another model, so there is nothing to wait out.
+            if runner_lib.is_capacity(reply):
+                try:
+                    if self.runner.cool_down(agent, reply):
+                        delay = config.WAKE_BACKOFF_BASE_S
+                except Exception:
+                    pass
             self._backoff[agent] = time.monotonic() + delay
             if turn["handle"].get("raised") or \
                     self._failure_count() <= turn["failures_before"]:

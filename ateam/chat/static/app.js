@@ -104,12 +104,67 @@ function msgHTML(m, opts = {}) {
   const n = S.replyCounts[m.id] || 0;
   const fr = !opts.inThread && S.fresh[m.id];
   const freshText = fr ? ` <span class="fresh">· ${fr.n} new</span>${fr.at ? ` <span class="at-you" title="a reply mentions you">@ you</span>` : ""}` : "";
-  const replies = !opts.inThread && n ? `<div class="replies ${fr ? "new" : ""}" data-thread="${esc(m.id)}">${n} repl${n === 1 ? "y" : "ies"}${freshText}</div>` :
-                  !opts.inThread && m.id ? `<div class="replies faint">${m.from === "supervisor" ? "" : `<span data-thread="${esc(m.id)}">reply in thread</span>`}<span class="mk-task" data-mktask="${esc(m.id)}">make a task</span></div>` : "";
+  const mine = m.from === "user" && m.id && !m.deleted && (!S.state?.member || m.author === S.state.author);
+  const own = mine ? `<span class="mk-task" data-edit="${esc(m.id)}">edit</span><span class="mk-task" data-del="${esc(m.id)}">delete</span>` : "";
+  const replies = !opts.inThread && n ? `<div class="replies ${fr ? "new" : ""}" data-thread="${esc(m.id)}">${n} repl${n === 1 ? "y" : "ies"}${freshText}</div>${own ? `<div class="replies faint">${own}</div>` : ""}` :
+                  !opts.inThread && m.id && !m.deleted ? `<div class="replies faint">${m.from === "supervisor" ? "" : `<span data-thread="${esc(m.id)}">reply in thread</span>`}<span class="mk-task" data-mktask="${esc(m.id)}">make a task</span>${own}</div>` :
+                  own ? `<div class="replies faint">${own}</div>` : "";
+  const edited = m.edited && !m.deleted ? `<span class="when edited" title="edited ${esc(m.edited)}">(edited)</span>` : "";
   return `<div class="msg ${quiet ? "quiet" : ""} ${LOUD.has(kind) ? kind : ""} ${mentionsMe(m) ? "mentions-me" : ""}" data-id="${esc(m.id || "")}">
     ${avatarHTML(who, m.from)}
-    <div><div><span class="who">${esc(who)}</span>${to}<span class="when" title="${esc(m.ts)} (the team's clock)">${esc(fmtTime(m.t, m.ts))}</span>${badge}${task}</div>
-    <div class="body">${markdown(m.content || "")}</div>${replies}</div></div>`;
+    <div><div><span class="who">${esc(who)}</span>${to}<span class="when" title="${esc(m.ts)} (the team's clock)">${esc(fmtTime(m.t, m.ts))}</span>${edited}${badge}${task}</div>
+    <div class="body ${m.deleted ? "deleted" : ""}">${m.deleted ? "<em>message deleted</em>" : markdown(m.content || "")}</div>${replies}</div></div>`;
+}
+
+// --- editing what you sent ------------------------------------------------------------
+// An agent may already have acted on a message, so the server says what an
+// edit did: changed where it was still unread, a note where it was read.
+function editSummary(r) {
+  const who = (xs) => xs.map(nameOf).join(", ");
+  const parts = [];
+  if (r.changed_unread.length) parts.push(`${r.deleted ? "taken out before" : "changed before"} ${who(r.changed_unread)} read it`);
+  if (r.told.length) parts.push(`${who(r.told)} had read it and ${r.told.length === 1 ? "was" : "were"} sent ${r.deleted ? "a note to disregard it" : "the new text"}`);
+  return (r.deleted ? "Deleted" : "Edited") + (parts.length ? ": " + parts.join("; ") : "");
+}
+function applyEdit(e) {
+  const fix = (m) => {
+    if (m.id !== e.id) return m;
+    return e.deleted ? { ...m, content: "", deleted: e.ts, edited: e.ts } : { ...m, content: e.content, edited: e.ts };
+  };
+  if (S.messages.some((m) => m.id === e.id)) { S.messages = S.messages.map(fix); renderMessages(); }
+  if (S.thread) openThread(S.thread);
+}
+function startEdit(btn) {
+  const row = btn.closest(".msg"); const id = btn.dataset.edit;
+  const m = S.messages.find((x) => x.id === id);
+  const body = row?.querySelector(".body");
+  if (!body || row.querySelector(".edit-box")) return;
+  const text = m ? m.content : body.textContent;
+  body.insertAdjacentHTML("afterend", `<form class="edit-box"><textarea rows="3"></textarea>
+    <div class="composer-row"><span class="hint">an agent that already read it gets the new text</span>
+    <button type="button" class="btn small ghost" data-cancel>Cancel</button><button class="btn small">Save</button></div></form>`);
+  const form = row.querySelector(".edit-box"); const ta = form.querySelector("textarea");
+  ta.value = text; body.classList.add("hidden"); ta.focus();
+  const close = () => { form.remove(); body.classList.remove("hidden"); };
+  form.querySelector("[data-cancel]").onclick = close;
+  ta.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") close();
+    if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); form.requestSubmit(); }
+  });
+  form.onsubmit = async (ev) => {
+    ev.preventDefault();
+    try {
+      const r = await api("/api/message", { action: "edit", id, content: ta.value });
+      close(); applyEdit({ id, content: ta.value.trim(), ts: new Date().toISOString() }); toast(editSummary(r));
+    } catch (err) { toast(err.message, true); }
+  };
+}
+async function deleteMessage(id) {
+  if (!confirm("Delete this message? Agents that have not read it will never see it; any that have are told to disregard it.")) return;
+  try {
+    const r = await api("/api/message", { action: "delete", id });
+    applyEdit({ id, deleted: true, ts: new Date().toISOString() }); toast(editSummary(r));
+  } catch (err) { toast(err.message, true); }
 }
 
 // --- views ------------------------------------------------------------------------
@@ -321,7 +376,7 @@ function renderAgents() {
       : (m.source || "");
     const qt = quotaText(m.quota);
     return `<li data-agent="${esc(a.name)}"><span class="dot ${esc(p.state || "offline")}"></span><span class="name" title="${esc(a.name)}">${esc(nameOf(a.name))}${a.alias ? ` <span class="alias-of">${esc(a.name)}</span>` : ""}</span>
-      <button class="model ${over ? "override" : ""} ${bad ? "unavailable" : ""}" data-agent="${esc(a.name)}" title="${esc([tip, qt].filter(Boolean).join(" — "))}">${bad || fallsBack ? "⚠ " : ""}${esc(m.model || "default")}${m.effort ? "·" + esc(m.effort) : ""}${m.quota?.low ? `<span class="quota-low">${m.quota.remaining != null ? Math.round(m.quota.remaining * 100) + "%" : "limit"}</span>` : ""}</button>
+      <button class="model ${over ? "override" : ""} ${bad ? "unavailable" : ""}" data-agent="${esc(a.name)}" title="${esc([tip, qt].filter(Boolean).join(" — "))}">${bad || fallsBack ? "⚠ " : ""}${esc(m.model || "default")}${m.effort ? "·" + esc(m.effort) : ""}${m.quota?.low ? `<span class="quota-low">${m.quota.cooling_until ? "cooling" : m.quota.remaining != null ? Math.round(m.quota.remaining * 100) + "%" : "limit"}</span>` : ""}</button>
       <span class="state" title="${esc(state)}">${esc(state)}</span>${loadHTML(a.load)}</li>`;
   }).join("");
 }
@@ -336,6 +391,7 @@ function quotaText(qu) {
   else if (qu.status === "allowed_warning") parts.push("near its limit");
   if (qu.resets_at) parts.push(`resets ${fmtTime(Date.parse(qu.resets_at) / 1000, qu.resets_at)}`);
   if (qu.credits != null) parts.push(`credits ${qu.credits}`);
+  if (qu.cooling_until) parts.unshift(`rate limited: passed over for its fallback until ${fmtTime(Date.parse(qu.cooling_until) / 1000, qu.cooling_until)}`);
   return parts.join("; ");
 }
 
@@ -867,6 +923,8 @@ function listen() {
       if (S.thread && (item.thread === S.thread || item.id === S.thread)) openThread(S.thread);
       renderSidebar();
       if (item.from !== "user" && item.from !== "supervisor" && (item.to === "user" || mentionsMe(item))) document.title = `• a-team`;
+    } else if (stream === "edits") {
+      applyEdit(item);
     } else later();
   };
   S.events.onerror = () => { setTimeout(() => { if (S.events.readyState === 2) listen(); }, 3000); };
@@ -889,6 +947,10 @@ document.addEventListener("click", async (e) => {
   if (md) { save("agychat.mdRaw", md.dataset.mdraw === "1"); return openArtifact(md.dataset.p); }
   const th = e.target.closest("[data-thread]");
   if (th) return openThread(th.dataset.thread);
+  const ed = e.target.closest("[data-edit]");
+  if (ed) return startEdit(ed);
+  const del = e.target.closest("[data-del]");
+  if (del) return deleteMessage(del.dataset.del);
   const mk = e.target.closest("[data-mktask]");
   if (mk) return taskModal({ fromMessage: S.messages.find((m) => m.id === mk.dataset.mktask) });
   const ca = e.target.closest("[data-chan-act]");

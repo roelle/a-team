@@ -97,6 +97,9 @@ class MixedRunner(Runner):
     def wake(self, agent: str, message: str) -> str:
         return self._sub(agent).wake(agent, message)
 
+    def cool_down(self, agent: str, error: str) -> bool:
+        return self._sub(agent).cool_down(agent, error)
+
     def cancel(self, handle: dict) -> None:
         """Mixed runs each turn on its own thread and the sub-runner's wake, so
         the turn is the sub-runner's to stop. A runner with no way of stopping

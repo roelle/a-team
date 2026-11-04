@@ -9,11 +9,11 @@ It is also a lab for watching agent teams fail. Most of what is interesting here
 ## Install
 
 ```bash
-pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.8.1"
+pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.9.0"
 a-team
 ```
 
-Or with [uv](https://docs.astral.sh/uv/): `uv tool install "a-team @ git+https://github.com/roelle/a-team.git@v4.8.1"`.
+Or with [uv](https://docs.astral.sh/uv/): `uv tool install "a-team @ git+https://github.com/roelle/a-team.git@v4.9.0"`.
 
 It opens your browser, shows what this machine can run agents on, and creates a team. It takes no keys; put an API key in the environment you start it from.
 
@@ -503,21 +503,61 @@ others, no hand-offs), `workspaces` (with the team's, the only paths its file
 tools may touch — on a hosted UI a file tool outside the workspace opens a
 dialog nobody can click and the turn hangs to its timeout), `confined: false`
 to opt a platform-maintaining role out of that, `refuse_paths` for the deny
-form (a team whose agents roam, but must never touch one checkout; it also
-refuses a shell command that names the path, after expanding `~` and `$HOME`
-and removing quotes — a text match that stops an agent reaching for the path,
-not one that builds it at run time), and
+form (a team whose agents roam, but must never touch one checkout; a shell
+command that reaches for the path is refused too, see below), `write_roots`
+for the allow form (the only places it may write; reads are not limited,
+below), `allowed_task_projects` (the task projects it may work in, below),
 `allowed_mcp_servers` where the host's generic MCP call names its server, and
 `max_inbound_bytes` on a recipient that reads only its inbox (a longer message
-to it is refused, with a pointer to the shared directory). Every agent's
-durable workspace is its own to write: a file tool or a shell command that
-writes into a teammate's (a redirect, the destination of `cp`/`mv`, `rm`,
-`sed -i`, `tee`, ...) is refused, confined or not; reading one is fine, and
-`"policy": {"private_workspaces": false}` turns it off. Team-wide, `"policy": {"detach_commands": [regex...]}` refuses a foreground
+to it is refused, with a pointer to the shared directory).
+
+**A shell command and `refuse_paths`.** A command that names a refused path
+is refused, and it is checked two ways. As text, after expanding `~` and
+`$HOME` and removing quotes. And word by word: the command is split the way
+the shell would split it (quotes keep a word together), `--opt=PATH` and
+`of=PATH` are opened up, `sh -c '...'` is split again, and each word that
+looks like a path is resolved against the call's working directory. A
+command whose working directory is itself inside a refused path is refused
+outright. That catches `cat key.json` run from inside a refused directory
+and `cat ../answers/key.json`, which the text never names. It is still a
+guard against reaching for the path, not a sandbox: a path built at run time
+is not seen.
+
+**Where an agent may write.** `write_roots`, per agent and team-wide under
+`"policy"` (an agent's are added to the team's), is for a team whose agents
+read widely but must change only their own tree. Once any are declared,
+every path a write names must be under one of them, the agent's own durable
+workspace, or the team's shared directory: a file tool that writes, or in a
+shell command a redirection, the destination of `cp`, `mv`, `rsync`,
+`install` or `ln`, an argument of `rm`, `touch`, `mkdir` or `tee`, the file
+of `sed -i`, `dd of=`. Reads are not limited, and `/dev/*` and `/proc/*`
+are always fine (`2>/dev/null`, `>&2`). Every agent's durable workspace is
+its own to write, declared or not: a file tool or a shell command that
+writes into a teammate's is refused, confined or not; reading one is fine,
+and `"policy": {"private_workspaces": false}` turns it off.
+
+**Task projects.** `"allowed_task_projects": ["home", "web-*"]` (fnmatch
+patterns) names the projects an agent may create, claim, update, complete
+and list tasks in. `list_tasks` hides the rest, `under` a task outside them
+is refused, and with exactly one literal project named and none given,
+`create_task` defaults to it. A subtask is always in its parent's project
+(see Tasks form a tree), so scoping a project scopes its whole tree. It is
+enforced in the task server, so it holds on any host.
+
+Team-wide, `"policy": {"detach_commands": [regex...]}` refuses a foreground
 run of a command that takes hours unless it is already detached, and
 `"forbidden_commands": [{"pattern", "message"}]` refuses outright with that
-message. The generic hook accepts the nested `toolCall`/`conversationId`
-payload shape too and answers `{"decision": "deny"|"allow", "reason"}`.
+message. **Images still being written**: a file tool that reads a `.png`,
+`.jpg`, `.gif` or `.webp` without its end marker (PNG's IEND, JPEG's EOI,
+GIF's trailer, a RIFF size the file has reached) is refused, with a note to
+wait and read it again. The image goes to the model with the next request;
+truncated, the provider rejects the request, and on some runtimes every
+later request in that conversation fails with it. A JPEG last changed more
+than ten minutes ago passes without one: nothing is writing it, and data
+after the end marker is legal there (a phone's motion photo). `"policy":
+{"refuse_partial_images": false}` turns it off. The generic hook accepts
+the nested `toolCall`/`conversationId` payload shape too and answers
+`{"decision": "deny"|"allow", "reason"}`.
 
 ## Reactive teamwork (no human polling)
 
@@ -809,6 +849,26 @@ session with the plugin installed is left alone. How a note gets there depends o
 
 Each note is recorded as a `steer` event in `events.jsonl`.
 
+### What the roster adds to a wake
+
+Two roster keys add a note to a wake, after its messages. Each is set at the
+roster's top level for the team, or in an agent's entry, which wins; `""` or
+`0` there turns it off for that agent.
+
+`"operator_reminder": "Answer in the thread I asked in."` is added to every
+wake that carries a message from the operator (a direct message, or a post
+that woke the agent), as `[Reminder from the operator] <text>`. The
+operator's standing instructions otherwise live only in a brief read once,
+many turns ago.
+
+`"memory_nudge_tokens": 60000`: once an agent's conversation passes that many
+tokens of context (`context_tokens` of its last turn, else `input_tokens`),
+its next wake asks it, once per conversation, to save what it has learned
+with `save_memory` before the conversation is compacted or cycled.
+Auto-cycle distills at its own, higher threshold; this asks earlier, while
+the agent still knows what was hard. Who has been asked is kept in
+`memory_nudges.json`, so a restart does not ask again.
+
 ### What is waiting on you
 
 `Record.needs_you()` lists what needs a person, oldest first: a stopped team, a
@@ -1017,6 +1077,13 @@ has one parent, and cycles are refused, so every roll-up is well defined.
   or `auto_close`. `list_tasks(under=<id>)` shows a branch as a tree. An
   agent woken about a task is told what it is part of, including the top
   task's note, which is often why the task exists.
+- **A subtask is in its parent's project.** Created under a parent, it takes
+  the parent's project, and naming a different one is an error. Moved under
+  another task (`update_task(parent=...)`), it takes that task's project.
+  `update_task(project=...)` changes a task's project and moves with it
+  everything under it that was in the same project. So a project belongs to
+  a tree, not to a task at a time, which is what lets
+  `allowed_task_projects` scope one.
 - **Moving off labels**: `actions.migrate_project_labels(team_dir)` turns
   each project label into a level-1 parent task, with the label's tasks
   under it; a label whose tasks are all closed becomes a closed, archived
@@ -1426,7 +1493,13 @@ stop, start and gracefully restart the team, add, change and remove agents
 replace `NORMS.md`, read, write and delete an agent's memories, keep
 bookmarks on channels and links on tasks, set pictures for agents and the
 operator (`<team_dir>/avatars/`), and attach files the operator shares
-(`<team_dir>/attachments/`, by absolute path, so agents can open them) --
+(`<team_dir>/attachments/`, by absolute path, so agents can open them), and
+edit or delete a message the operator sent (`edit_message`,
+`delete_message`: a copy still unread in an agent's inbox is changed in
+place, an agent that already read it gets a note in the same thread saying
+what changed; `bus.jsonl` keeps the message as sent, `edits.jsonl` records
+each change and who was told, and `Record.bus()` shows it as it now stands,
+marked edited or deleted; file transport only) --
 each refused from inside an agent's session. `Record.task_usage()` estimates
 the tokens spent on each task: turns woken by a message naming it, and
 otherwise the turns of the agent working on it at the time. A UI built on these two modules
@@ -1494,6 +1567,33 @@ with offset), `window` (which limit), `status` (`allowed`,
 gives a model a weekly budget; the supervisor tells you once when it passes 80%
 and again at 100%. It never switches a model on its own.
 
+`"fallback_models"` is the one case where it does, and only for as long as a
+model has no room. When a turn fails for capacity (a 429, 503 or 529:
+overloaded, unavailable, rate limited, resource exhausted, too many requests;
+not a timeout or a bad request), the model that ran is cooled down for the
+whole team for `fallback_cooldown` seconds (600 by default), and every agent
+on it runs on the first of its fallbacks that is not cooling and that the
+runner offers, until the cool-down ends; then it is back on its own model.
+Both keys go at the roster's top level, or in an agent's entry, which wins:
+
+```json
+{"fallback_models": ["claude-sonnet-5-5"],
+ "fallback_cooldown": 600,
+ "agents": [{"name": "coder", "model": "claude-opus-5",
+             "fallback_models": ["claude-sonnet-5-5", "claude-haiku-5"]}]}
+```
+
+With no `fallback_models` nothing changes: the same model, retried with
+backoff. The Claude and Codex runners switch inside their retry, so no
+backoff is spent waiting on the full model; for the agy and host runners
+the supervisor switches on the failed turn and wakes the agent again after
+the base backoff rather than an escalating one. The SDK (Gemini) runner
+binds its model when a session starts, so it does not fall back. Cool-downs
+are in `<team_dir>/cooldowns.json`; each move is a `model_fallback` event
+in `events.jsonl` and a line in the supervisor log. `Record.models()` marks
+a cooling model `low: true` with `cooling_until`, and the app's model badge
+says "cooling", with until when in its tooltip.
+
 ### Roster shapes
 
 The canonical roster is a **list of self-describing entries**, because entries
@@ -1530,8 +1630,21 @@ job, or a client's Start button that knows nothing of your environment:
  "supervisor": {"runner": "ateam.runner_host:HostRunner",
                 "runner_config": {"start": "...", "deliver": "..."},
                 "manager": "at-Boss",
-                "inbox_pull": true}}
+                "inbox_pull": true,
+                "launch": ["/opt/team/bin/run-supervisor", "{team_dir}"]}}
 ```
+
+`launch` is for a host where the supervisor needs more than a client can
+give it: another interpreter, a wrapper that sets up credentials, a
+container. It is an argv list that a-team's Start button (and the app
+starting teams when it starts) runs instead of
+`python -m ateam.supervisor --daemon --team-dir ...`. `{team_dir}`, `{team}`
+(the team's name) and `{python}` (the interpreter the app would have used)
+are filled in, and a leading `~` is expanded. It runs detached with
+`ATEAM_TEAM_DIR` set and its output in the team's supervisor log, and it
+must start the supervisor as a daemon and leave. Anything but a list of
+strings is reported by Start as an error. It was asked for by a host where
+Start, knowing nothing of the environment, started the supervisor wrong.
 
 Every field is optional. The runner is `--runner`, else the roster's, else
 `ATEAM_RUNNER`, else the agy CLI; `runner_config` goes with the roster's
@@ -1852,7 +1965,7 @@ Releases follow [Semantic Versioning](https://semver.org/), tagged
 in [RELEASING.md](RELEASING.md). Pin a tag rather than `main`:
 
 ```bash
-pip install "a-team @ git+https://github.com/roelle/a-team.git@v4.8.1"
+pip install "a-team @ git+https://github.com/roelle/a-team.git@v4.9.0"
 python -m ateam.supervisor --version
 ```
 

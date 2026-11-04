@@ -119,7 +119,7 @@ class Record:
         """Every message, with each reply's `thread` set to the first message
         of its thread. Replies used to be stored under whatever message they
         answered, often another reply, where no client looked for them."""
-        rows = _jsonl(self.team_dir / "bus.jsonl")
+        rows = _fold_edits(_jsonl(self.team_dir / "bus.jsonl"), self.team_dir)
         parents = {r["id"]: r["thread"] for r in rows if r.get("id") and r.get("thread")}
         if not parents:
             return rows
@@ -641,6 +641,31 @@ class Record:
         return hits[:limit]
 
 
+def _fold_edits(rows: list[dict], team_dir) -> list[dict]:
+    """Messages as they now stand: the operator's edits (actions.edit_message)
+    applied, each marked "edited" with when; a deleted one "deleted", with
+    no text. bus.jsonl keeps them as sent."""
+    edits = _jsonl(Path(team_dir) / "edits.jsonl")
+    if not edits:
+        return rows
+    last: dict[str, dict] = {}
+    for e in edits:
+        if e.get("id"):
+            prev = last.get(e["id"], {})
+            last[e["id"]] = {**prev, **e, "n": prev.get("n", 0) + 1}
+    out = []
+    for r in rows:
+        e = last.get(r.get("id"))
+        if e and r.get("from") == "user":
+            r = {**r, "edited": e["ts"]}
+            if e.get("deleted"):
+                r.update(content="", deleted=e["ts"])
+            elif "content" in e:
+                r["content"] = e["content"]
+        out.append(r)
+    return out
+
+
 class Feed:
     """What has been appended to the record since the last poll.
 
@@ -649,7 +674,7 @@ class Feed:
     channels, roster, the heartbeat). A log that shrinks -- rotated or
     rewritten -- is read again from the start.
     """
-    LOGS = ("bus.jsonl", "tasks.jsonl", "reviews.jsonl", "events.jsonl")
+    LOGS = ("bus.jsonl", "tasks.jsonl", "reviews.jsonl", "events.jsonl", "edits.jsonl")
     SNAPSHOTS = ("inflight.json", "channels.json", "roster.json", "supervisor.json",
                  "models.jsonl", ".stop")
 

@@ -66,6 +66,161 @@ def post(team_dir, channel: str, content: str, author: str | None = None,
         raise OperatorError(str(e)) from None
 
 
+# --- editing and deleting what you sent ---------------------------------------
+#
+# A chat client lets you fix a message after sending it. Here a message is a
+# prompt: an agent may already have acted on it, and quietly changing the
+# text would leave the record saying one thing and the agent having done
+# another. So an edit or a delete does what is true for each recipient. A
+# copy still unread in its inbox is changed in place (or taken out): it will
+# only ever be read as it now stands. A recipient that has read it, or is
+# reading it in a turn now, is sent a short note with the new text (or
+# telling it to disregard the old), in the same thread, waking it if the
+# original did. The record keeps both: bus.jsonl as sent, edits.jsonl with
+# each change and who was told, and Record.bus() shows the message as it now
+# stands, marked edited or deleted.
+
+EDITS = "edits.jsonl"
+
+
+def _sent(team_dir, msg_id: str) -> dict:
+    from .record import _jsonl
+    row = next((r for r in _jsonl(Path(team_dir) / "bus.jsonl") if r.get("id") == msg_id), None)
+    if row is None:
+        raise OperatorError(f"no message {msg_id!r}")
+    if row.get("from") != "user":
+        raise OperatorError("only what you sent can be edited or deleted; an agent's "
+                            "message is the team's record")
+    from .record import Record
+    now = next((r for r in Record(team_dir).bus() if r.get("id") == msg_id), row)
+    if now.get("deleted"):
+        raise OperatorError("that message was deleted")
+    return now
+
+
+def _could_have_read(team_dir, row: dict) -> dict[str, bool]:
+    """{agent: whether the message woke it} for every agent it went to."""
+    doc = channels_lib._roster_doc(team_dir)
+    names = [a["name"] for a in doc.get("agents", []) if isinstance(a, dict) and a.get("name")]
+    out: dict[str, bool] = {}
+    if row.get("channel"):
+        chan = channels_lib.load(team_dir).get(row["channel"]) or {}
+        named = set(row.get("mentions") or [])
+        listening = set(chan.get("wake") or ())
+        for n in chan.get("members") or []:
+            out[n] = n in named or n in listening
+        for n in named:
+            if n in names:
+                out[n] = True
+    elif row.get("to") and row["to"] != "user":
+        out[row["to"]] = True
+    from . import roster as roster_lib
+    for handle in channels_lib._MENTION.findall(row.get("content") or ""):
+        who = roster_lib.resolve_name(handle, names, roster_lib.aliases(doc))
+        if who and who != "user":
+            out[who] = True
+    return {n: w for n, w in out.items() if n in names}
+
+
+def _being_read(team_dir) -> dict[str, set]:
+    """{agent: ids of the messages in the turn it is in now}."""
+    try:
+        doc = json.loads((Path(team_dir) / "inflight.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return {a: {m.get("id") for m in (t.get("msgs") or []) if isinstance(m, dict)}
+            for a, t in (doc.items() if isinstance(doc, dict) else []) if isinstance(t, dict)}
+
+
+def _revise(team_dir, msg_id: str, content: str | None, by: str | None,
+            own_only: bool = False) -> dict:
+    _guard()
+    if os.environ.get("ATEAM_BUS_TRANSPORT"):
+        raise OperatorError("editing a sent message needs the file transport, "
+                            "whose inboxes it can change")
+    from . import filelock
+    from .transport_file import FileTransport
+    row = _sent(team_dir, msg_id)
+    if by and (row.get("author") or own_only) and row.get("author") != by:
+        raise OperatorError(f"{row.get('author') or 'the operator'} sent that message; "
+                            f"only they can change it")
+    if content is not None and content.strip() == (row.get("content") or "").strip():
+        raise OperatorError("nothing changed")
+    t = FileTransport("user", {"team_dir": str(team_dir)})
+    reading = _being_read(team_dir)
+    changed, told = [], []
+    when = row.get("ts", "")
+    for agent, woke in sorted(_could_have_read(team_dir, row).items()):
+        inbox = t._inbox(agent)
+        unread = False
+        with filelock.locked(inbox):
+            try:
+                lines = inbox.read_text(encoding="utf-8").splitlines()
+            except OSError:
+                lines = []
+            kept = []
+            for line in lines:
+                try:
+                    e = json.loads(line)
+                except ValueError:
+                    kept.append(line)
+                    continue
+                if e.get("id") == msg_id and msg_id not in reading.get(agent, set()):
+                    unread = True
+                    if content is not None:
+                        kept.append(json.dumps({**e, "content": content}))
+                    continue
+                kept.append(line)
+            if unread:
+                t._rewrite(inbox, "".join(l + "\n" for l in kept))
+                changed.append(agent)
+                continue
+            quote = (row.get("content") or "").strip().replace("\n", " ")
+            quote = quote[:80] + ("..." if len(quote) > 80 else "")
+            note = (f"[edited] I changed a message I sent you at {when} after you "
+                    f"had it. Act on this version instead:\n\n{content}"
+                    if content is not None else
+                    f"[withdrawn] Disregard my message sent at {when} "
+                    f"(\u201c{quote}\u201d); I withdrew it. If you already acted "
+                    f"on it, say what you did.")
+            meta = {"thread": row.get("thread") or msg_id, "channel": row.get("channel"),
+                    "author": row.get("author"), "quiet": None if woke else True}
+            entry = t._entry("user", agent, note, row.get("kind") or "work", row.get("task_id"),
+                             **{k: v for k, v in meta.items() if v})
+            entry["note_of"] = msg_id
+            with inbox.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(entry) + "\n")
+            told.append(agent)
+    rec = {"id": msg_id, "ts": time.strftime("%Y-%m-%d %H:%M:%S"), "by": by or "user",
+           "changed_unread": changed, "told": told}
+    if content is None:
+        rec["deleted"] = True
+    else:
+        rec["content"] = content
+    path = Path(team_dir) / EDITS
+    with filelock.locked(path):
+        with path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec) + "\n")
+    return {"id": msg_id, "changed_unread": changed, "told": told,
+            "deleted": content is None}
+
+
+def edit_message(team_dir, msg_id: str, content: str, by: str | None = None,
+                 own_only: bool = False) -> dict:
+    """Change a message you sent. Returns {"changed_unread": agents whose
+    unread copy now reads the new text, "told": agents sent the change}."""
+    if not (content or "").strip():
+        raise OperatorError("an edit needs text; delete the message instead")
+    return _revise(team_dir, msg_id, content.strip(), by, own_only)
+
+
+def delete_message(team_dir, msg_id: str, by: str | None = None,
+                   own_only: bool = False) -> dict:
+    """Withdraw a message you sent: taken out of every inbox that has not
+    read it, and a note to disregard it to every agent that has."""
+    return _revise(team_dir, msg_id, None, by, own_only)
+
+
 def clear_waiting(team_dir, ids=(), sender: str | None = None, by: str | None = None) -> int:
     """Take messages off Waiting on you without replying: `ids` (each row's
     "key"), and all from `sender`. For a notice, which nothing reads a reply to, or a question that

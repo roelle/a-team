@@ -22,7 +22,7 @@ beside the conversation.
 ## Run it
 
 ```bash
-pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.8.1"
+pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.9.0"
 a-team
 ```
 
@@ -63,7 +63,12 @@ The runner and manager are the team's own when its roster has a
 [`supervisor` block](https://github.com/roelle/a-team#how-a-team-is-run-the-rosters-supervisor-block)
 (`runner`, `runner_config`, `manager`); otherwise the runner is whatever your
 environment configures (`ATEAM_RUNNER`; the default is the `agy` CLI, which
-needs nothing more) and the manager is detected from roles. The status pill
+needs nothing more) and the manager is detected from roles. A roster whose
+`supervisor` block has `"launch": ["/opt/team/bin/run-supervisor",
+"{team_dir}"]` is started with that command instead, for a host where the
+supervisor needs a wrapper, another interpreter or a container; `{team_dir}`,
+`{team}` and `{python}` are filled in, and it must start the supervisor as a
+daemon and leave. The status pill
 shows the runner and manager the supervisor is using; hover it to see where
 each came from. It uses `ATEAM_PYTHON`
 if set, else the virtualenv of an a-team checkout it was installed from,
@@ -137,6 +142,25 @@ untick that and pick some.
 - **Direct messages wake.** A message to one agent was addressed to it.
 - **Threads.** Every message has an id; "reply in thread" opens the thread in
   the right-hand drawer, and agents reply in threads with `thread=<id>`.
+- **Editing and deleting what you sent.** Your own messages have **edit**
+  and **delete** under them; an agent's message is the team's record and
+  cannot be changed, and someone with a link of their own can change only
+  what they sent. A message is a prompt an agent may already have acted on,
+  so each recipient gets what is true for it: a copy still unread in its
+  inbox is changed in place (or taken out), so it will only ever be read as
+  it now stands; an agent that already read it, or is reading it in a turn
+  right now, gets a short note in the same thread (the new text, "act on
+  this version instead", or "disregard my message sent at ...; if you
+  already acted on it, say what you did"), waking it if the original did.
+  Those notes go to agents' inboxes only, not into the conversation you
+  see; the message shows as it now stands, marked *(edited)*, or as
+  *message deleted*. After saving, the app says what happened ("Edited:
+  changed before coder read it", "Deleted: coder had read it and was sent a
+  note to disregard it"). A turn that fetched the message in the last moment
+  before the edit may see the old text, then the new one as a second message.
+- **Copying code.** Every code block in chat, the board and the wiki has a
+  copy button on hover (always shown on a touch screen); it copies the block
+  and shows a check.
 - **What is surfaced.** Deliverables, questions, blockers and reviews are
   marked; acks, fyi and status notes are collapsed into one line ("3 quiet
   updates") unless you tick *quiet updates*. Supervisor plumbing is left out
@@ -278,6 +302,7 @@ sees it, including the Waiting on you list.
 | Same app as a-team? | No: a separate app over a-team's public client API (`ateam.record`, `ateam.actions`). It never reads or writes the team's files itself. |
 | The board: same app or another? | Same app, its own page. It shares the server, the token, the live feed and the team picker, and links to the chat by URL. The task store and actions are a-team's, so another client (or a sync to an external tracker) can be built on them later. |
 | Delete a channel for real? | No. Delete archives it and hides it here; its messages stay in `bus.jsonl`, the team's record. Restore brings it back. |
+| Edit or delete a sent message? | Yes, your own only: an agent's message is the team's record. `bus.jsonl` keeps the message as sent and `edits.jsonl` records each change; the app shows the current version, marked. A recipient that has not read it yet gets the new version in its inbox; one that has gets a note to act on the new version or disregard the old one. |
 
 ## Security
 

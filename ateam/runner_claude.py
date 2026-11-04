@@ -440,7 +440,8 @@ class ClaudeRunner(Runner):
                 print(f"    {agent}: provider unavailable, retrying in {delay:.0f}s "
                       f"(attempt {attempt})", flush=True)
             try:
-                out = with_retry(lambda: self._turn(agent, message), on_wait=announce)
+                out = with_retry(lambda: self._turn(agent, message), on_wait=announce,
+                                 on_capacity=lambda err: self.cool_down(agent, err))
             except Exception as e:
                 out = f"[error: {agent} failed: {type(e).__name__}: {e}]"
         if out.startswith("[error:"):

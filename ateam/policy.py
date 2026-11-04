@@ -38,6 +38,11 @@ Per agent:
     "refuse_paths":     ["/srv/checkout"]      paths its file tools may never touch,
                                                whatever the workspaces say, and its
                                                shell commands may not name
+    "write_roots":      ["/srv/work"]          the only places it may write; reads
+                                               are not limited. See below
+    "allowed_task_projects": ["home", "web-*"] the task projects it may create,
+                                               claim, change or list tasks in;
+                                               absent = every project
 
 Team-wide, under "policy" (each also accepted per agent):
 
@@ -52,6 +57,11 @@ Team-wide, under "policy" (each also accepted per agent):
                         and no suggestion to detach. A plain string is a
                         pattern with a default message.
     "refuse_paths":     [...]                  as above, for everyone
+    "write_roots":      [...]                  as above, for everyone; an agent's
+                                               own are added to the team's
+    "refuse_partial_images": false             let file tools read an image that
+                                               is still being written (refused
+                                               by default; see below)
 
 ## Paths
 
@@ -73,13 +83,42 @@ A shell command that names a refused path is refused too, after expanding
 it stops `cat ~/answers/key.json` and not a path the command builds at run
 time; treat it as a guard against reaching for the path, not a sandbox.
 
+`write_roots` limits writes and leaves reads alone, for a team whose agents
+read widely but must change only their own tree. Once any are declared,
+every path a write names -- a file tool that writes, or a shell command's
+redirections, destinations and in-place edits (see `_written_by`) -- must be
+under one of them, the agent's own durable workspace or the shared
+directory. /dev/null and the standard streams are always writable.
+
+A shell command is checked twice against `refuse_paths`: as text, as above,
+and as words. The words are the command split the way the shell would --
+quotes kept together, `--out=PATH` and `of=PATH` opened up, `sh -c '...'`
+split again -- with each one that is a path resolved against the call's
+working directory. That catches `cat key.json` run from inside a refused
+directory, which the text never names.
+
+## Images still being written
+
+An image a file tool reads goes to the model with the next request. One
+read while a render is still writing it is a truncated file, which the
+provider rejects -- and on some runtimes every later request in that
+conversation is rejected with it. So a .png, .jpg, .gif or .webp without
+its end marker (PNG's IEND, JPEG's EOI, GIF's trailer, a RIFF size the file
+has reached) is refused, with a note to wait and read it again. A JPEG last
+changed more than ten minutes ago is let through without one: nothing is
+writing it, and data after the end marker is legal there (a phone's motion
+photo appends a video). `"policy": {"refuse_partial_images": false}` turns
+it off.
+
 The rule is applied to any tool whose name looks like a file operation, on
 any string argument that resolves to an absolute path. That is a heuristic,
 and a deliberate one: hosts name their file tools differently, and a false
 refusal costs one tool call with a clear message, where a false allow costs a
 hung turn.
 """
+import fnmatch
 import re
+import time
 from pathlib import Path
 
 from . import roster as roster_lib
@@ -318,6 +357,148 @@ def _written_by(cmd: str, cwd: str = "") -> list[Path]:
     return out
 
 
+def write_roots(agent: str, roster: dict) -> list[Path] | None:
+    """Where this agent may write, or None if writes are not limited."""
+    entry = _entry(roster, agent)
+    declared = _patterns(roster, entry, "write_roots")
+    if not declared:
+        return None
+    roots = []
+    for raw in declared:
+        try:
+            roots.append(Path(raw).expanduser().resolve())
+        except (OSError, RuntimeError):
+            continue
+    try:
+        from . import scope
+        scopes = scope.load()
+        roots.append(scopes.agent_workspace(agent).resolve())
+        roots.append(scopes.shared_dir().resolve())
+    except Exception:
+        pass
+    return roots
+
+
+#: Written to by every other command (2>/dev/null, >&2): never a write to
+#: refuse. /dev/stdout resolves through /proc.
+_STREAMS = (Path("/dev"), Path("/proc"))
+
+
+def _within(p: Path, roots) -> bool:
+    return any(p == r or r in p.parents for r in roots)
+
+
+_REDIRECT_PREFIX = re.compile(r"^\d*[<>]+&?")
+_PATHISH = re.compile(r"^(?:/|~|\.\.?/|\$HOME\b|\$\{HOME\})|/")
+
+
+def _shell_paths(cmd: str, cwd: str = "") -> list[Path]:
+    """The paths a shell command names, word by word: split as the shell
+    would (quotes keep a word together), `--out=PATH` and `of=PATH` opened
+    up, `sh -c '...'` split again, each resolved against `cwd`. Best effort,
+    like everything here: a path built at run time is not seen."""
+    import os.path
+    import shlex
+    home = str(Path.home())
+    out: list[Path] = []
+    for seg in _SEGMENT.split(cmd or ""):
+        try:
+            words = shlex.split(seg)
+        except ValueError:
+            words = seg.split()
+        if words and Path(words[0]).name in ("sh", "bash", "zsh") and "-c" in words:
+            i = words.index("-c")
+            if i + 1 < len(words):
+                out += _shell_paths(words[i + 1], cwd)
+        for w in words:
+            for cand in (w, w.split("=", 1)[1] if "=" in w else ""):
+                cand = _REDIRECT_PREFIX.sub("", cand)
+                if not cand or not _PATHISH.search(cand):
+                    continue
+                cand = _HOME_VAR.sub(home, cand)
+                if cand == "~" or cand.startswith("~/"):
+                    cand = home + cand[1:]
+                path = Path(cand)
+                if not path.is_absolute():
+                    if not cwd:
+                        continue
+                    path = Path(cwd) / path
+                out.append(Path(os.path.normpath(path)))
+    return out
+
+
+def _refused_word(cmd: str, cwd: str, refused: list[Path]) -> str | None:
+    """The refused path a command runs in or names as a word, if any."""
+    import os.path
+    if not refused:
+        return None
+    here = [Path(os.path.normpath(Path(cwd).expanduser()))] if cwd else []
+    for p in here + _shell_paths(cmd, cwd):
+        try:
+            forms = {p, p.resolve()}
+        except (OSError, RuntimeError):
+            forms = {p}
+        for d in refused:
+            if str(d) in ("", "/"):
+                continue
+            if any(f == d or d in f.parents for f in forms):
+                return str(d)
+    return None
+
+
+IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+#: A JPEG unchanged this long is not being written, end marker or not.
+SETTLED_S = 600
+
+
+def image_still_writing(p: Path) -> bool:
+    """True if `p` is an image a writer has not finished: no end marker yet.
+    False for anything else, including a file that is not an image at all."""
+    try:
+        if p.suffix.lower() not in IMAGE_SUFFIXES or not p.is_file():
+            return False
+        st = p.stat()
+        with p.open("rb") as f:
+            head = f.read(16)
+            f.seek(max(0, st.st_size - 64))
+            tail = f.read()
+    except OSError:
+        return False
+    if len(head) < 16:
+        return True                      # not even a header yet
+    if head.startswith(b"\x89PNG\r\n\x1a\n"):
+        return b"IEND" not in tail
+    if head.startswith(b"\xff\xd8"):
+        if b"\xff\xd9" in tail.rstrip(b"\x00\r\n\t "):
+            return False
+        return time.time() - st.st_mtime < SETTLED_S
+    if head[:6] in (b"GIF87a", b"GIF89a"):
+        return not tail.rstrip(b"\x00").endswith(b";")
+    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return st.st_size < int.from_bytes(head[4:8], "little") + 8
+    return False
+
+
+def allowed_task_projects(agent: str, roster: dict) -> list[str] | None:
+    """The task projects this agent may work in (patterns), or None for all."""
+    v = _entry(roster, agent).get("allowed_task_projects")
+    if v is None:
+        return None
+    return [str(x) for x in (v if isinstance(v, list) else [v])]
+
+
+def task_project_refusal(agent: str, roster: dict, project: str | None,
+                         what: str = "that task") -> str | None:
+    """A refusal if `project` is outside the agent's task projects."""
+    allowed = allowed_task_projects(agent, roster)
+    if allowed is None or any(fnmatch.fnmatchcase(project or "", pat) for pat in allowed):
+        return None
+    where = f"project {project!r}" if project else "no project"
+    return (f"[refused: {what} is in {where}, and {agent} works only in task "
+            f"projects {', '.join(allowed) or '(none)'} (roster "
+            f"allowed_task_projects). Ask a teammate who works there]")
+
+
 def check_tool_policy(agent: str, tool: str, args: dict | None,
                       team_dir: Path | str | None = None,
                       roster: dict | None = None,
@@ -433,6 +614,16 @@ def check_tool_policy(agent: str, tool: str, args: dict | None,
                         f"{who} writes. Put what you are handing over in the "
                         f"shared directory and send {who} the path]")
 
+    roots = write_roots(agent, roster) if written else None
+    if roots is not None:
+        for p in written:
+            if not _within(p, _STREAMS) and not _within(p, roots):
+                return (f"[refused: {p} is outside where {agent} may write "
+                        f"({', '.join(str(r) for r in roots[:3])}"
+                        f"{', ...' if len(roots) > 3 else ''}; roster write_roots). "
+                        f"Reading it is fine. Write under one of those, or ask "
+                        f"the operator to add the path to write_roots]")
+
     if SHELL_TOOL.search(name) and name not in TEAM_TOOLS:
         cmd = str(args.get("command") or args.get("cmd") or args.get("CommandLine") or "")
         for rule in _patterns(roster, entry, "forbidden_commands"):
@@ -441,8 +632,9 @@ def check_tool_policy(agent: str, tool: str, args: dict | None,
                 why = (rule.get("message") if isinstance(rule, dict) else None) or \
                     "this team does not let agents run it"
                 return f"[refused: commands matching '{pattern}' are not for you to run: {why}]"
-        named = _refused_path_in_command(cmd, refused_paths(agent, roster)
-                                         + _raw_refused(roster, entry))
+        refused = refused_paths(agent, roster) + _raw_refused(roster, entry)
+        named = (_refused_path_in_command(cmd, refused)
+                 or _refused_word(cmd, str(args.get("Cwd") or args.get("cwd") or ""), refused))
         if named:
             return (f"[refused: this command names {named}, which this team's "
                     f"agents may not touch (policy refuse_paths). Reach it "
@@ -454,6 +646,17 @@ def check_tool_policy(agent: str, tool: str, args: dict | None,
                     f"foreground run hangs this turn until it times out. Run it "
                     f"detached (nohup ... > log 2>&1 &), then track it with a task "
                     f"reminder (update_task with check_after, or until=...)]")
+
+    if (name not in TEAM_TOOLS and FILE_TOOL.search(name) and not WRITE_TOOL.search(name)
+            and not SHELL_TOOL.search(name)
+            and (roster.get("policy") or {}).get("refuse_partial_images", True) is not False):
+        for p in _paths_in(args):
+            if image_still_writing(p):
+                return (f"[refused: {p} is an image that is still being written "
+                        f"(it has no end marker yet). Read now, it would reach "
+                        f"the model truncated, and the request would be "
+                        f"rejected. Wait for whatever writes it to finish, then "
+                        f"read it again]")
 
     if check_paths and name not in TEAM_TOOLS and FILE_TOOL.search(name):
         paths = _paths_in(args)

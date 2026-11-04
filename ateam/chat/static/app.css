@@ -121,6 +121,14 @@ button { font: inherit; cursor: pointer; }
 .body pre { background: var(--code); padding: 8px 10px; border-radius: 6px; overflow: auto; font-size: 12.5px; margin: 6px 0; }
 .body code { background: var(--code); padding: 1px 4px; border-radius: 4px; font-size: 12.5px; }
 .body pre code { background: none; padding: 0; }
+pre.code { position: relative; }
+pre.code .copy-code { position: absolute; top: 4px; right: 4px; display: flex; align-items: center; justify-content: center;
+  width: 24px; height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: var(--panel);
+  color: var(--dim); cursor: pointer; opacity: 0; transition: opacity .12s; font-size: 12px; }
+pre.code:hover .copy-code, pre.code .copy-code:focus-visible, pre.code .copy-code.done { opacity: 1; }
+pre.code .copy-code:hover { color: inherit; }
+pre.code .copy-code.done { color: var(--good, #2e8b57); }
+@media (hover: none) { pre.code .copy-code { opacity: .8; } }
 .body ul { margin: 4px 0; padding-left: 20px; }
 .mention { background: var(--mention); color: var(--mention-fg); border-radius: 4px; padding: 0 2px; font-weight: 600; }
 .pill-file { display: inline-block; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
@@ -206,6 +214,12 @@ body.dragging.col { cursor: col-resize; } body.dragging.row { cursor: row-resize
 .task .t a { color: inherit; text-decoration: none; } .task .t a:hover { text-decoration: underline; }
 .task .chan { color: var(--accent); cursor: pointer; }
 .mk-task { margin-left: 10px; }
+.when.edited { margin-left: 6px; }
+.body.deleted { color: var(--dim); }
+.edit-box { margin-top: 4px; }
+.edit-box textarea { width: 100%; box-sizing: border-box; font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--fg); resize: vertical; }
+.edit-box .composer-row { display: flex; gap: 6px; align-items: center; justify-content: flex-end; margin-top: 4px; }
+.edit-box .composer-row .hint { margin-right: auto; }
 
 /* mentions of the operator */
 .mention.me { background: var(--accent); color: #fff; }

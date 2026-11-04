@@ -142,12 +142,45 @@ class Team:
             return {"started": False, "reason": "a supervisor is already running"}
         env = dict(os.environ, ATEAM_TEAM_DIR=str(self.dir))
         env.pop("ATEAM_AGENT", None)
+        argv = self.launch_argv() or [supervisor_python(), "-m", "ateam.supervisor", "--daemon",
+                                      "--team-dir", str(self.dir)]
         log = self.log_path().open("ab")
         proc = subprocess.Popen(
-            [supervisor_python(), "-m", "ateam.supervisor", "--daemon", "--team-dir", str(self.dir)],
+            argv,
             env=env, stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
             start_new_session=True)
         return {"started": True, "pid": proc.pid, "log": str(self.log_path())}
+
+    def launch_argv(self) -> list[str] | None:
+        """The roster's own command for starting this team's supervisor, if it
+        has one: "launch" in its "supervisor" block, an argv list.
+
+            "supervisor": {"launch": ["/opt/team/bin/run-supervisor", "{team_dir}"]}
+
+        For a host where the supervisor needs more than this app can give it
+        -- another interpreter, a wrapper that sets up credentials or a
+        container -- so that Start runs the team the way its operator does.
+        "{team_dir}", "{team}" and "{python}" in an argument are filled in,
+        and a leading ~ expanded. It is started with ATEAM_TEAM_DIR set, and
+        is expected to run the supervisor as a daemon (--daemon) and leave."""
+        block = self.roster().get("supervisor")
+        launch = block.get("launch") if isinstance(block, dict) else None
+        if launch is None:
+            return None
+        if (not isinstance(launch, list) or not launch
+                or not all(isinstance(a, str) and a for a in launch)):
+            from ateam import actions
+            raise actions.OperatorError(
+                'the roster\'s supervisor "launch" must be a list of strings, '
+                'the command and its arguments')
+        fill = {"{team_dir}": str(self.dir), "{team}": self.name,
+                "{python}": supervisor_python()}
+        out = []
+        for a in launch:
+            for k, v in fill.items():
+                a = a.replace(k, v)
+            out.append(os.path.expanduser(a) if a.startswith("~") else a)
+        return out
 
     def stop_supervisor(self, reason: str = "stopped from a-team") -> dict:
         from ateam import actions

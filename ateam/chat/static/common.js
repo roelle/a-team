@@ -124,6 +124,31 @@ function renderToken(kind, m, ctx) {
   return null;
 }
 
+// A copy button on every code block, as chat apps have: one click takes the
+// block, without selecting it by hand (and picking up a stray line).
+const COPY_ICON = `<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="5" y="5" width="9" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>`;
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch (_) {}
+  // No clipboard API off https or localhost (a server reached by its LAN
+  // address): copy through a selection instead.
+  const ta = document.createElement("textarea");
+  ta.value = text; ta.setAttribute("readonly", ""); ta.style.cssText = "position:fixed;top:-1000px;opacity:0";
+  document.body.appendChild(ta); ta.select();
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch (_) {}
+  ta.remove(); return ok;
+}
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest?.(".copy-code");
+  if (!btn) return;
+  e.preventDefault(); e.stopPropagation();
+  const code = btn.parentElement.querySelector("code");
+  const ok = await copyText(code ? code.textContent : "");
+  btn.classList.toggle("done", ok); btn.title = ok ? "Copied" : "Could not copy";
+  btn.innerHTML = ok ? "✓" : "!";
+  setTimeout(() => { btn.classList.remove("done"); btn.title = "Copy"; btn.innerHTML = COPY_ICON; }, 1400);
+});
+
 // Block markdown: fenced code, headings, tables, quotes, lists, rules, paragraphs.
 function markdownHTML(src, ctx = RenderCtx) {
   const out = []; const lines = escHTML(src).split("\n"); let i = 0;
@@ -137,7 +162,7 @@ function markdownHTML(src, ctx = RenderCtx) {
     if (l.startsWith("```")) {
       const buf = []; i++;
       while (i < lines.length && !lines[i].startsWith("```")) buf.push(lines[i++]);
-      i++; out.push(`<pre><code>${buf.join("\n")}</code></pre>`); continue;
+      i++; out.push(`<pre class="code"><button type="button" class="copy-code" title="Copy" aria-label="Copy code">${COPY_ICON}</button><code>${buf.join("\n")}</code></pre>`); continue;
     }
     if (isTableRow(l) && isSep(lines[i + 1])) {
       const head = cells(l); i += 2; const rows = [];

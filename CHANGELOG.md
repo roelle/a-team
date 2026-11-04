@@ -7,6 +7,65 @@ the README for what counts as the public surface.
 
 ## [Unreleased]
 
+## [4.9.0] - 2026-11-04
+
+### Added
+- **Task projects per agent.** `allowed_task_projects` in an agent's roster
+  entry (names or patterns, `web-*`) keeps it to those projects: it creates,
+  claims, changes, closes and lists tasks only there. With one project and
+  none named, a new task goes in it. Enforced in the task server, so it holds
+  on any host.
+- **A subtask is in its parent's project.** Created under a task, it takes
+  that task's project, and naming another is an error; moved under another
+  task, it takes that one's. `update_task` takes `project`, which moves the
+  task and everything under it that was in the same project. So scoping a
+  project scopes its whole tree.
+- **`write_roots`**, the allow-list beside `refuse_paths`: per agent or
+  team-wide under `policy`, the only places an agent may write (with its own
+  workspace and the shared directory). A file tool that writes, and a shell
+  command's redirections, copy destinations, `rm`/`touch`/`tee`/`sed -i`
+  targets and the like, are checked. Reads are not limited.
+- **`refuse_paths` on a shell command's words.** The command is split as
+  the shell would split it (quotes keep a word together, `--out=PATH` opened
+  up, `sh -c` split again), each path resolved against the call's working
+  directory, and a command run from inside a refused directory is refused.
+  `cat key.json` from inside one, or `cat ../answers/key.json`, got past the
+  text match.
+- **An image still being written is not read.** A file tool reading a
+  .png, .jpg, .gif or .webp without its end marker is refused with a note to
+  wait. Read mid-write, a truncated image reaches the model, the request is
+  rejected, and on some runtimes so is every later one in that conversation.
+  A JPEG unchanged for ten minutes passes (data after its end is legal).
+  `"policy": {"refuse_partial_images": false}` turns it off.
+- **`operator_reminder`** in the roster: a line added to every wake that
+  carries a message from you, for standing instructions that otherwise live
+  in a brief read once.
+- **`memory_nudge_tokens`** in the roster: once an agent's conversation
+  passes that size, its next wake asks it, once per conversation, to save
+  what it has learned before it is compacted or cycled. Both can be set per
+  agent, and "" or 0 there turns them off for that one.
+- **Falling back when a model is full.** With `fallback_models` in the
+  roster (and optionally `fallback_cooldown`, 600 s by default), a turn
+  refused with a 429 or a 503 cools that model down for the team, and its
+  agents run on the first fallback that is not cooling until it is over,
+  instead of waiting to retry the same model. The Claude and Codex runners
+  switch inside the turn's retry; for agy and host runners the supervisor
+  switches on the failed turn. The model badge says "cooling". Without
+  `fallback_models` nothing changes.
+- **A copy button on code blocks** in the app.
+- **Edit and delete what you sent.** Under your own messages in the app,
+  and `actions.edit_message` / `actions.delete_message`. A copy an agent has
+  not read yet is changed (or removed) where it waits; an agent that already
+  read it, or is reading it now, gets a note with the new text, or to
+  disregard it, in the same thread. `bus.jsonl` keeps the message as sent,
+  `edits.jsonl` records the change and who was told, and the app shows the
+  message as it now stands, marked edited or deleted. An agent's messages
+  cannot be changed.
+- **`launch` in the roster's `supervisor` block**: the command the app's
+  Start button runs for the team instead of `python -m ateam.supervisor
+  --daemon`, for a host whose supervisor needs its own interpreter or
+  wrapper. `{team_dir}`, `{team}` and `{python}` are filled in.
+
 ## [4.8.1] - 2026-11-03
 
 ### Fixed
@@ -930,7 +989,8 @@ MCP memory server.
 ## [1.0] - 2026-09-08
 Milestone tag (pre-semver).
 
-[Unreleased]: https://github.com/roelle/a-team/compare/v4.8.1...HEAD
+[Unreleased]: https://github.com/roelle/a-team/compare/v4.9.0...HEAD
+[4.9.0]: https://github.com/roelle/a-team/compare/v4.8.1...v4.9.0
 [4.8.1]: https://github.com/roelle/a-team/compare/v4.8.0...v4.8.1
 [4.8.0]: https://github.com/roelle/a-team/compare/v4.7.0...v4.8.0
 [4.7.0]: https://github.com/roelle/a-team/compare/v4.6.0...v4.7.0

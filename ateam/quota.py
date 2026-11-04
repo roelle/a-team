@@ -22,6 +22,12 @@ and only `cost` is filled where the model is priced. A host runner can call
 Runner.note_quota from its adapter, or put the fields on its config's
 "models" entries.
 
+A model that refused a turn for capacity (a 429, a 503) is cooling down
+for a while when the roster names models to fall back to: `cool()` records
+it in <team_dir>/cooldowns.json, a runner resolving an agent's model skips
+it until then (see Runner.resolved_model), and `for_model` reports it as
+"cooling_until".
+
 Kept in <team_dir>/quota.json: per account (the runner's label), each limit
 as last seen and the models seen running on it. A limit whose reset time has
 passed is dropped: it has reset, and how much is left is unknown again.
@@ -35,6 +41,7 @@ from datetime import datetime
 from pathlib import Path
 
 FILE = "quota.json"
+COOLDOWNS = "cooldowns.json"
 #: Below this fraction left, the app marks an agent's model as low.
 LOW = 0.2
 
@@ -137,7 +144,42 @@ def for_model(team_dir, model: str | None, account: str | None = None) -> dict:
     out = {k: v for k, v in (best[1] if best else {}).items() if v is not None}
     if credits is not None:
         out["credits"] = credits
+    until = cooling(team_dir, model)
+    if until:
+        out["cooling_until"] = iso(until)
     return out
+
+
+def cool(team_dir, model: str, seconds: float, why: str = "") -> None:
+    """`model` refused a turn for capacity: skip it for `seconds`."""
+    if not team_dir or not model:
+        return
+    from . import filelock
+    path = Path(team_dir) / COOLDOWNS
+    with filelock.locked(path):
+        doc = cooldowns(team_dir)
+        doc[model] = {"until": round(time.time() + max(0.0, seconds)),
+                      "why": (why or "")[:300], "ts": time.strftime("%Y-%m-%d %H:%M:%S")}
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(doc, indent=1, sort_keys=True), encoding="utf-8")
+        os.replace(tmp, path)
+
+
+def cooldowns(team_dir) -> dict:
+    """{model: {"until", "why", "ts"}} for models still cooling down."""
+    try:
+        doc = json.loads((Path(team_dir) / COOLDOWNS).read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return {}
+    now = time.time()
+    return {m: c for m, c in (doc.items() if isinstance(doc, dict) else [])
+            if isinstance(c, dict) and (c.get("until") or 0) > now}
+
+
+def cooling(team_dir, model: str | None) -> float | None:
+    """When `model`'s cool-down ends (epoch seconds), or None if it is not cooling."""
+    c = cooldowns(team_dir).get(model or "") if team_dir and model else None
+    return c["until"] if c else None
 
 
 def cost(model: str | None) -> dict | None:
@@ -162,6 +204,7 @@ def annotate(models: list[dict] | None, team_dir=None, account: str | None = Non
 
 
 def low(q: dict, threshold: float = LOW) -> bool:
-    """Is this quota low: under `threshold` left, or refused?"""
+    """Is this quota low: under `threshold` left, refused, or cooling down?"""
     left = q.get("remaining")
-    return q.get("status") == "rejected" or (left is not None and left < threshold)
+    return (q.get("status") == "rejected" or bool(q.get("cooling_until"))
+            or (left is not None and left < threshold))

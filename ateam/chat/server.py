@@ -52,7 +52,7 @@ class Forbidden(Exception):
 PERSON_GET = {"/api/teams", "/api/state", "/api/messages", "/api/artifact", "/api/tasks",
               "/api/task", "/api/search", "/api/models", "/api/activity", "/api/wiki",
               "/api/events", "/api/file", "/api/avatar"}
-PERSON_POST = {"/api/post", "/api/task", "/api/attach", "/api/bookmarks"}
+PERSON_POST = {"/api/post", "/api/task", "/api/attach", "/api/bookmarks", "/api/message"}
 
 
 def epoch(ts) -> float | None:
@@ -306,6 +306,18 @@ class App:
             return {"result": actions.dm(t.dir, body["to"], content, author=self.author,
                                          thread=body.get("thread") or None, kind=kind)}
         raise actions.OperatorError("say where: a channel or an agent")
+
+    def message(self, team: str, body: dict) -> dict:
+        """Edit or delete a message you sent (actions.edit_message). Someone
+        with a link of their own changes only what they sent."""
+        t, mid = self.team(team), body.get("id") or ""
+        own = bool(self.person)
+        if body.get("action") == "edit":
+            return actions.edit_message(t.dir, mid, body.get("content") or "",
+                                        by=self.author, own_only=own)
+        if body.get("action") == "delete":
+            return actions.delete_message(t.dir, mid, by=self.author, own_only=own)
+        raise actions.OperatorError("edit or delete")
 
     def clear_waiting(self, team: str, body: dict) -> dict:
         return {"cleared": actions.clear_waiting(self.team(team).dir, ids=body.get("ids") or (),
@@ -729,7 +741,8 @@ class Handler(BaseHTTPRequestHandler):
                      "/api/norms": self.app.norms, "/api/memory": self.app.memory,
                      "/api/update": self.app.update, "/api/attach": self.app.attach,
                      "/api/avatar": self.app.avatar, "/api/bookmarks": self.app.bookmarks,
-                     "/api/clear_waiting": self.app.clear_waiting}
+                     "/api/clear_waiting": self.app.clear_waiting,
+                     "/api/message": self.app.message}
             if path == "/api/new_team":
                 return self._json(self.app.new_team(body))
             fn = route.get(path)
