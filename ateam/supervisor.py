@@ -2670,15 +2670,38 @@ class Supervisor:
         self._log(f"  → distilling {agent}")
         t0 = time.monotonic()
         self._begin_memory_turn(agent)
+        self._distilling(agent, True)
         try:
             reply = self.runner.wake(agent, DISTILL_PROMPT)
         except Exception as e:
             reply = self._distill_raised(agent, e, time.monotonic() - t0)
         finally:
+            self._distilling(agent, False)
             self._end_memory_turn(agent)
         before, after, failed = self._finish_distill(agent, before_snap, reply)
         self._last_distill_failed = failed
         return (before, after)
+
+    def _distilling(self, agent: str, on: bool) -> None:
+        """Say on disk that `agent` is in a distill run outside the dispatch
+        loop (auto-cycle's), which the ledger does not show: a client shows
+        it as distilling rather than idle. A distill asked for by the
+        operator runs as a turn, and the ledger says so already."""
+        path = self.team_dir / "distilling.json"
+        try:
+            with filelock.locked(path):
+                try:
+                    doc = json.loads(path.read_text(encoding="utf-8"))
+                    doc = doc if isinstance(doc, dict) else {}
+                except (OSError, ValueError):
+                    doc = {}
+                if on:
+                    doc[agent] = time.strftime("%Y-%m-%d %H:%M:%S")
+                else:
+                    doc.pop(agent, None)
+                _rewrite(path, json.dumps(doc) + "\n")
+        except OSError:
+            pass
 
     def _distill_raised(self, agent: str, e: Exception, dur: float) -> str:
         reply = f"[error: {type(e).__name__}: {e}]"

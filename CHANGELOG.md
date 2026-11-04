@@ -7,6 +7,12 @@ the README for what counts as the public surface.
 
 ## [Unreleased]
 
+### Added
+- **Distilling shows as its own state.** An agent saving what it learned to
+  memory, asked for or before an auto-cycle, has a blue pulsing dot and says
+  so, where it showed as working (or, for auto-cycle's distill, idle).
+  `Record.presence()` gives it as `"distilling"`.
+
 ## [4.9.0] - 2026-11-04
 
 ### Added

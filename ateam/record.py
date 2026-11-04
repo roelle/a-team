@@ -462,7 +462,9 @@ class Record:
     def presence(self) -> dict[str, dict]:
         """{agent: {"state", "since", "detail"}}.
 
-        state is one of: running (a turn in flight), held (mail is waiting
+        state is one of: running (a turn in flight), distilling (a turn
+        saving what it learned to memory, before a cycle or on its own;
+        detail says which), held (mail is waiting
         and the hop budget is spent; the user's messages still wake it),
         failing (its last turn failed), idle (supervisor up, nothing
         running), offline (no supervisor is running, so nothing will wake it).
@@ -471,10 +473,19 @@ class Record:
         held = set((running or {}).get("held") or [])
         hops = (running or {}).get("hops") or {}
         inflight = _json(self.team_dir / "inflight.json", {})
+        distilling = _json(self.team_dir / "distilling.json", {}) if running else {}
         last = self._last_turns()
         out = {}
         for agent in self.agents():
-            if isinstance(inflight, dict) and agent in inflight:
+            t = inflight.get(agent) if isinstance(inflight, dict) else None
+            if isinstance(t, dict) and isinstance(t.get("distill"), dict):
+                cycling = t["distill"].get("action") == "cycle"
+                out[agent] = {"state": "distilling", "since": t.get("ts"),
+                              "detail": "before a cycle" if cycling else ""}
+            elif isinstance(distilling, dict) and agent in distilling:
+                out[agent] = {"state": "distilling", "since": distilling[agent],
+                              "detail": "before a cycle"}
+            elif isinstance(inflight, dict) and agent in inflight:
                 t = inflight[agent]
                 out[agent] = {"state": "running", "since": t.get("ts"),
                               "detail": ", ".join((t.get("trigger") or {}).get("senders", []))}
@@ -675,7 +686,7 @@ class Feed:
     rewritten -- is read again from the start.
     """
     LOGS = ("bus.jsonl", "tasks.jsonl", "reviews.jsonl", "events.jsonl", "edits.jsonl")
-    SNAPSHOTS = ("inflight.json", "channels.json", "roster.json", "supervisor.json",
+    SNAPSHOTS = ("inflight.json", "distilling.json", "channels.json", "roster.json", "supervisor.json",
                  "models.jsonl", ".stop")
 
     def __init__(self, team_dir, from_start: bool = False):

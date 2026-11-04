@@ -196,5 +196,23 @@ def test_the_supervisor_falls_back_on_a_failed_turn_without_backing_off(team):
         sup.close()
 
 
+
+def test_a_distill_outside_the_loop_is_on_disk_while_it_runs(team):
+    """Auto-cycle distills by calling the runner directly, not as a ledger
+    turn; the app showed the agent idle the whole time."""
+    seen = []
+
+    class Watches(ScriptedRunner):
+        def wake(self, agent, message):
+            seen.append(json.loads((team / "distilling.json").read_text()))
+            return "nothing new"
+    sup = Supervisor(AGENTS, Watches({}), quiet=True, require_review=False)
+    try:
+        sup.distill("coder")
+    finally:
+        sup.close()
+    assert "coder" in seen[0]
+    assert json.loads((team / "distilling.json").read_text()) == {}
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, *sys.argv[1:]]))

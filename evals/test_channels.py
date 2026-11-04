@@ -318,6 +318,21 @@ def test_presence_is_offline_without_a_supervisor_and_running_when_in_flight(tea
     assert rec.presence()["coder"]["state"] == "running"
 
 
+def test_an_agent_saving_to_memory_is_distilling_not_running_or_idle(team, monkeypatch):
+    rec = Record(team)
+    (team / "inflight.json").write_text(json.dumps({"coder": {
+        "ts": "2026-11-04 12:00:00", "trigger": {"distill": "cycle"},
+        "distill": {"action": "cycle", "by": "user"}}}))
+    assert rec.presence()["coder"] == {"state": "distilling", "since": "2026-11-04 12:00:00",
+                                       "detail": "before a cycle"}
+    (team / "inflight.json").write_text("{}")
+    (team / "distilling.json").write_text(json.dumps({"coder": "2026-11-04 12:05:00"}))
+    monkeypatch.setattr(Record, "supervisor", lambda self: {"pid": 1})
+    assert rec.presence()["coder"]["state"] == "distilling", "auto-cycle's distill, outside the ledger"
+    monkeypatch.setattr(Record, "supervisor", lambda self: None)
+    assert rec.presence()["coder"]["state"] == "offline", "a marker left by a dead supervisor means nothing"
+
+
 def test_the_feed_returns_what_was_appended_and_never_half_a_line(team):
     feed = Feed(team)
     assert feed.poll() == []

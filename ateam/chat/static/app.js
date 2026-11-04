@@ -365,6 +365,7 @@ function renderAgents() {
   $("#agents").innerHTML = S.state.agents.map((a) => {
     const p = a.presence || {}; const m = a.model || {};
     const state = { running: `working${p.detail ? " — for " + p.detail : ""} since ${hhmm(p.since)}`,
+                    distilling: `saving what it learned to memory${p.detail ? " " + p.detail : ""}${p.since ? ", since " + hhmm(p.since) : ""}`,
                     held: `waiting: ${p.detail || "hop budget spent"}; your messages still wake it`,
                     failing: `last turn failed: ${p.detail || ""}`, idle: `idle${p.since ? ", last turn " + hhmm(p.since) : ""}`,
                     offline: "offline (no supervisor)" }[p.state] || "";
