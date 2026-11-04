@@ -7,7 +7,27 @@ the README for what counts as the public surface.
 
 ## [Unreleased]
 
+## [4.10.0] - 2026-11-04
+
 ### Added
+- **Agents on OpenCode, and on any harness that speaks ACP.**
+  `ateam.runner_acp:AcpRunner` drives an agent harness over the Agent Client
+  Protocol, the one editors use: each turn resumes the agent's session, sets
+  its model, hands it the team's MCP servers, sends the wake, and records the
+  tool calls, tokens, context size and cost the harness reports. OpenCode is
+  the default (`{"agent": "opencode"}`), and agents run on whatever providers
+  and sign-ins it already has; Grok Build, Goose and Gemini CLI are presets by
+  their documented ACP commands, not yet run; any other ACP agent goes by
+  `"command"`. Permission requests are answered from the team's policy, and
+  for OpenCode a plugin of a-team's checks every tool call with its full
+  arguments and keeps provider keys out of the agent's shell. Run for real:
+  a two-agent OpenCode team (Gemini) wrote a file, asked for a review over the
+  bus, and the reviewer ran it and recorded an approval; a read of a
+  `refuse_paths` file was refused with the reason. The first-run page offers
+  OpenCode when the `opencode` command is installed.
+- **The README says what a-team is**: not an agent, but a team of durable
+  agents running in one agent harness or many, with the durability and the
+  teamwork a single harness does not have.
 - **Distilling shows as its own state.** An agent saving what it learned to
   memory, asked for or before an auto-cycle, has a blue pulsing dot and says
   so, where it showed as working (or, for auto-cycle's distill, idle).
@@ -995,7 +1015,8 @@ MCP memory server.
 ## [1.0] - 2026-09-08
 Milestone tag (pre-semver).
 
-[Unreleased]: https://github.com/roelle/a-team/compare/v4.9.0...HEAD
+[Unreleased]: https://github.com/roelle/a-team/compare/v4.10.0...HEAD
+[4.10.0]: https://github.com/roelle/a-team/compare/v4.9.0...v4.10.0
 [4.9.0]: https://github.com/roelle/a-team/compare/v4.8.1...v4.9.0
 [4.8.1]: https://github.com/roelle/a-team/compare/v4.8.0...v4.8.1
 [4.8.0]: https://github.com/roelle/a-team/compare/v4.7.0...v4.8.0

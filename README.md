@@ -1,19 +1,21 @@
 # a-team
 
-Five persistent AI agents by default (manager, project lead, coder, systems engineer, reviewer) and the app you work with them in. They message each other and wake only when they have mail. The app is local: channels, direct messages, threads, a task board, a wiki of what they have learned, an admin page, and a "Waiting on you" list of what needs a person. [How the app works](docs/app.md).
+A team of durable agents, from one agent platform or many. a-team is not the agent. An agent harness (Claude Code, Codex, OpenCode, the Antigravity CLI) is one agent: a model, a tool loop, a session. Each agent on a team runs in one, and one team can mix them. Other projects build the agent, or a harness for one agent; this is a harness for many diverse agents, so that each stays the same agent between restarts and they work with each other.
 
-Agents run on the Antigravity CLI, the Antigravity SDK with a Gemini key, or Claude with an Anthropic key. One team can mix them, and your own runtime can plug in.
+Durability is the same agent after a restart or a conversation cycle: its identity, the memories it saved and distills before a cycle, recall that puts the relevant ones in front of it, its sessions recorded in `conversations.json` and resumed. Teamwork is a message bus with wake-on-mail, channels and threads, a task board, reviews, a supervisor with a hop budget and failure isolation, roster policy applied on every harness, and the app you work with them in. Five persistent agents by default (manager, project lead, coder, systems engineer, reviewer); they wake only when they have mail. The app is local: channels, direct messages, threads, a task board, a wiki of what they have learned, an admin page, and a "Waiting on you" list of what needs a person. [How the app works](docs/app.md).
+
+Agents run on the Antigravity CLI, the Antigravity SDK (Gemini key), Claude (Claude Agent SDK, with an API key or Bedrock, Vertex or Foundry), Codex (OpenAI key), OpenCode and other ACP harnesses, or your own host through the host runner. The roster names a runner per agent. So when adding a model, the question is which harness runs it, not which model.
 
 It is also a lab for watching agent teams fail. Most of what is interesting here came from provoking mistakes and reading the wreckage. The findings are in the code comments, next to what they explain.
 
 ## Install
 
 ```bash
-pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.9.0"
+pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.10.0"
 a-team
 ```
 
-Or with [uv](https://docs.astral.sh/uv/): `uv tool install "a-team @ git+https://github.com/roelle/a-team.git@v4.9.0"`.
+Or with [uv](https://docs.astral.sh/uv/): `uv tool install "a-team @ git+https://github.com/roelle/a-team.git@v4.10.0"`.
 
 It opens your browser, shows what this machine can run agents on, and creates a team. It takes no keys; put an API key in the environment you start it from.
 
@@ -396,7 +398,7 @@ so the installable surface stays dependency-free:
 
 | module | needs | used by |
 |---|---|---|
-| everything else: the four MCP servers (`mcp_bus`, `mcp_memory`, `mcp_tasks`, `mcp_self`), `supervisor`, `tasks`, `policy`, `hook_pre_tool_use`, `hook_stop`, `runner`, `runner_agy`, `runner_host`, `transport*`, `memory*`, `observer*`, `doctor`, `lifecycle`, … | **stdlib only** | the agy plugin, any MCP host, reactive dispatch |
+| everything else: the four MCP servers (`mcp_bus`, `mcp_memory`, `mcp_tasks`, `mcp_self`), `supervisor`, `tasks`, `policy`, `hook_pre_tool_use`, `hook_stop`, `runner`, `runner_agy`, `runner_acp`, `runner_host`, `transport*`, `memory*`, `observer*`, `doctor`, `lifecycle`, … | **stdlib only** | the agy plugin, any MCP host, reactive dispatch |
 | `sdk_agent`, `sdk_cli`, `runner_sdk`, `runner_mixed` | `google-antigravity` | SDK agent, CLI, and SDK/mixed runners |
 
 `python -m ateam.install_check --list` prints the stdlib-only set exactly; it
@@ -603,6 +605,7 @@ they decide *how* an agent is woken:
 | `ateam.runner_sdk:SdkRunner` (what `./run` uses with a Gemini key) | a persistent SDK session per agent | `google-antigravity` |
 | `ateam.runner_claude:ClaudeRunner` | a Claude Agent SDK session per agent, resumed each turn | `pip install "a-team[claude]"`, `ANTHROPIC_API_KEY` |
 | `ateam.runner_codex:CodexRunner` | a Codex `app-server` thread per agent, resumed each turn | the Codex CLI (0.166 or later), `OPENAI_API_KEY` |
+| `ateam.runner_acp:AcpRunner` | an ACP session per agent on OpenCode or another ACP harness, resumed each turn | that harness (`npm install -g opencode-ai`) and its own providers |
 | `ateam.runner_mixed:MixedRunner` | per-agent runner from `roster.json` | whatever those runners need |
 | `ateam.runner_host:HostRunner` | a host's own start / deliver / stop-hook commands, from config | any hosted runtime |
 | your own | anything | — |
@@ -704,6 +707,63 @@ and says what is missing.
   wake. A supervised three-vendor team has run too: lead on Claude Sonnet,
   coder on Codex, qa on Gemini 3.8 Flash, in one `MixedRunner` team. Not yet
   run: `gpt-6-astra` as a Codex agent, a non-OpenAI endpoint.
+
+**`AcpRunner` runs agents on OpenCode and other ACP harnesses.** ACP is
+the Agent Client Protocol, which editors (Zed, JetBrains, Neovim plugins) use
+to drive agents: JSON-RPC over stdio, with `initialize`, `session/new` (which
+takes MCP servers), `session/resume` or `session/load`, `session/prompt`,
+`session/update` notifications (message chunks, tool calls, usage),
+`session/cancel`, and `session/request_permission`, where the agent asks the
+client before a tool runs. That is enough for a teammate: the session survives
+between turns, and a-team's MCP servers (memory, bus, tasks, self) go in with
+`session/new`, so the agent reaches the team. Set
+`ATEAM_RUNNER=ateam.runner_acp:AcpRunner` with
+`ATEAM_RUNNER_CONFIG='{"agent": "opencode"}'`, put it on the whole team with
+`"supervisor": {"runner": "ateam.runner_acp:AcpRunner", "runner_config":
+{"agent": "opencode"}}` in the roster, or put one agent on it in a mixed
+team: `{"name": "coder", "runner": "ateam.runner_acp:AcpRunner", "model":
+"google/gemini-3.8-flash"}`. It needs the harness and no Python package:
+`npm install -g opencode-ai` for OpenCode, and first-run setup offers
+OpenCode as a runtime when the `opencode` command is on PATH. Each turn
+starts the harness, resumes the agent's session (`session/resume`, else
+`session/load` with the replay ignored, else a new session), sets the
+session's `model` option to the roster's model (for OpenCode that is
+`provider/model`, like `google/gemini-3.8-flash`), sends the wake, records
+tool calls, tokens, context size and cost as the harness reports them, and
+exits, so a supervisor restart loses nothing. A new session's first prompt
+carries the agent's brief, because ACP has no system prompt.
+
+- **Which harness.** `"agent"` picks a preset: `opencode` (the default),
+  `grok` (`grok agent stdio --no-auto-update`), `goose` (`goose acp`) or
+  `gemini` (`gemini --experimental-acp`); `"command": [argv...]` runs any
+  other ACP agent. `"env"`, `"model"` (when the roster names none),
+  `"models"` (offered without asking the harness) and `"timeout"` are
+  optional. Only OpenCode has been run against it; the other presets are
+  those harnesses' documented ACP commands, untested.
+- **The harness's own config is used as is:** providers, sign-ins,
+  `AGENTS.md`. Keys come from the supervisor's environment, never the roster.
+- **Policy covers only what the harness asks about.** A permission request
+  is answered from the team's policy, allow or reject. But a client is asked
+  only about the calls the harness asks permission for, and some arrive
+  without arguments: OpenCode's file read asks with no path. So for OpenCode,
+  a-team sets `OPENCODE_CONFIG_DIR` to its own directory
+  (`ateam/acp_plugins/opencode`), which holds a plugin, `ateam-policy.js`,
+  that OpenCode loads beside your own config. Its `tool.execute.before` hook
+  checks every call, with full arguments, through `python -m ateam.runner_acp
+  check` (the same `ateam.policy` every runtime uses), and a refusal reaches
+  the model as the tool's error, with the reason. Its `shell.env` hook blanks
+  the keys that run agents in the commands the agent runs. Verified live: a
+  read of a `refuse_paths` file was refused with the reason, and the agent's
+  shell saw no `GOOGLE_GENERATIVE_AI_API_KEY`. For other harnesses, set their
+  permission mode to "ask" so the questions come.
+- **What it does not claim.** Every reported tool call is audited
+  (`supports_audit`). `tools_off` refuses the call, but the model still sees
+  the tool (`supports_capability_scoping` is false). Commands run as the
+  supervisor's user (`supports_containment` is false); run the team in a
+  container. Tokens and cost are recorded when the harness reports them
+  (OpenCode does); account limits are not reported over ACP.
+- **Model fallback works.** A 429 from the harness moves the agent to the
+  next of its `fallback_models`, as on the Claude and Codex runners.
 
 **A second review from another vendor's model.** A reviewer on the same model
 as the author shares its blind spots. So, when a team asks for it, every
@@ -845,6 +905,7 @@ session with the plugin installed is left alone. How a note gets there depends o
 | agy CLI | The plugin's `hooks.json`, before each model call |
 | Claude | The runner's tool hook, after each tool call |
 | Antigravity SDK | That SDK's post-tool hook can only look, so a person's mail or a repeat of 5 or more refuses one call and says why. Anything else waits for the next team tool result. |
+| OpenCode and other ACP harnesses | The end of the next team tool result; the runner counts calls itself. |
 | Any other host | The end of the next team tool result. Point the host's hooks at `python -m ateam.hook_step` if it has them. |
 
 Each note is recorded as a `steer` event in `events.jsonl`.
@@ -1537,7 +1598,9 @@ is low gets a badge with the percent left. Each runner fills this in from
 what it sees during turns: the Claude runner records the Claude CLI's
 rate-limit events (a subscription's five-hour and weekly limits, including
 the Opus-only and Sonnet-only weekly ones); the Codex runner records the
-app-server's account limits (two windows) and its credit balance. The agy
+app-server's account limits (two windows) and its credit balance; the ACP
+runner records tokens and cost as the harness reports them, and no limits,
+since ACP has no way to report them. The agy
 CLI and the Gemini SDK runner report nothing, so for them only cost is
 filled, where the model is in the pricing table in `ateam/config.py`; on a
 subscription that is what the tokens would cost on the API, not what is
@@ -1813,6 +1876,9 @@ unreliable; confirm via the tool cache instead.
   setting above.
 - **The SDK path** is what the measured cold-start convergence run used
   (`bench/README.md`). It needs a Gemini API key.
+- **`AcpRunner`** has run live on OpenCode only: a read of a `refuse_paths`
+  file was refused by the plugin with the reason, and the agent's shell saw
+  no provider key. The grok, goose and gemini presets have not been run.
 - **`HostRunner`** has only been run against the fake host in
   `evals/fixture_host.py`. The first real host will find things the fake did not.
 - **Per-agent tool restriction on the CLI.** The SDK withholds a disabled
@@ -1901,7 +1967,7 @@ All subsystems support configuration through environment variables:
 | Environment Variable | Description | Default |
 |---|---|---|
 | `GEMINI_API_KEY` | Google Gemini API key for model inference | None (prompted by `./run`) |
-| `ATEAM_RUNNER` | Agent execution runner (`ateam.runner_agy:AgyRunner`, `ateam.runner_sdk:SdkRunner`, `ateam.runner_claude:ClaudeRunner`, `ateam.runner_codex:CodexRunner`, `ateam.runner_mixed:MixedRunner`, `ateam.runner_host:HostRunner`, or your own) | `ateam.runner_agy:AgyRunner`; `./run` selects the SDK runner when a Gemini key is configured |
+| `ATEAM_RUNNER` | Agent execution runner (`ateam.runner_agy:AgyRunner`, `ateam.runner_sdk:SdkRunner`, `ateam.runner_claude:ClaudeRunner`, `ateam.runner_codex:CodexRunner`, `ateam.runner_acp:AcpRunner`, `ateam.runner_mixed:MixedRunner`, `ateam.runner_host:HostRunner`, or your own) | `ateam.runner_agy:AgyRunner`; `./run` selects the SDK runner when a Gemini key is configured |
 | `ATEAM_HOP_WINDOW` | A running team's hop budget window, in seconds: at most `--max-hops` agent-to-agent wakes in any window this long | `600` |
 | `ATEAM_RUNNER_CONFIG` | JSON configuration passed to runner constructor | `{}` |
 | `ATEAM_BUS_TRANSPORT` | Pluggable A2A messaging transport class | `ateam.transport_file:FileTransport` |
@@ -1965,7 +2031,7 @@ Releases follow [Semantic Versioning](https://semver.org/), tagged
 in [RELEASING.md](RELEASING.md). Pin a tag rather than `main`:
 
 ```bash
-pip install "a-team @ git+https://github.com/roelle/a-team.git@v4.9.0"
+pip install "a-team @ git+https://github.com/roelle/a-team.git@v4.10.0"
 python -m ateam.supervisor --version
 ```
 

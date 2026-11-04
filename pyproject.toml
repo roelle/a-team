@@ -46,6 +46,7 @@ packages = ["ateam", "ateam.chat", "ateam.plugin"]
 "ateam.plugin" = "plugin"
 
 [tool.setuptools.package-data]
+"ateam" = ["acp_plugins/*/plugins/*.js"]
 "ateam.chat" = ["static/*"]
 "ateam.plugin" = ["*.sh", "*.json", "a-team/*.json", "a-team/rules/**/*",
                     "a-team/skills/**/*"]

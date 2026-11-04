@@ -103,7 +103,13 @@ def runtimes() -> list[dict]:
                     ([] if _codex_ready() else
                      ["the codex command, 0.166 or later (npm install -g @openai/codex)"])
                     + ([] if os.environ.get("OPENAI_API_KEY") else
-                       ["OPENAI_API_KEY in the environment you start this from"])))]
+                       ["OPENAI_API_KEY in the environment you start this from"]))),
+            row("opencode", "OpenCode, on whichever providers you use it with",
+                "ateam.runner_acp:AcpRunner",
+                "" if shutil.which("opencode") else
+                "the opencode command (npm install -g opencode-ai)",
+                "Agents run on OpenCode's own providers and sign-ins: its default "
+                "model unless the roster names one (as provider/model).")]
 
 
 def _codex_ready() -> bool:

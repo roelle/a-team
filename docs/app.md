@@ -22,7 +22,7 @@ beside the conversation.
 ## Run it
 
 ```bash
-pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.9.0"
+pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.10.0"
 a-team
 ```
 
@@ -38,6 +38,12 @@ pipx inject a-team claude-agent-sdk                    # Claude
 ```
 
 With uv, pass them when you install: `uv tool install --with claude-agent-sdk "a-team @ git+..."`.
+
+Codex and OpenCode need no Python package, only the command: `npm install -g
+@openai/codex` (with `OPENAI_API_KEY` in the environment) or `npm install -g
+opencode-ai`. OpenCode runs agents on whatever providers and sign-ins it is
+already set up with, and the first-run page offers it when the `opencode`
+command is on PATH.
 
 The browser opens only when you start it yourself on this machine; `--no-open`
 turns that off, and it stays off over SSH or as a service. `--author` sets the

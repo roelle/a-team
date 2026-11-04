@@ -63,6 +63,7 @@ def test_nothing_is_ready_on_a_bare_machine_and_each_says_what_it_needs():
     assert "GEMINI_API_KEY" in row("sdk")["needs"]
     assert "ANTHROPIC_API_KEY" in row("claude")["needs"]
     assert "codex command" in row("codex")["needs"] and "OPENAI_API_KEY" in row("codex")["needs"]
+    assert "opencode command" in row("opencode")["needs"]
 
 
 def test_a_key_makes_a_runtime_ready_and_is_never_repeated(monkeypatch):
