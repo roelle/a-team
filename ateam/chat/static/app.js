@@ -222,17 +222,23 @@ async function openTeam() {
   const chans = Object.keys(S.state.channels || {});
   const open = chans.filter((c) => !S.state.channels[c].archived);
   await openView(v && (v.type !== "channel" || chans.includes(v.id)) ? v : { type: "channel", id: open[0] || chans[0] || "general" });
+  if (linkedView() && linkedThread()) openThread(linkedThread()).catch(() => {});
   listen();
 }
 
-// The board links here as /?team=T#channel=billing or #dm=coder.
+// The board links here as /?team=T#channel=billing, #channel=billing&thread=<id>
+// (a task's discussion) or #dm=coder.
+function linkedThread() { return new URLSearchParams(location.hash.slice(1)).get("thread"); }
 function linkedView() {
   const h = new URLSearchParams(location.hash.slice(1));
   if (h.get("channel")) return { type: "channel", id: h.get("channel") };
   if (h.get("dm")) return { type: "dm", pair: ["user", h.get("dm")] };
   return null;
 }
-window.addEventListener("hashchange", () => { const v = linkedView(); if (v && S.state) openView(v); });
+window.addEventListener("hashchange", async () => {
+  const v = linkedView(); if (!v || !S.state) return;
+  await openView(v); if (linkedThread()) openThread(linkedThread());
+});
 
 async function refreshState() {
   S.state = await api(`/api/state?${q({})}`);
@@ -311,11 +317,21 @@ function needsItem(n) {
     const clear = key && !S.state.member
       ? `<button class="need-clear" data-clear="${esc(key)}" title="Clear without replying. It stays in the conversation, and ${n.from === "supervisor" ? "nothing is sent" : esc(nameOf(n.from)) + " is not told"}." aria-label="Clear">×</button>` : "";
     return row(n.kind === "blocker" ? "bad" : "", `${clear}<span class="what">${esc(nameOf(n.from))}</span> ${text(n.content)}`,
-      `${n.kind} from ${n.from}: ${n.content}`, `data-view='${esc(JSON.stringify(v))}'`);
+      `${n.kind} from ${n.from}: ${n.content}`, `data-view='${esc(JSON.stringify(v))}'${n.thread ? ` data-then-thread="${esc(n.thread)}"` : ""}`);
   }
   const what = n.kind === "stuck" ? `${esc(nameOf(n.owner))} is blocked`
     : S.state.member ? "The operator's task" : "Your task";
-  return row(n.kind === "stuck" ? "bad" : "", `<a href="${esc(boardURL(n.id))}"><span class="what">${what}</span> ${text(n.title)}</a>`, n.title, "");
+  return row(n.kind === "stuck" ? "bad" : "", `<a href="${esc(boardURL(n.id))}"><span class="what">${what}</span> ${text(n.title)}</a>${talkLink(n)}`, n.title, "");
+}
+// Where a task in Needs you is talked about: its thread, its channel, or the
+// message it came from.
+function talkLink(n) {
+  const o = n.origin || {};
+  const v = n.channel ? { type: "channel", id: n.channel } : o.channel ? { type: "channel", id: o.channel }
+    : o.id ? { type: "dm", pair: [o.from, o.to] } : null;
+  if (!v) return "";
+  const th = n.channel ? n.thread : (o.thread || o.id);
+  return ` <a href="#" class="need-talk" title="Open where it is discussed" data-view='${esc(JSON.stringify(v))}'${th ? ` data-then-thread="${esc(th)}"` : ""}>💬</a>`;
 }
 
 function renderNeeds() {
@@ -940,7 +956,10 @@ document.addEventListener("click", async (e) => {
   const clear = e.target.closest("[data-clear], [data-clear-notices]");
   if (clear) return clearWaiting(clear.dataset.clear);
   const nav = e.target.closest("[data-view]");
-  if (nav) { e.preventDefault(); return openView(JSON.parse(nav.dataset.view)); }
+  if (nav) {
+    e.preventDefault(); await openView(JSON.parse(nav.dataset.view));
+    return nav.dataset.thenThread ? openThread(nav.dataset.thenThread) : undefined;
+  }
   const pnl = e.target.closest("[data-panel]");
   if (pnl) return openDrawer(pnl.dataset.panel);
   if (e.target.closest("[data-bookmarks]")) return bookmarksModal();
@@ -1121,7 +1140,9 @@ function taskModal({ fromMessage } = {}) {
       if (pick && !parent) throw new Error(`no task called “${pick}”`);
       const t = await api("/api/task", { action: "create", title: fd.get("title"), parent: parent?.id || null,
         owner: fd.get("owner") || null, channel: fd.get("channel") || null, status: fd.get("status"),
-        note: fd.get("note"), requires_review: !!fd.get("rr") });
+        note: fd.get("note"), requires_review: !!fd.get("rr"),
+        thread: m?.channel && fd.get("channel") === m.channel ? (m.thread || m.id) : null,
+        origin: m?.id ? { id: m.id, channel: m.channel, thread: m.thread, from: m.from, to: m.to } : null });
       toast(`created ${t.id}` + (t.owner && t.status !== "icebox" ? `; ${nameOf(t.owner)} was told` : ""));
       refreshState();
     });

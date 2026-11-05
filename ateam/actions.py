@@ -353,7 +353,8 @@ def create_task(team_dir, project: str, title: str, owner: str | None = None,
                 rank: float | None = None, parent: str | None = None,
                 level: int | None = None, priority: int | None = None,
                 auto_close: bool = False, blocked_by: list[str] | None = None,
-                writes: list[str] | None = None) -> dict:
+                writes: list[str] | None = None, thread: str | None = None,
+                origin: dict | None = None) -> dict:
     _guard()
     from . import tasks
     try:
@@ -362,7 +363,8 @@ def create_task(team_dir, project: str, title: str, owner: str | None = None,
                          requires_review=requires_review, rank=rank, parent=parent or None,
                          level=level if level not in ("", None) else None,
                          priority=priority if priority not in ("", None) else None,
-                         auto_close=bool(auto_close), blocked_by=blocked_by, writes=writes)
+                         auto_close=bool(auto_close), blocked_by=blocked_by, writes=writes,
+                         thread=thread, origin=origin)
     except tasks.TaskError as e:
         raise OperatorError(str(e)) from None
     if t.get("owner") and t.get("status") not in tasks.PAUSED:

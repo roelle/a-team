@@ -11,11 +11,11 @@ It is also a lab for watching agent teams fail. Most of what is interesting here
 ## Install
 
 ```bash
-pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.10.0"
+pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.11.0"
 a-team
 ```
 
-Or with [uv](https://docs.astral.sh/uv/): `uv tool install "a-team @ git+https://github.com/roelle/a-team.git@v4.10.0"`.
+Or with [uv](https://docs.astral.sh/uv/): `uv tool install "a-team @ git+https://github.com/roelle/a-team.git@v4.11.0"`.
 
 It opens your browser, shows what this machine can run agents on, and creates a team. It takes no keys; put an API key in the environment you start it from.
 
@@ -995,13 +995,27 @@ Statuses: `icebox`, `queued`, `claimed`, `running`, `blocked`, `review`,
   needs that review where the task requires one.
 
 A task may name the `channel` it is discussed in (`create_task(...,
-channel=...)`, `update_task(..., channel="")` to unlink). The link lives on
-the task only, and a status change on a linked task is noted in the channel
-as a quiet `status` line. `rank` orders tasks within a board column. The
-operator may change any task through `actions.create_task` and
-`actions.update_task`. The owner is told: quietly, except when the change
-means stop (iced or cancelled while they were on it) or start (handed to
-them), which wakes them.
+channel=...)`, `update_task(..., channel="")` to unlink) and the `thread` in
+it, the id of the message its discussion hangs off. It also keeps its
+`origin`: the message it was made from (id, channel, thread, from, to; a
+direct message included). The link lives on the task only. A linked task with
+no thread starts one with its first notice in the channel ("Task X: created"),
+and every later status change on it is a quiet reply in that thread, not a
+new top-level line; a channel change starts over in the new channel, and
+unlinking clears the thread.
+
+An agent that creates a task while answering a channel post does not have to
+name either: the task is linked to that channel and that post's thread, from
+what the agent was woken with. A channel it names wins, and `origin` is
+recorded either way, for a DM too. An agent that sets a task to `blocked` with
+no channel gets it linked to the conversation it is in; with none, the reply
+says the task is blocked with no channel and names the channels to pick from.
+It is not refused: agents block tasks on their own long sims too.
+
+`rank` orders tasks within a board column. The operator may change any task
+through `actions.create_task` and `actions.update_task`. The owner is told:
+quietly, except when the change means stop (iced or cancelled while they were
+on it) or start (handed to them), which wakes them.
 
 An agent running a sim that takes hours does not need to poll it, and it does
 not need to schedule an external cron job to poke itself later either — that
@@ -2031,7 +2045,7 @@ Releases follow [Semantic Versioning](https://semver.org/), tagged
 in [RELEASING.md](RELEASING.md). Pin a tag rather than `main`:
 
 ```bash
-pip install "a-team @ git+https://github.com/roelle/a-team.git@v4.10.0"
+pip install "a-team @ git+https://github.com/roelle/a-team.git@v4.11.0"
 python -m ateam.supervisor --version
 ```
 

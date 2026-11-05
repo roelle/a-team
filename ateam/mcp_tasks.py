@@ -31,7 +31,11 @@ _STATUS = {"type": "string", "enum": sorted(tasks_lib.STATUSES),
                           "a task back out). in_progress, waiting, completed and "
                           "the like are accepted and mapped"}
 _CHANNEL = string("The channel this task is discussed in, e.g. 'billing'; its "
-                  "status changes are noted there. '' unlinks it")
+                  "status changes are noted there. Default: the channel of the "
+                  "message you are answering. '' unlinks it")
+_THREAD = string("The id of the message its discussion hangs off, in that channel. "
+                 "Default: the thread of the message you are answering there, or "
+                 "else the task's first notice starts one")
 
 _BLOCKED_BY = string("Comma-separated task ids that must be done first. It cannot "
                      "be started until then, and its owner is told when it is ready")
@@ -76,7 +80,8 @@ TOOLS = [
                                      "approved review naming it"),
           "blocked_by": _BLOCKED_BY,
           "writes": _WRITES,
-          "channel": _CHANNEL},
+          "channel": _CHANNEL,
+          "thread": _THREAD},
          ["title"]),
     tool("claim_task",
          "Take ownership of a task nobody owns yet. Refuses if a teammate "
@@ -112,7 +117,8 @@ TOOLS = [
                                "replacing any set before; 'none' to clear"),
           "writes": string("Comma-separated paths it expects to change, replacing "
                            "any set before; 'none' to clear"),
-          "channel": _CHANNEL},
+          "channel": _CHANNEL,
+          "thread": _THREAD},
          ["task_id"]),
     tool("complete_task",
          "Close a task you own. The note is required and replaces the old one: "
@@ -202,6 +208,44 @@ def _in_flight(team_dir: Path | None) -> dict[str, tuple[str, str]]:
     return out
 
 
+def _answering(team_dir: Path, agent: str) -> list[dict]:
+    """The messages `agent`'s running turn was woken with, newest last, from
+    the supervisor's in-flight ledger. Empty when no supervisor is running."""
+    if not heartbeat.running(team_dir):
+        return []
+    try:
+        doc = json.loads((Path(team_dir) / "inflight.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    turn = doc.get(agent) if isinstance(doc, dict) else None
+    msgs = (turn or {}).get("msgs") if isinstance(turn, dict) else None
+    return [m for m in msgs or [] if isinstance(m, dict) and m.get("id")
+            and m.get("from") not in (agent, "supervisor")]
+
+
+def _discussion(team_dir: Path, agent: str, a: dict) -> tuple[str | None, str | None, dict | None]:
+    """(channel, thread, origin) for a task made or blocked now.
+
+    An agent that files a task while answering a channel post links it to
+    that post's thread without having to say so: otherwise the task turned
+    up on the board with no way back to the talk that made it. A channel
+    the agent names wins; a thread is taken from the newest message it is
+    answering in that channel. `origin` is that message, or the newest one
+    it is answering at all (a direct message included)."""
+    msgs = _answering(team_dir, agent)
+    named = _text(a, "channel").lstrip("#").lower() if "channel" in a else None
+    chan = named
+    if named is None:
+        from . import channels as channels_lib
+        live = channels_lib.active(team_dir)
+        chan = next((m["channel"] for m in reversed(msgs) if m.get("channel") in live), None)
+    here = next((m for m in reversed(msgs) if chan and m.get("channel") == chan), None)
+    thread = _text(a, "thread") or (here and (here.get("thread") or here["id"])) or None
+    src = here or (msgs[-1] if msgs else None)
+    origin = {k: src.get(k) for k in ("id", "channel", "thread", "from", "to")} if src else None
+    return chan or None, thread, origin
+
+
 def _blocks(rows: list[dict], team_dir: Path | None = None, indent: dict | None = None) -> list[str]:
     flying = _in_flight(team_dir) if rows else {}
     state = tasks_lib.snapshot(team_dir) if rows and team_dir is not None else {}
@@ -234,7 +278,8 @@ def _blocks(rows: list[dict], team_dir: Path | None = None, indent: dict | None 
         if waiting:
             extra.append(f"waits for {', '.join(waiting)}")
         if t.get("channel"):
-            extra.append(f"discussed in #{t['channel']}")
+            extra.append(f"discussed in #{t['channel']}"
+                         + (f", thread {t['thread']}" if t.get("thread") else ""))
         tail = f" ({'; '.join(extra)})" if extra else ""
         pad = "  " * (indent or {}).get(t["id"], 0)
         label = f" ({t.get('project')})" if t.get("project") else ""
@@ -331,6 +376,7 @@ def _create_task(agent: str, team_dir: Path, a: dict) -> str:
         refusal = policy.task_project_refusal(agent, roster, effective, "this task")
         if refusal:
             return refusal
+    chan, thread, origin = _discussion(team_dir, agent, a)
     try:
         until = tasks_lib.parse_until(_text(a, "until")) if _text(a, "until") else None
         t = tasks_lib.create(team_dir, project, title, owner=owner, created_by=agent,
@@ -340,7 +386,7 @@ def _create_task(agent: str, team_dir: Path, a: dict) -> str:
                              requires_review=flag(a, "requires_review"),
                              until=until, poll_every=_text(a, "poll_every") or None,
                              deadline=_text(a, "deadline") or None,
-                             channel=_text(a, "channel") or None,
+                             channel=chan, thread=thread, origin=origin,
                              parent=parent or None,
                              level=_text(a, "level") or None,
                              priority=_text(a, "priority") or None,
@@ -394,8 +440,17 @@ def _update_task(agent: str, team_dir: Path, a: dict) -> str:
         until = tasks_lib.parse_until(_text(a, "until")) if _text(a, "until") else None
     except tasks_lib.TaskError as e:
         return f"[error: {e}]"
+    channel = a.get("channel") if isinstance(a.get("channel"), str) else None
+    thread = _text(a, "thread") or None
+    blocking = tasks_lib.normalize_status(_text(a, "status")) == "blocked"
+    if blocking and channel is None:
+        # Blocked is where the operator looks for what waits on them, and
+        # "blocked" with no way back to the conversation is what they found.
+        current = tasks_lib.get(team_dir, task_id) or {}
+        if not current.get("channel"):
+            channel, thread, _ = _discussion(team_dir, agent, a)
     t = tasks_lib.update(team_dir, task_id, agent,
-                         channel=a.get("channel") if isinstance(a.get("channel"), str) else None,
+                         channel=channel, thread=thread,
                          status=_text(a, "status") or None,
                          owner=owner,
                          check_after=None if clear or not raw else raw,
@@ -415,6 +470,13 @@ def _update_task(agent: str, team_dir: Path, a: dict) -> str:
     if t is None:
         return f"[error: no task with id '{task_id}']"
     out = f"[updated]\n{_render([t], team_dir)}"
+    if blocking and not t.get("channel"):
+        from . import channels as channels_lib
+        live = sorted(channels_lib.active(team_dir))
+        if live:
+            out += ("\n[blocked with no channel: whoever can unblock it finds no "
+                    "discussion to open. If it waits on a person, say where with "
+                    f"channel= (one of {', '.join('#' + c for c in live)})]")
     return _with_delivery(team_dir, t, out) if (raw and not clear) or until else out
 
 

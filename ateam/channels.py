@@ -330,7 +330,7 @@ def post(transport, team_dir, channel: str, content: str, kind: str = "work",
 
 
 def notice(team_dir, channel: str, who: str, content: str,
-           task_id: str | None = None) -> str | None:
+           task_id: str | None = None, thread: str | None = None) -> str | None:
     """A quiet line in a channel about something done elsewhere -- a task
     linked to it changed. Logged as `who`, copied to members as "status",
     so it wakes nobody; skipped for a closed channel. Never raises: a note
@@ -345,7 +345,7 @@ def notice(team_dir, channel: str, who: str, content: str,
              else FileTransport(who, {"team_dir": str(team_dir)}))
         try:
             return t.post(channel, [m for m in c.get("members", []) if m != who],
-                          content, kind="status", task_id=task_id)
+                          content, kind="status", task_id=task_id, thread=thread)
         finally:
             if hasattr(t, "close"):
                 t.close()

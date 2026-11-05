@@ -7,6 +7,29 @@ the README for what counts as the public surface.
 
 ## [Unreleased]
 
+## [4.11.0] - 2026-11-05
+
+### Added
+- **A task links back to the discussion it came from.** A task has `thread`
+  (the id of the message in its `channel` that its discussion hangs off) and
+  `origin` (the message it was made from: id, channel, thread, from, to; a
+  direct message included). An agent that calls `create_task` while answering
+  a channel post gets the task linked to that channel and that post's thread
+  without naming either; a channel it names wins, and `origin` is recorded
+  either way. A linked task with no thread starts one with its first notice in
+  the channel ("Task X: created"), and every later notice about it is a reply
+  in that thread, not a new top-level line; a channel change starts over in
+  the new channel, and unlinking clears the thread. A task set to `blocked`
+  with no channel is linked to the conversation the agent is in; with none,
+  the tool reply says it was blocked with no channel and names the channels
+  to pick from. `create_task` and `update_task` take `thread`. In the app, a
+  card's `#channel` shows 🧵 and opens the thread, its detail says where it
+  came from ("from #channel", or "from A → B" for a DM) and offers "Open its
+  thread in #channel", "Waiting on you" rows have a 💬 that opens the
+  discussion, and a task made from a message in chat is linked to that
+  message's thread. `/?team=T#channel=C&thread=ID` opens a thread. The
+  board's timeline shows when the thread started.
+
 ## [4.10.0] - 2026-11-04
 
 ### Added
@@ -1015,7 +1038,8 @@ MCP memory server.
 ## [1.0] - 2026-09-08
 Milestone tag (pre-semver).
 
-[Unreleased]: https://github.com/roelle/a-team/compare/v4.10.0...HEAD
+[Unreleased]: https://github.com/roelle/a-team/compare/v4.11.0...HEAD
+[4.11.0]: https://github.com/roelle/a-team/compare/v4.10.0...v4.11.0
 [4.10.0]: https://github.com/roelle/a-team/compare/v4.9.0...v4.10.0
 [4.9.0]: https://github.com/roelle/a-team/compare/v4.8.1...v4.9.0
 [4.8.1]: https://github.com/roelle/a-team/compare/v4.8.0...v4.8.1

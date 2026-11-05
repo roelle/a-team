@@ -4,7 +4,7 @@
 # `python -m ateam.supervisor --version` prints it. See RELEASING.md.
 import os
 
-__version__ = "4.10.0"
+__version__ = "4.11.0"
 
 
 def _adopt_old_names() -> None:

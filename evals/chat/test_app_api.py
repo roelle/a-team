@@ -370,7 +370,9 @@ def test_a_task_made_here_is_linked_moved_and_explained(server):
     told = [json.loads(x) for x in (td / "inbox" / "coder.jsonl").read_text().splitlines()]
     assert any("moved your task" in m["content"] for m in told)
     _, d = call(port, "GET", f"/api/task?team=demo&id={t['id']}", token=app.token)
-    assert [e["kind"] for e in d["history"]] == ["created", "updated"]
+    assert [e["kind"] for e in d["history"]] == ["created", "updated", "updated"]
+    assert set(d["history"][1]) - {"id", "kind", "ts", "t", "by"} == {"thread"}, \
+        "its first notice in #billing starts its thread"
     assert any(m.get("channel") == "billing" for m in d["messages"]), "the channel's notice is tagged with the task"
     _, st = call(port, "GET", "/api/state?team=demo", token=app.token)
     assert next(x for x in st["tasks"] if x["id"] == t["id"])["channel"] == "billing"

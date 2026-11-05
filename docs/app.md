@@ -22,7 +22,7 @@ beside the conversation.
 ## Run it
 
 ```bash
-pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.10.0"
+pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.11.0"
 a-team
 ```
 
@@ -255,11 +255,18 @@ untick that and pick some.
 - **Chat and board link to each other.**
   - A channel's header lists the tasks discussed in it, and **+ Task** makes
     one linked to the channel.
-  - Any message can be *made a task*.
-  - A card's `#channel` opens that channel, and *Message* opens a DM with
-    its owner.
-  - Links are plain URLs (`/board?team=T#task=ID`, `/?team=T#channel=C`), so
-    each page keeps its own tab.
+  - Any message can be *made a task*; the task is linked to that message's
+    thread and remembers the message as its origin.
+  - A card's `#channel` opens that channel, or, with 🧵, the task's thread
+    in it. The card's detail has *Open its thread in #channel* and says
+    where the task came from next to "created by": *from #channel*, or
+    *from A → B* for a DM. *Message* opens a DM with its owner.
+  - In chat, a 💬 on a *Waiting on you* row (a blocked task, or one of yours)
+    opens its discussion; a question or blocker message row opens its thread
+    too.
+  - Links are plain URLs (`/board?team=T#task=ID`, `/?team=T#channel=C`,
+    `/?team=T#channel=C&thread=ID` for a thread), so each page keeps its own
+    tab.
 - **Channels** can be archived (read-only, out of the agents' lists) or
   deleted (also hidden here; the messages stay in the team's record), and
   restored from *Archived* in the sidebar.

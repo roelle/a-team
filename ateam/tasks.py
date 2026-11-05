@@ -53,6 +53,13 @@ the link is stored on the task only, and a channel's tasks are the ones that
 name it -- and carries a `rank` for its order within a column. A change of
 status on a linked task is noted in its channel, quietly.
 
+A linked task also has a `thread`: the message its discussion hangs off.
+An agent's task is linked to the thread of the message it was answering
+(see ateam.mcp_tasks); otherwise the first notice about the task starts
+one, and every later notice is a reply in it. `origin` is the message the
+task came from, a direct message included, so "where did this come from?"
+has an answer on the task.
+
 The operator ("user") may change any task, owned or not: that is what moving
 a card on a board is.
 
@@ -108,7 +115,7 @@ _MUTABLE_FIELDS = ("project", "title", "owner", "status", "note", "check_after",
                    "collaborators", "requires_review", "evidence", "until",
                    "poll_every", "deadline", "channel", "rank", "links",
                    "parent", "level", "priority", "auto_close", "archived", "archived_by",
-                   "blocked_by", "writes")
+                   "blocked_by", "writes", "thread")
 
 # What an agent may call a status and what it is here. The allowed set was
 # discoverable only by trial -- update_task(status="in_progress") was refused
@@ -309,7 +316,7 @@ def snapshot(team_dir: Path | str) -> dict[str, dict]:
                            "requires_review", "evidence", "until", "poll_every",
                            "deadline", "channel", "rank", "links",
                            "parent", "level", "priority", "auto_close", "archived",
-                           "blocked_by", "writes")}
+                           "blocked_by", "writes", "thread", "origin")}
             state[tid]["created_at"] = rec.get("ts")
             state[tid]["updated_at"] = rec.get("ts")
         elif tid in state:
@@ -336,9 +343,12 @@ def create(team_dir: Path | str, project: str, title: str,
            status: str | None = None, rank: float | None = None,
            parent: str | None = None, level: int | None = None,
            priority: int | None = None, auto_close: bool = False,
-           blocked_by: list[str] | None = None, writes: list[str] | None = None) -> dict:
+           blocked_by: list[str] | None = None, writes: list[str] | None = None,
+           thread: str | None = None, origin: dict | None = None) -> dict:
     """Append a new task and return its current state. `status` may start
-    it in the icebox; anything else starts queued.
+    it in the icebox; anything else starts queued. `thread` is the message
+    in `channel` its discussion hangs off; `origin` the message it came
+    from (see _origin).
 
     `parent` puts it under another task (see "the tree" below); a task with
     a parent is in the parent's project, whether or not it names one."""
@@ -381,6 +391,8 @@ def create(team_dir: Path | str, project: str, title: str,
         "auto_close": bool(auto_close),
         "blocked_by": _clean(blocked_by),
         "writes": _paths(writes),
+        "thread": (str(thread).strip() or None) if channel and thread else None,
+        "origin": _origin(origin),
     }
     if until and not entry["check_after"]:
         # A condition is checked from the next sweep on, not left to wait
@@ -392,6 +404,7 @@ def create(team_dir: Path | str, project: str, title: str,
     t = get(team_dir, entry["id"])
     if channel:
         _notice(team_dir, t, created_by or OPERATOR, "created")
+        t = get(team_dir, entry["id"])
     return t
 
 
@@ -431,7 +444,7 @@ def update(team_dir: Path | str, task_id: str, by: str, *,
            parent: str | None = None, level: int | str | None = None,
            priority: int | str | None = None, auto_close: bool | None = None,
            archived: bool | None = None, blocked_by: list[str] | None = None,
-           writes: list[str] | None = None) -> dict | None:
+           writes: list[str] | None = None, thread: str | None = None) -> dict | None:
     """Append a mutation by `by`. None if task_id is unknown.
 
     Only the owner -- or the operator -- may change an owned task, and
@@ -486,6 +499,7 @@ def update(team_dir: Path | str, task_id: str, by: str, *,
             _refuse_if_waiting(state, current if waiting_on is None
                                else {**current, "blocked_by": waiting_on})
         final_status = status or current.get("status")
+        final_channel = channel if channel is not None else current.get("channel")
         if when and final_status in TERMINAL:
             raise TaskError(f"task {task_id} is {final_status}; a reminder on "
                             f"it would never fire")
@@ -512,8 +526,11 @@ def update(team_dir: Path | str, task_id: str, by: str, *,
             entry["poll_every"] = every
         if due_by:
             entry["deadline"] = due_by
-        if channel is not None:
+        if channel is not None and channel != (current.get("channel") or ""):
             entry["channel"] = channel or None
+            entry["thread"] = ((thread or "").strip() or None) if channel else None
+        elif thread is not None and final_channel:
+            entry["thread"] = thread.strip() or None
         if rank is not None:
             entry["rank"] = _rank(rank)
         if title is not None:
@@ -693,14 +710,31 @@ def _rank(rank) -> float | None:
 
 
 def _notice(team_dir, t: dict, by: str, what: str) -> None:
+    """A line about `t` in its channel, as a reply in its thread. A task
+    with no thread yet gets this line as one, so its discussion has a
+    place to hang off."""
     from . import channels as channels_lib
     from . import roster as roster_lib
     who = by
     if by == OPERATOR:
         who = roster_lib.operator(channels_lib._roster_doc(team_dir)).get("name") or "the operator"
-    channels_lib.notice(team_dir, t["channel"], by,
-                        f"Task {t['id']} \u201c{t.get('title')}\u201d: {what} "
-                        f"({who}; owner {t.get('owner') or 'nobody'})", task_id=t["id"])
+    posted = channels_lib.notice(team_dir, t["channel"], by,
+                                 f"Task {t['id']} \u201c{t.get('title')}\u201d: {what} "
+                                 f"({who}; owner {t.get('owner') or 'nobody'})",
+                                 task_id=t["id"], thread=t.get("thread"))
+    if posted and not t.get("thread"):
+        with filelock.locked(path(team_dir)):
+            _append(team_dir, {"id": t["id"], "kind": _KIND_UPDATED, "ts": _now(),
+                               "by": by, "thread": posted})
+
+
+def _origin(origin) -> dict | None:
+    """{id, channel?, thread?, from?, to?}: the message a task came from,
+    kept as given, ids and names only."""
+    if not isinstance(origin, dict) or not origin.get("id"):
+        return None
+    return {k: str(origin[k])[:200] for k in ("id", "channel", "thread", "from", "to")
+            if origin.get(k)}
 
 
 def complete(team_dir: Path | str, task_id: str, by: str, note: str,

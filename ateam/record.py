@@ -395,7 +395,9 @@ class Record:
                       "from", "content", "channel" or "dm", "task_id", and
                       "key", which clears it: its id, or for a message
                       written before messages had ids, one made from it
-            task      an open task the operator owns: "id", "title", "status"
+            task      an open task the operator owns: "id", "title", "status",
+                      and where it is discussed when it says: "channel",
+                      "thread", "origin" (see ateam.tasks)
             stuck     a task an agent marked blocked: the same, plus "owner"
 
         Only those kinds of message count, not ordinary mail: whether a
@@ -444,7 +446,8 @@ class Record:
             if status in tasks_lib.TERMINAL or t.get("archived"):
                 continue
             row = {"id": t["id"], "title": t.get("title"), "status": status,
-                   "ts": t.get("updated_at") or ""}
+                   "ts": t.get("updated_at") or "", "channel": t.get("channel"),
+                   "thread": t.get("thread"), "origin": t.get("origin")}
             if t.get("owner") in names and status not in tasks_lib.PAUSED:
                 rows.append({"kind": "task", **row})
             elif status == "blocked":

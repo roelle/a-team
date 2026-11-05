@@ -195,7 +195,7 @@ function cardHTML(t) {
     ${prog}
     <div class="cm"><span class="who">${esc(nameOf(t.owner))}</span>
       ${$("#lanes").value !== "project" ? `<span class="tag">${esc(t.project || "")}</span>` : ""}
-      ${t.channel ? `<a class="chan" href="${chatURL("channel=" + encodeURIComponent(t.channel))}" title="Open the channel">#${esc(t.channel)}</a>` : ""}
+      ${t.channel ? `<a class="chan" href="${discussionURL(t)}" title="${t.thread ? "Open its thread" : "Open the channel"}">#${esc(t.channel)}${t.thread ? " 🧵" : ""}</a>` : ""}
       ${t.deadline ? `<span class="due ${over ? "over" : ""}" title="deadline ${esc(t.deadline)}">due ${esc(fmtDate(t.deadline))}</span>` : ""}
       ${t.check_after && !TERMINAL.has(t.status) ? `<span title="reminder ${esc(t.check_after)}">⏰</span>` : ""}
       ${t.requires_review ? `<span class="tag ${t.reviewed ? "ok" : "rev"}">${t.reviewed ? "reviewed" : "needs review"}</span>` : ""}
@@ -339,13 +339,13 @@ async function openDetail(id) {
     <div class="links">${(t.links || []).map(linkHTML).join("") || '<span class="hint">none</span>'}</div>
     <textarea name="links" rows="2" placeholder="PR | https://…&#10;Design | ~/docs/design.md">${esc((t.links || []).map((l) => l.title && l.title !== l.url ? `${l.title} | ${l.url}` : l.url).join("\n"))}</textarea>
     <div class="actions"><button class="btn">Save</button>
-      ${t.channel ? `<a class="btn ghost" href="${chatURL("channel=" + encodeURIComponent(t.channel))}">Open #${esc(t.channel)}</a>` : ""}
+      ${t.channel ? `<a class="btn ghost" href="${discussionURL(t)}">Open ${t.thread ? "its thread in " : ""}#${esc(t.channel)}</a>` : ""}
       ${t.owner ? `<a class="btn ghost" href="${chatURL("dm=" + encodeURIComponent(t.owner))}">Message ${esc(nameOf(t.owner))}</a>` : ""}
       ${t.requires_review && !t.reviewed ? `<button type="button" class="btn ghost" id="waive">Waive review</button>` : ""}
       <button type="button" class="btn ghost" id="add-child">+ Task under it</button>
       <button type="button" class="btn ghost" id="archive">${t.archived ? "Unarchive" : "Archive"}</button></div>
     ${usageHTML(t.usage)}
-    <div class="hint" style="margin-top:6px">created by ${esc(nameOf(t.created_by))} ${esc(fmtTime(t.t_created, t.created_at, "short"))}${t.evidence ? " · evidence: " + esc(t.evidence) : ""}${t.requires_review ? (t.reviewed ? " · reviewed" : " · needs an approved review to close") : ""}</div>
+    <div class="hint" style="margin-top:6px">created by ${esc(nameOf(t.created_by))} ${esc(fmtTime(t.t_created, t.created_at, "short"))}${originHTML(t.origin)}${t.evidence ? " · evidence: " + esc(t.evidence) : ""}${t.requires_review ? (t.reviewed ? " · reviewed" : " · needs an approved review to close") : ""}</div>
   </form>
   ${childrenHTML(t)}
   <h4>Timeline</h4><ul class="tl">${d.history.map(historyLine).join("")}</ul>
@@ -381,11 +381,25 @@ function historyLine(e) {
   const keys = Object.keys(e).filter((k) => !skip.has(k));
   const what = e.kind === "created" ? `created${e.owner ? " for " + esc(nameOf(e.owner)) : ""}` :
     keys.length === 1 && keys[0] === "rank" ? "reordered on the board" :
+    keys.length === 1 && keys[0] === "thread" ? "its discussion thread started" :
     e.kind === "swept" ? (e.check_after ? `reminder re-armed for ${esc(e.check_after)}` : "reminder delivered") :
     Object.entries(e).filter(([k, v]) => !skip.has(k) && v !== undefined)
       .map(([k, v]) => `${esc(k)} → ${esc(k === "owner" ? nameOf(v) : typeof v === "object" ? JSON.stringify(v) : v)}`).join(", ");
   const by = e.by || e.created_by;
   return `<li><span class="when">${esc(fmtTime(e.t, e.ts, "short"))}</span>${by ? esc(nameOf(by)) + ": " : ""}${what}</li>`;
+}
+// Where a task is talked about: its thread when it has one, else its channel.
+function discussionURL(t) {
+  return chatURL("channel=" + encodeURIComponent(t.channel) + (t.thread ? "&thread=" + encodeURIComponent(t.thread) : ""));
+}
+// The message a task came from, a direct message included.
+function originHTML(o) {
+  if (!o || !o.id) return "";
+  const th = encodeURIComponent(o.thread || o.id);
+  const url = o.channel ? chatURL(`channel=${encodeURIComponent(o.channel)}&thread=${th}`)
+    : chatURL(`dm=${encodeURIComponent(o.from === "user" ? o.to : o.from)}&thread=${th}`);
+  const label = o.channel ? "#" + o.channel : `${nameOf(o.from)} → ${nameOf(o.to)}`;
+  return ` · from <a href="${url}">${esc(label)}</a>`;
 }
 function messageLine(m) {
   const where = m.channel ? chatURL("channel=" + encodeURIComponent(m.channel)) :
