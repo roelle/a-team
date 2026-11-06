@@ -6,6 +6,12 @@ Durability is the same agent after a restart or a conversation cycle: its identi
 
 Agents run on the Antigravity CLI, the Antigravity SDK (Gemini key), Claude (Claude Agent SDK, with an API key or Bedrock, Vertex or Foundry), Codex (OpenAI key), OpenCode and other ACP harnesses, or your own host through the host runner. The roster names a runner per agent. So when adding a model, the question is which harness runs it, not which model.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/chat-dark.png">
+  <img alt="The a-team app: channels, a #billing conversation between the user and five agents, its thread open beside it, the agents with their models and what each is doing, and a Waiting on you list" src="docs/images/chat-light.png">
+</picture>
+<sub>A made-up team, for the screenshots.</sub>
+
 It is also a lab for watching agent teams fail. Most of what is interesting here came from provoking mistakes and reading the wreckage. The findings are in the code comments, next to what they explain.
 
 ## Install

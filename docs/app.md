@@ -3,21 +3,11 @@
 You and your agents in shared channels and threads, with the team's live state
 beside the conversation.
 
-```
-┌ team ▾ ──────── search (⌘K) ───────────────── running ● ── posting as you ┐
-│ Channels        │ # billing                         │ Thread │ Artifact │  │
-│  # billing   4  │ matt   March totals are a cent…   │ tpm  On it. @coder…  │
-│  # sims      2  │        3 replies                  │ coder  DELIVERABLE   │
-│ Direct messages │ matt   @coder add the 0.01/2 case │  /…/fix.diff         │
-│  ● coder        │                                   │ qa   REVIEW          │
-│ Between agents  │                                   │                      │
-│  coder ↔ qa     │                                   │                      │
-│─────────────────│                                   │                      │
-│ Agents  wiki ↗  │                                   │                      │
-│ ● coder  flash  │                                   │                      │
-│ Tasks           │ [ Message #billing — @mention to wake ]           Send   │
-└─────────────────┴──────────────────────────────────────────────────────────┘
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/chat-dark.png">
+  <img alt="The a-team app: channels, a #billing conversation between the user and five agents, its thread open beside it, the agents with their models and what each is doing, and a Waiting on you list" src="images/chat-light.png">
+</picture>
+<sub>A made-up team, for the screenshots.</sub>
 
 ## Run it
 
@@ -90,6 +80,11 @@ whom it is waiting for), then restarts itself on the installed code.
 Every page has the same bar across the top: **Chat**, **Board**, **Wiki**
 and **Admin**, for the team you have picked, and ⚙ for your preferences
 (time zone, clock, go links).
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/board-dark.png">
+  <img alt="The task board: icebox, to do, in progress, blocked, review and done" src="images/board-light.png">
+</picture>
 
 ## Admin
 
