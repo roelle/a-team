@@ -7,6 +7,40 @@ the README for what counts as the public surface.
 
 ## [Unreleased]
 
+## [4.12.0] - 2026-11-06
+
+### Added
+- **The page says when the server is behind the code on disk.** The page is
+  read from disk on every load, but the server runs the Python it started
+  with. An upgrade under a running server (a pip or pipx upgrade, or a pull,
+  without restarting a-team) gives a new page talking to an old server: its
+  delete button, for one, called an endpoint the server did not have, and the
+  page showed a red "unknown endpoint". The server now reports the version
+  installed on disk (`installed_version`, read fresh) next to the one it runs
+  (`app_version`). When they differ the page shows a banner, "a-team X is
+  installed, but this server is still running Y", with a **Restart a-team**
+  button. It restarts a-team in place on the installed code, same port and
+  token; the page reloads when it is back, and people with their own link
+  are told to ask the operator. If the server answers "unknown endpoint",
+  the page says a-team was upgraded but this server still runs the old code,
+  restart it to finish the update, and shows the same banner. New action:
+  `POST /api/update {"action": "restart"}`. A server older than 4.12.0 has no
+  restart action, so the button cannot restart it: restart a-team by hand or
+  use Admin's Update & restart.
+
+### Fixed
+- **The red @ on a channel, not only on a DM.** It came only from the
+  `mentions` an agent recorded on its post. Agents see your name on what you
+  post (the app posts as `--author`, by default `$USER`) and write @matt;
+  that was recorded as a mention only if the roster's `operator` listed that
+  handle, and agents on older code never recorded @user. So a direct message
+  got the red @ and a channel mostly did not. The app now reads the @ itself
+  when it reads the post, in the server's per-view mentions of you and in
+  the page: @user, the roster operator's name and handles, and the name you
+  post as, in any case. An email address (matt@example.com) is not a
+  mention. The red @ shows on the channel live and after a reload. The
+  server's state carries `my_handles`.
+
 ## [4.11.0] - 2026-11-05
 
 ### Added
@@ -1038,7 +1072,8 @@ MCP memory server.
 ## [1.0] - 2026-09-08
 Milestone tag (pre-semver).
 
-[Unreleased]: https://github.com/roelle/a-team/compare/v4.11.0...HEAD
+[Unreleased]: https://github.com/roelle/a-team/compare/v4.12.0...HEAD
+[4.12.0]: https://github.com/roelle/a-team/compare/v4.11.0...v4.12.0
 [4.11.0]: https://github.com/roelle/a-team/compare/v4.10.0...v4.11.0
 [4.10.0]: https://github.com/roelle/a-team/compare/v4.9.0...v4.10.0
 [4.9.0]: https://github.com/roelle/a-team/compare/v4.8.1...v4.9.0

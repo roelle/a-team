@@ -271,6 +271,11 @@ def of(team_dir, agent: str) -> list[str]:
     return sorted(n for n, c in active(team_dir).items() if agent in c.get("members", []))
 
 
+def handles_in(content: str) -> list[str]:
+    """Each @handle in `content`, as written."""
+    return _MENTION.findall(content or "")
+
+
 def mentioned(content: str, channel_members: list[str], roster: list[str],
               aliases: dict[str, str] | None = None) -> set[str]:
     """Who a post mentions: named agents on the roster, @here, @all, and
@@ -279,7 +284,7 @@ def mentioned(content: str, channel_members: list[str], roster: list[str],
     or be an agent's alias. "user" is never woken; the caller sees to that."""
     out: set[str] = set()
     known = set(roster)
-    for name in _MENTION.findall(content or ""):
+    for name in handles_in(content):
         low = name.lower()
         if low == "here":
             out |= set(channel_members)

@@ -166,6 +166,11 @@ def normalize(doc: dict, source: str = "roster") -> dict:
 # @handle in a channel is recorded as a mention of the user.
 
 _HANDLE = re.compile(r"^[A-Za-z0-9][\w.-]{0,39}$")
+
+
+def is_handle(text) -> bool:
+    """Whether `text` could follow an @: letters, digits, - _ and ."""
+    return isinstance(text, str) and bool(_HANDLE.match(text))
 _WORDS = {"user", "here", "all", "everyone", "channel"}
 
 

@@ -12,7 +12,7 @@ beside the conversation.
 ## Run it
 
 ```bash
-pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.11.0"
+pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.12.0"
 a-team
 ```
 
@@ -119,6 +119,16 @@ The **Admin** page has four tabs:
   stays signed in. The same from a terminal: `python -m ateam.chat.update`
   (it does not restart the app), or `python -m ateam.update` for a-team
   alone.
+- **A server behind its install.** The page is read from disk on every
+  load; the server runs the code it started with. If a-team was upgraded
+  (pip, pipx or a pull) without restarting it, every page shows a banner,
+  "a-team X is installed, but this server is still running Y", with
+  **Restart a-team**: it restarts a-team in place on the installed code,
+  same port and token, and the page reloads when it is back. Other people
+  see the banner too and are told to ask the operator. A page that gets
+  "unknown endpoint" from the server says the same and shows the banner. A
+  server older than 4.12.0 cannot be restarted from the banner: restart it
+  by hand, or use Update & restart above.
 
 New channels include **every agent, including ones added later**, unless you
 untick that and pick some.
@@ -266,9 +276,10 @@ untick that and pick some.
   deleted (also hidden here; the messages stay in the team's record), and
   restored from *Archived* in the sidebar.
 - **Names.** Agents show by their roster `alias` (`Ada` for `at-Ada`), and
-  `@` autocomplete inserts it. Set the roster's `operator` and agents know you
-  as `@Matt`. Their mentions of you are highlighted and flagged with an `@`
-  on the channel.
+  `@` autocomplete inserts it. An agent's mention of you (`@user`, the name
+  you post as, or the roster `operator`'s name and handles, in any case) is
+  highlighted and flagged with a red `@` on the channel. Set the roster's
+  `operator` and agents know you as `@Matt`.
 - **Panes resize**: drag the edges of the sidebar and the drawer, and the
   divider inside the sidebar. A double-click resets one.
 - **Search** (⌘K / Ctrl+K) covers messages, tasks and the team's norms.

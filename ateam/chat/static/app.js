@@ -23,8 +23,40 @@ async function api(path, body) {
                        body: JSON.stringify({ team: S.team, ...body }) } : {};
   const r = await fetch(path, opt);
   const j = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+  // This page is read from disk on each load; the server runs the code it
+  // started with. After an upgrade under a running server, the page calls
+  // what only the new code answers.
+  if (r.status === 404 && j.error === "unknown endpoint") {
+    staleServer();
+    throw new Error("a-team was upgraded but this server still runs the old code: restart it to finish the update");
+  }
   if (!r.ok || j.error) throw new Error(j.error || `HTTP ${r.status}`);
   return j;
+}
+
+// The installed a-team is newer than the running server. Restart re-execs
+// it on the installed code, same port and token; the page reloads when it
+// is back.
+function staleServer(installed) {
+  if (S.toldStale) return;
+  S.toldStale = true;
+  const b = document.createElement("div");
+  b.className = "update-banner";
+  const running = S.state?.app_version;
+  b.innerHTML = `a-team ${installed ? esc(installed) + " is installed" : "was upgraded"}, but this server is still running `
+    + `${running ? esc(running) : "the old code"}. ${S.state?.member ? "Ask the operator to restart it." : '<button class="btn small">Restart a-team</button>'}`;
+  b.querySelector("button")?.addEventListener("click", async (ev) => {
+    ev.target.disabled = true; ev.target.textContent = "restarting…";
+    try { await api("/api/update", { action: "restart" }); }
+    catch { /* an old server has no restart: Admin's Update & restart, or restart it by hand */ }
+    for (let i = 0; i < 40; i++) {
+      await new Promise((r) => setTimeout(r, 750));
+      try { const st = await (await fetch(`/api/state?${q({})}`)).json(); if (st.app_version && st.app_version !== running) return location.reload(); }
+      catch { /* down while it restarts */ }
+    }
+    ev.target.textContent = "still the old code: restart a-team by hand";
+  });
+  document.body.appendChild(b);
 }
 const q = (o) => new URLSearchParams({ team: S.team, ...o }).toString();
 
@@ -47,9 +79,12 @@ function nameOf(n) {
   if (n === "user") return S.state?.operator?.name || S.state?.author || "you";
   return agentOf(n)?.alias || n;
 }
+// What an @ that means you can say: @user, the roster operator's handles,
+// and the name you post as (the server's list; the roster's if it has none).
 function myHandles() {
-  return new Set(["user", ...(S.state?.operator?.handles || [])].map((h) => h.toLowerCase()));
+  return new Set((S.state?.my_handles || ["user", ...(S.state?.operator?.handles || [])]).map((h) => h.toLowerCase()));
 }
+const HANDLE_RE = /(?<![\w@])@([A-Za-z0-9](?:[\w-]|\.(?=\w))*)/g;
 function boardURL(taskId) {
   return `/board?team=${encodeURIComponent(S.team)}${taskId ? "#task=" + encodeURIComponent(taskId) : ""}`;
 }
@@ -89,7 +124,10 @@ function sender(m) {
   const op = S.state?.operator?.name;
   return op && (!m.author || m.author.toLowerCase() === op.toLowerCase()) ? op : (m.author || nameOf("user"));
 }
-const mentionsMe = (m) => m.from !== "user" && (m.mentions || []).includes("user");
+// Recorded as a mention of you when it was posted, or an @ of one of your
+// handles in it: what was recorded depends on the code the agent posted with.
+const mentionsMe = (m) => m.from !== "user" && ((m.mentions || []).includes("user")
+  || [...(m.content || "").matchAll(HANDLE_RE)].some((x) => myHandles().has(x[1].toLowerCase())));
 // Addressed to you: an @mention, or an agent's direct message.
 const forMe = (m) => m.from !== "user" && m.from !== "supervisor" && (mentionsMe(m) || (!m.channel && m.to === "user"));
 
@@ -253,6 +291,8 @@ async function refreshState() {
     b.querySelector("button").onclick = () => location.reload();
     document.body.appendChild(b);
   }
+  if (S.state.installed_version && S.state.app_version && S.state.installed_version !== S.state.app_version)
+    staleServer(S.state.installed_version);
   S.replyCounts = S.state.reply_counts || {};
   // What each view last had, so unread survives a reload. On a team never
   // opened in this browser, everything so far counts as read.

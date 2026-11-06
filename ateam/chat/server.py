@@ -19,6 +19,7 @@ import ipaddress
 import json
 import mimetypes
 import os
+import re
 import secrets
 import signal
 import socket
@@ -33,6 +34,8 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from ateam import actions, scope, starter
+from ateam import channels as channels_lib
+from ateam import roster as roster_lib
 from ateam.record import Feed, Record
 
 from . import people
@@ -136,6 +139,7 @@ class App:
                            "presence": presence.get(n, {}), "model": models.get(n, {}),
                            "load": load.get(n)})
         sup = rec.supervisor()
+        handles = self.my_handles(rec)
         # Keyed as the client keys its views ("c:<channel>", "d:<a>,<b>"):
         # when each last had something from someone else, and when an agent
         # last addressed the operator there (an @mention, or a direct
@@ -154,12 +158,13 @@ class App:
             if frm == "supervisor" and m.get("to") != "user":
                 continue
             latest[key] = m.get("ts")
-            if frm != "supervisor" and ("user" in (m.get("mentions") or [])
+            if frm != "supervisor" and (mentions_me(m, handles)
                                         or (not m.get("channel") and m.get("to") == "user")):
                 mentions[key] = m.get("ts")
         return {"team": team, "author": self.author, "member": bool(self.person),
                 "operator": rec.operator(),
                 "mentions_of_user": mentions, "latest": latest,
+                "my_handles": sorted(handles),
                 "needs_you": rec.needs_you(),
                 "agents": agents, "channels": rec.channels(),
                 "conversations": rec.conversations(), "tasks": self.tasks(team)[:300],
@@ -167,7 +172,16 @@ class App:
                 "reply_counts": rec.reply_counts(), "avatars": rec.avatars(),
                 "task_levels": self.tree(t.dir).get("levels") or [],
                 "app_version": _app_version(),
+                "installed_version": _installed_version(),
                 "server_tz": time.strftime("%Z")}
+
+    def my_handles(self, rec: Record) -> set[str]:
+        """What an @ that means you can say, lowercased: @user, the roster
+        operator's handles, and the name you post as. Agents see that name on
+        what you post and address you by it, roster operator or not."""
+        op = rec.operator()
+        names = {"user", op.get("name") or "", *(op.get("handles") or []), self.author or ""}
+        return {n.lower() for n in names if roster_lib.is_handle(n)}
 
     TASK_FIELDS = ("id", "project", "title", "owner", "status", "note", "check_after", "until",
                    "requires_review", "updated_at", "created_at", "created_by", "evidence",
@@ -499,8 +513,14 @@ class App:
                 return up.plan_self()
             except Exception as e:
                 return {"error": str(e)}
+        if body.get("action") == "restart":
+            # The installed code is newer than this process: an upgrade
+            # landed under a running server, and the page, read from disk,
+            # already calls what only the new code answers.
+            threading.Timer(0.5, self.reexec).start()
+            return {"restarting": True}
         if body.get("action") != "run":
-            raise actions.OperatorError("action is check or run")
+            raise actions.OperatorError("action is check, run or restart")
         if self.updating.get("state") == "running":
             raise actions.OperatorError("an update is already running")
         self.updating = {"state": "running", "log": [],
@@ -541,6 +561,32 @@ class App:
 def _app_version() -> str:
     from . import __version__
     return __version__
+
+
+_INSTALLED: dict = {}
+
+
+def _installed_version() -> str | None:
+    """The version on disk now, which an upgrade under a running server
+    changes while _app_version() stays what this process started on."""
+    init = Path(__file__).resolve().parent.parent / "__init__.py"
+    try:
+        mtime = init.stat().st_mtime
+        if _INSTALLED.get("mtime") != mtime:
+            m = re.search(r'^__version__\s*=\s*["\']([^"\']+)["\']', init.read_text(encoding="utf-8"), re.M)
+            _INSTALLED.update(mtime=mtime, version=m.group(1) if m else None)
+    except OSError:
+        return None
+    return _INSTALLED.get("version")
+
+
+def mentions_me(m: dict, handles: set[str]) -> bool:
+    """Whether a message mentions you: recorded so when it was posted, or an
+    @ of one of your handles in it. The text is read too, because what was
+    recorded depends on the code the agent posted with and the roster then."""
+    if "user" in (m.get("mentions") or []):
+        return True
+    return any(h.lower() in handles for h in channels_lib.handles_in(m.get("content") or ""))
 
 
 def _distill_queue():
