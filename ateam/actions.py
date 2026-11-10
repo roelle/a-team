@@ -354,7 +354,7 @@ def create_task(team_dir, project: str, title: str, owner: str | None = None,
                 level: int | None = None, priority: int | None = None,
                 auto_close: bool = False, blocked_by: list[str] | None = None,
                 writes: list[str] | None = None, thread: str | None = None,
-                origin: dict | None = None) -> dict:
+                origin: dict | None = None, every: str | None = None) -> dict:
     _guard()
     from . import tasks
     try:
@@ -364,24 +364,29 @@ def create_task(team_dir, project: str, title: str, owner: str | None = None,
                          level=level if level not in ("", None) else None,
                          priority=priority if priority not in ("", None) else None,
                          auto_close=bool(auto_close), blocked_by=blocked_by, writes=writes,
-                         thread=thread, origin=origin)
+                         thread=thread, origin=origin, every=every or None)
     except tasks.TaskError as e:
         raise OperatorError(str(e)) from None
     if t.get("owner") and t.get("status") not in tasks.PAUSED:
-        _tell(team_dir, t["owner"], t, f"You have a new task from the operator: "
-                                       f"{t['id']} \u201c{t['title']}\u201d.", wake=True)
+        what = (f"a standing duty from the operator, every {t['every']}: {t['id']} "
+                f"\u201c{t['title']}\u201d. Each run comes to you as a reminder; "
+                f"complete_task records it and the duty stays open"
+                if t.get("every") else
+                f"a new task from the operator: {t['id']} \u201c{t['title']}\u201d")
+        _tell(team_dir, t["owner"], t, f"You have {what}.", wake=not t.get("every"))
     return t
 
 
 def update_task(team_dir, task_id: str, **changes) -> dict:
     """status, owner, title, project, note, channel ("" unlinks), deadline,
     rank, parent ("" for top level), level ("auto" to work it out), priority,
-    auto_close, archived, blocked_by, writes."""
+    auto_close, archived, blocked_by, writes, every ("" makes a duty an
+    ordinary task)."""
     _guard()
     from . import tasks
     allowed = {"status", "owner", "title", "project", "note", "channel", "deadline", "rank",
                "parent", "level", "priority", "auto_close", "archived",
-               "blocked_by", "writes"}
+               "blocked_by", "writes", "every"}
     unknown = set(changes) - allowed
     if unknown:
         raise OperatorError(f"cannot change {', '.join(sorted(unknown))} from here")

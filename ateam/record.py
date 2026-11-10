@@ -23,6 +23,7 @@ import time
 from pathlib import Path
 
 from . import channels as channels_lib
+from . import duties as duties_lib
 
 #: Supervisor plumbing: messages a person does not need in the stream.
 PLUMBING_SENDERS = {"supervisor"}
@@ -488,6 +489,8 @@ class Record:
                       and where it is discussed when it says: "channel",
                       "thread", "origin" (see ateam.tasks)
             stuck     a task an agent marked blocked: the same, plus "owner"
+            duty      a standing duty missing its runs (ateam.duties): the
+                      same, plus "every", "missed", "last_done" and "reason"
 
         Only those kinds of message count, not ordinary mail: whether a
         report is really a question is not something to guess from its text.
@@ -541,6 +544,16 @@ class Record:
                 rows.append({"kind": "task", **row})
             elif status == "blocked":
                 rows.append({"kind": "stuck", "owner": t.get("owner"), **row})
+            elif t.get("every") and status not in tasks_lib.PAUSED:
+                # A duty missing its runs: twice running not done, or a run
+                # nothing delivered. One miss is the owner's to handle.
+                late = duties_lib.late(t) if not reason else None
+                if (t.get("missed") or 0) >= 2 or late:
+                    rows.append({"kind": "duty", "owner": t.get("owner"),
+                                 "every": t.get("every"), "missed": t.get("missed") or 0,
+                                 "last_done": t.get("last_done"),
+                                 "reason": late or f"{t.get('missed')} runs in a row not done",
+                                 **row})
         return sorted(rows, key=lambda r: _epoch(r["ts"]) or 0)
 
     def _last_turns(self) -> dict[str, dict]:

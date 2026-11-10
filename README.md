@@ -17,11 +17,11 @@ It is also a lab for watching agent teams fail. Most of what is interesting here
 ## Install
 
 ```bash
-pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.13.0"
+pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.14.0"
 a-team
 ```
 
-Or with [uv](https://docs.astral.sh/uv/): `uv tool install "a-team @ git+https://github.com/roelle/a-team.git@v4.13.0"`.
+Or with [uv](https://docs.astral.sh/uv/): `uv tool install "a-team @ git+https://github.com/roelle/a-team.git@v4.14.0"`.
 
 It opens your browser, shows what this machine can run agents on, and creates a team. It takes no keys; put an API key in the environment you start it from.
 
@@ -1029,10 +1029,10 @@ just moves the schedule somewhere nothing here can see it. Instead:
 
 ```
 create_task(project, title, owner=None, note=None, check_after=None,
-            until=None, poll_every=None, deadline=None,
+            until=None, poll_every=None, deadline=None, every=None,
             collaborators=None, requires_review=None)
 claim_task(task_id)                                   # take an unowned task
-update_task(task_id, status=None, check_after=None, until=None, ...)
+update_task(task_id, status=None, check_after=None, until=None, every=None, ...)
 complete_task(task_id, note, evidence=None)           # the note is required
 list_tasks(project=None, owner=None, status=None, task_id=None)  # newest first
 ```
@@ -1114,6 +1114,62 @@ python -m ateam.tasks list      # what is tracked, and when each reminder fires
 A `project` is a grouping string on a task, not a separate object — if
 project-level metadata turns out to be needed later, it can be added as a
 field the same way `note` was.
+
+### Standing duties: work that never finishes
+
+Some work has no end: sweeping the user's email and chat, watching a
+dashboard where nothing can push. A reminder fires once and the agent re-arms
+it, so a failed turn, an agent that closed the task when a pass was done, or
+a supervisor that was down when the reminder came due each ended the duty,
+and nothing recorded that it should have run. A task with `every` is a
+**standing duty**, and the schedule is the sweep's to keep, not the agent's.
+
+```
+create_task("ops", "Sweep the shared inbox", owner="syseng",
+            note="Triage new mail; file what needs the user as tasks.",
+            every="weekdays 08:00 America/Los_Angeles")
+```
+
+**The schedule.** `every` is a duration (`30m`, `2h`, `1d`) or a time of day:
+`daily 08:00`, `weekdays 17:30`, `weekends 10:00`, `mon,thu 09:00`, with an
+IANA zone. Given without one it takes the host's zone and stores it, so it
+does not move when another host reads it. Under 5 minutes is refused as a
+loop: to wait for something, use `until`. A schedule that cannot be kept is
+refused with a sentence when it is set, not stored and never fired. A duty
+needs an owner: an agent that creates one owns it by default; the operator
+picks one. A duration duty runs at once; a time-of-day duty at its first
+time.
+
+**Each run is a reminder.** The sweep (the supervisor on every pass, or
+`python -m ateam.tasks sweep`) delivers each run to the owner as a reminder
+message with the task id, and sets the next run from the schedule itself,
+whatever became of the last. The agent never re-arms anything. When the run
+is done, `complete_task(task_id, note=what you found)` records it (`last_done`
+and `last_note` on the task) and leaves the duty open; the tool answers "[run
+recorded: … stays open; its next run is due …]". An agent's
+`update_task(status=done)` on a duty is refused with how to record a run
+instead. The operator ends a duty (done or cancelled from the board), or
+`update_task(task_id, every="")` turns it back into an ordinary task.
+`list_tasks` shows "standing duty, every X; next run due …; last done …;
+N missed in a row".
+
+**A miss is recorded, and someone hears.** A run is missed when it was due
+and never marked done by the time the next came due; the next reminder says
+so. Runs that fell due while nothing swept (team stopped, host down) are
+missed too, counted, and caught up with one run, not one per miss: the
+reminder says how many and between when, and asks the run to cover what they
+would have. A failed turn does not end the duty. Each miss is on the task
+(`missed` in a row, `missed_total`, `last_missed`) and in its timeline, and
+a duty linked to a channel gets a quiet notice in its thread. One miss is the
+owner's to handle. Two in a row, or a next run overdue by more than a period
+(at least 15 minutes) with nothing delivering it, puts "<owner>'s duty is
+behind" on the operator's Waiting on you; that is read from the task alone,
+so it shows even when nothing is sweeping.
+
+**What a duty can do today.** It gives the work a schedule, an owner and a
+record. Reading the user's email, chat or GitHub needs those tools given to
+an agent, and agents get only the team's own tool servers today; that is the
+next step.
 
 ### Tasks that wait for other tasks
 
@@ -2051,7 +2107,7 @@ Releases follow [Semantic Versioning](https://semver.org/), tagged
 in [RELEASING.md](RELEASING.md). Pin a tag rather than `main`:
 
 ```bash
-pip install "a-team @ git+https://github.com/roelle/a-team.git@v4.13.0"
+pip install "a-team @ git+https://github.com/roelle/a-team.git@v4.14.0"
 python -m ateam.supervisor --version
 ```
 

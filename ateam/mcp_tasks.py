@@ -41,6 +41,12 @@ _BLOCKED_BY = string("Comma-separated task ids that must be done first. It canno
                      "be started until then, and its owner is told when it is ready")
 _WRITES = string("Comma-separated paths it expects to change. This locks nothing: "
                  "it warns you and others when open tasks overlap")
+_EVERY = string("Makes this a standing duty, work that never finishes (sweep an "
+                "inbox, watch a dashboard): it comes to its owner on this schedule, "
+                "and complete_task records each run without closing it. A duration "
+                "('30m', '2h', '1d') or a time of day ('daily 08:00', 'weekdays 17:30', "
+                "'mon,thu 09:00', with a zone like 'America/Los_Angeles' if not "
+                "this host's)")
 
 TOOLS = [
     tool("create_task",
@@ -48,7 +54,9 @@ TOOLS = [
          "long build, anything you would otherwise have to remember to come "
          "back to. Owned by you unless you name a teammate. Pass check_after "
          "to be reminded at a time, or until to be woken only when something "
-         "has happened (a file appears, a process exits).",
+         "has happened (a file appears, a process exits). For work that never "
+         "finishes and must happen on a schedule, pass every: it is a standing "
+         "duty, kept and delivered by the team, not by you re-arming a reminder.",
          {"title": string("Short description of the task"),
           "parent": string("The task this one is part of (its id). Default: the one "
                            "task you are working on now, if there is exactly one. "
@@ -80,6 +88,7 @@ TOOLS = [
                                      "approved review naming it"),
           "blocked_by": _BLOCKED_BY,
           "writes": _WRITES,
+          "every": _EVERY,
           "channel": _CHANNEL,
           "thread": _THREAD},
          ["title"]),
@@ -117,6 +126,8 @@ TOOLS = [
                                "replacing any set before; 'none' to clear"),
           "writes": string("Comma-separated paths it expects to change, replacing "
                            "any set before; 'none' to clear"),
+          "every": string("Make it a standing duty on this schedule, or change its "
+                          "schedule (see create_task); '' makes it an ordinary task"),
           "channel": _CHANNEL,
           "thread": _THREAD},
          ["task_id"]),
@@ -124,7 +135,9 @@ TOOLS = [
          "Close a task you own. The note is required and replaces the old one: "
          "say what was done and where the result is. Refused while a "
          "collaborator has not yet worked on it, or while a task that "
-         "requires_review has no approved review naming it.",
+         "requires_review has no approved review naming it. On a standing "
+         "duty it records this run instead (the note is what this run found) "
+         "and the duty stays open for the next.",
          {"task_id": string("Task id"),
           "note": string("What was done and where the result is"),
           "evidence": string("Where it can be checked: a path, or 'review' "
@@ -266,7 +279,18 @@ def _blocks(rows: list[dict], team_dir: Path | None = None, indent: dict | None 
         if t["id"] in flying:
             agent, since = flying[t["id"]]
             extra.append(f"in flight with {agent} since {since}")
-        if t.get("check_after"):
+        if t.get("every"):
+            duty = f"standing duty, every {t['every']}"
+            if t.get("check_after"):
+                duty += f"; next run due {t['check_after']}"
+            if t.get("run_due"):
+                duty += f"; the run due {t['run_due']} is out, not yet done"
+            if t.get("last_done"):
+                duty += f"; last done {t['last_done']}"
+            if t.get("missed"):
+                duty += f"; {t['missed']} missed in a row"
+            extra.append(duty)
+        elif t.get("check_after"):
             extra.append(f"reminder at {t['check_after']}")
         if t.get("until"):
             extra.append(f"waiting on {tasks_lib._describe(t['until'])}")
@@ -392,7 +416,8 @@ def _create_task(agent: str, team_dir: Path, a: dict) -> str:
                              priority=_text(a, "priority") or None,
                              auto_close=flag(a, "auto_close"),
                              blocked_by=_names(a, "blocked_by"),
-                             writes=_names(a, "writes"))
+                             writes=_names(a, "writes"),
+                             every=_text(a, "every") or None)
     except tasks_lib.TaskError as e:
         return f"[error: {e}]"
     where = (f"\n[it is under {parent}, the task you are working on; pass "
@@ -466,7 +491,8 @@ def _update_task(agent: str, team_dir: Path, a: dict) -> str:
                          priority=_text(a, "priority") or None,
                          auto_close=flag(a, "auto_close") if "auto_close" in a else None,
                          blocked_by=_list_arg(a, "blocked_by"),
-                         writes=_list_arg(a, "writes"))
+                         writes=_list_arg(a, "writes"),
+                         every=a["every"] if isinstance(a.get("every"), str) else None)
     if t is None:
         return f"[error: no task with id '{task_id}']"
     out = f"[updated]\n{_render([t], team_dir)}"
@@ -508,6 +534,9 @@ def _complete_task(agent: str, team_dir: Path, a: dict) -> str:
                            evidence=_text(a, "evidence") or None)
     if t is None:
         return f"[error: no task with id '{task_id}']"
+    if t.get("every") and t.get("status") not in tasks_lib.TERMINAL:
+        return (f"[run recorded: {t['id']} is a standing duty and stays open; its next "
+                f"run is due {t.get('check_after')}]\n{_render([t])}")
     out = f"[completed]\n{_render([t])}"
     creator = t.get("created_by")
     if creator and creator not in (agent, t.get("owner")) and creator != "user":

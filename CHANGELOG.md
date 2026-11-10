@@ -7,6 +7,62 @@ the README for what counts as the public surface.
 
 ## [Unreleased]
 
+## [4.14.0] - 2026-11-09
+
+### Added
+- **Standing duties: a task with `every` repeats on a schedule the sweep
+  keeps.** Some work never finishes: sweeping the user's email and chat,
+  watching a dashboard where push is not possible. It had no home. A
+  reminder fires once and the agent re-arms it, so a failed turn, an agent
+  that closed the task when a pass was done, or a supervisor that was down
+  when the reminder came due each ended the duty, silently: no record said
+  it should have run, and nobody heard about the miss. Now a task with
+  `every` is a standing duty. `every` is a duration (`30m`, `2h`, `1d`;
+  under 5 minutes is refused as a loop, use `until` to wait for something)
+  or a time of day (`daily 08:00`, `weekdays 17:30`, `weekends 10:00`,
+  `mon,thu 09:00`), with an IANA zone; given without one it takes the
+  host's zone and stores it (`weekdays 08:00 America/Los_Angeles`). A
+  schedule that cannot be kept is refused with a sentence when set. A duty
+  needs an owner: an agent that creates one owns it by default, the
+  operator picks one. A duration duty runs at once; a time-of-day duty at
+  its first time. The sweep (the supervisor on every pass, or `python -m
+  ateam.tasks sweep`) delivers each run to the owner as a reminder
+  message with the task id and sets the next run from the schedule itself,
+  whatever became of the last; the agent never re-arms anything.
+  `complete_task` on a duty records the run (the note is what the run
+  found, kept as `last_note` with `last_done`) and leaves the duty open:
+  "[run recorded: … is a standing duty and stays open; its next run is
+  due …]". An agent's `update_task(status=done/failed/cancelled)` on a
+  duty is refused with how to record a run instead. The operator ends a
+  duty (done or cancelled from the board), or `every=''` turns it back
+  into an ordinary task. The operator's create path tells the owner
+  quietly (fyi) that they have a duty; the first run comes as the reminder.
+- **Missed runs are recorded and reported, never silent.** A run is
+  missed when it was due and never marked done by the time the next came
+  due: the next reminder tells the owner "your last run, due …, was never
+  marked done". Runs that fell due while nothing swept (team stopped, host
+  down) are counted too, and caught up with one run, not one per miss: the
+  reminder says how many and between when, and asks the run to cover what
+  they would have. Each miss is on the task (`missed` in a row,
+  `missed_total`, `last_missed`) and in its timeline. A failed turn does
+  not end the duty. A duty linked to a channel gets a quiet notice in its
+  thread when runs are missed. **Waiting on you** shows "<owner>'s duty is
+  behind" when a duty has missed two runs in a row, or when its next run
+  is overdue by more than a period (at least 15 minutes) with nothing
+  delivering it; that is read from the task alone, so it shows even when
+  nothing is sweeping. One miss is the owner's to handle.
+- **The board has a Standing column**, shown once the team has a duty,
+  holding open duties. Each card shows 🔁 and the schedule, and a red
+  "N missed" tag. The detail panel has a **Repeats** field (set or clear
+  the schedule) and a line with the next run, the run out with its owner,
+  last done and its note, and misses in a row and in all; the timeline
+  lists each run sent and each run done. Dropping a card on Standing asks
+  for a schedule; dropping a duty elsewhere asks whether to stop it
+  repeating. The new-task form has Repeats. Agent tools:
+  `create_task(every=...)`, `update_task(every=...)` (`''` to clear);
+  `list_tasks` shows "standing duty, every X; next run due …; last done …;
+  N missed in a row". New module `ateam/duties.py`.
+
 ## [4.13.0] - 2026-11-09
 
 ### Fixed
@@ -1106,7 +1162,8 @@ MCP memory server.
 ## [1.0] - 2026-09-08
 Milestone tag (pre-semver).
 
-[Unreleased]: https://github.com/roelle/a-team/compare/v4.13.0...HEAD
+[Unreleased]: https://github.com/roelle/a-team/compare/v4.14.0...HEAD
+[4.14.0]: https://github.com/roelle/a-team/compare/v4.13.0...v4.14.0
 [4.13.0]: https://github.com/roelle/a-team/compare/v4.12.0...v4.13.0
 [4.12.0]: https://github.com/roelle/a-team/compare/v4.11.0...v4.12.0
 [4.11.0]: https://github.com/roelle/a-team/compare/v4.10.0...v4.11.0

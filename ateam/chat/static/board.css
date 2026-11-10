@@ -29,6 +29,9 @@
 .card .tag { background: var(--bg); color: var(--dim); border: 1px solid var(--line); }
 .card .tag.rev { background: rgba(138,92,246,.12); color: var(--review); border-color: transparent; }
 .card .tag.ok { background: rgba(25,164,99,.12); color: var(--ok); border-color: transparent; }
+.card .duty { white-space: nowrap; }
+.card .tag.missed, .missed { background: rgba(220,53,69,.12); color: var(--bad, #d33); border-color: transparent; }
+.duty-line { margin: 2px 0 6px; }
 .card .chan { color: var(--accent); text-decoration: none; }
 .card .due.over { color: var(--bad); font-weight: 600; }
 .card .who { font-weight: 600; color: var(--fg); }

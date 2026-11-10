@@ -12,7 +12,7 @@ beside the conversation.
 ## Run it
 
 ```bash
-pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.13.0"
+pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.14.0"
 a-team
 ```
 
@@ -136,7 +136,9 @@ untick that and pick some.
 ## How it behaves
 
 - **Waiting on you** lists a stopped team, unanswered questions and blockers,
-  your tasks, and stuck tasks. A reply clears a message from an agent. The ×
+  your tasks, stuck tasks, and a standing duty that is behind ("<owner>'s
+  duty is behind": two runs missed in a row, or a run overdue by more than
+  a period with nothing delivering it). A reply clears a message from an agent. The ×
   clears a message without replying, and the agent is not told. Notices from the
   supervisor have nobody to reply to, so they have the × and **Clear all**, and
   a notice that an agent keeps failing clears itself once that agent's turn
@@ -243,7 +245,7 @@ untick that and pick some.
   state and reminders.
 - **The board** (`/board`) is a Kanban of the team's work: Icebox, To do,
   In progress, Blocked, Review and Done, with failed and cancelled behind a
-  toggle.
+  toggle, and **Standing** once the team has a standing duty.
   - **Work is a tree.** A project is a task with tasks under it; a program,
     a task with projects under it. The board shows one **level** at a time
     (Projects, say, picked at the top). Each card shows its progress, the
@@ -254,6 +256,16 @@ untick that and pick some.
   - Drag a card to change its status and order. In swimlanes by owner, it
     changes the owner, who is told. In swimlanes by parent, it moves the card
     under another task.
+  - **Standing** holds the duties: tasks that repeat on a schedule
+    (**Repeats**: `30m`, `1d`, `weekdays 08:00 America/Los_Angeles`). A
+    card shows 🔁 and its schedule, and a red "N missed" tag when runs
+    were missed. Its detail has the Repeats field (set or clear the
+    schedule) and a line with the next run, the run out with its owner,
+    the last done and its note, and misses in a row and in all; the
+    timeline lists each run sent and each run done. Dropping a card on
+    Standing asks for a schedule; dropping a duty on another column asks
+    whether to stop it repeating. Closing a duty (done or cancelled) ends
+    it; agents cannot, they record runs. The new-task form has Repeats.
   - A card opens its full story: what it is part of, its level, priority and
     "close by itself when everything under it is done", the tasks under it,
     every change in its log, the messages tagged with it, and its reviews.

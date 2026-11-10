@@ -92,7 +92,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import filelock
+from . import duties, filelock
 
 FILENAME = "tasks.jsonl"
 
@@ -115,7 +115,11 @@ _MUTABLE_FIELDS = ("project", "title", "owner", "status", "note", "check_after",
                    "collaborators", "requires_review", "evidence", "until",
                    "poll_every", "deadline", "channel", "rank", "links",
                    "parent", "level", "priority", "auto_close", "archived", "archived_by",
-                   "blocked_by", "writes", "thread")
+                   "blocked_by", "writes", "thread",
+                   # a standing duty (ateam.duties): its schedule, the run out
+                   # with its owner, and what became of the runs before
+                   "every", "run_due", "last_done", "last_note", "missed",
+                   "missed_total", "last_missed")
 
 # What an agent may call a status and what it is here. The allowed set was
 # discoverable only by trial -- update_task(status="in_progress") was refused
@@ -316,7 +320,7 @@ def snapshot(team_dir: Path | str) -> dict[str, dict]:
                            "requires_review", "evidence", "until", "poll_every",
                            "deadline", "channel", "rank", "links",
                            "parent", "level", "priority", "auto_close", "archived",
-                           "blocked_by", "writes", "thread", "origin")}
+                           "blocked_by", "writes", "thread", "origin", "every")}
             state[tid]["created_at"] = rec.get("ts")
             state[tid]["updated_at"] = rec.get("ts")
         elif tid in state:
@@ -344,7 +348,8 @@ def create(team_dir: Path | str, project: str, title: str,
            parent: str | None = None, level: int | None = None,
            priority: int | None = None, auto_close: bool = False,
            blocked_by: list[str] | None = None, writes: list[str] | None = None,
-           thread: str | None = None, origin: dict | None = None) -> dict:
+           thread: str | None = None, origin: dict | None = None,
+           every: str | None = None) -> dict:
     """Append a new task and return its current state. `status` may start
     it in the icebox; anything else starts queued. `thread` is the message
     in `channel` its discussion hangs off; `origin` the message it came
@@ -366,6 +371,11 @@ def create(team_dir: Path | str, project: str, title: str,
     if status not in ("queued", "icebox"):
         raise TaskError(f"a new task starts queued or in the icebox, not {status!r}")
     channel = _check_channel(team_dir, channel)
+    every = _every(every) if every else None
+    if every:
+        owner = owner or (created_by if created_by and created_by != OPERATOR else None)
+        if not owner:
+            raise TaskError("a standing duty needs an owner to run it; give owner=")
     entry = {
         "id": "task_" + uuid.uuid4().hex[:8],
         "kind": _KIND_CREATED,
@@ -393,7 +403,10 @@ def create(team_dir: Path | str, project: str, title: str,
         "writes": _paths(writes),
         "thread": (str(thread).strip() or None) if channel and thread else None,
         "origin": _origin(origin),
+        "every": every,
     }
+    if every and not entry["check_after"]:
+        entry["check_after"] = duties.first_run(every)
     if until and not entry["check_after"]:
         # A condition is checked from the next sweep on, not left to wait
         # for a reminder nobody set.
@@ -444,7 +457,8 @@ def update(team_dir: Path | str, task_id: str, by: str, *,
            parent: str | None = None, level: int | str | None = None,
            priority: int | str | None = None, auto_close: bool | None = None,
            archived: bool | None = None, blocked_by: list[str] | None = None,
-           writes: list[str] | None = None, thread: str | None = None) -> dict | None:
+           writes: list[str] | None = None, thread: str | None = None,
+           every: str | None = None) -> dict | None:
     """Append a mutation by `by`. None if task_id is unknown.
 
     Only the owner -- or the operator -- may change an owned task, and
@@ -461,7 +475,8 @@ def update(team_dir: Path | str, task_id: str, by: str, *,
     when = parse_when(check_after) if check_after is not None else None
     if until:
         validate_until(until)
-    every = parse_duration(poll_every) if poll_every else None
+    poll = parse_duration(poll_every) if poll_every else None
+    schedule = (_every(every) if every.strip() else "") if every is not None else None
     due_by = parse_when(deadline) if deadline else None
     if channel is not None:
         channel = _check_channel(team_dir, channel) if channel.strip() else ""
@@ -503,6 +518,16 @@ def update(team_dir: Path | str, task_id: str, by: str, *,
         if when and final_status in TERMINAL:
             raise TaskError(f"task {task_id} is {final_status}; a reminder on "
                             f"it would never fire")
+        # Closing a duty when a pass was done is what ended duties before:
+        # the run is recorded by complete_task, and the duty is ended on
+        # purpose, by the operator or with every="" in the same call.
+        if (current.get("every") and status in TERMINAL and schedule != ""
+                and by != OPERATOR):
+            raise TaskError(f"task {task_id} is a standing duty (every "
+                            f"{current['every']}): it does not finish. To record this "
+                            f"run, complete_task({task_id!r}, note=...); the duty "
+                            f"stays open for the next. To end the duty itself, ask "
+                            f"the operator")
         entry = {"id": task_id, "kind": _KIND_UPDATED, "ts": _now(), "by": by}
         if status is not None:
             entry["status"] = status
@@ -512,6 +537,16 @@ def update(team_dir: Path | str, task_id: str, by: str, *,
             entry["check_after"] = None
         elif when:
             entry["check_after"] = when
+        if schedule == "" and current.get("every"):
+            entry.update(every=None, run_due=None)
+            if not when:
+                entry["check_after"] = None
+        elif schedule and schedule != current.get("every"):
+            if not current.get("owner") and owner is None:
+                raise TaskError("a standing duty needs an owner to run it; give owner=")
+            entry["every"] = schedule
+            if not when and final_status not in TERMINAL:
+                entry["check_after"] = duties.first_run(schedule)
         if note is not None:
             entry["note"] = note.strip()
         if evidence is not None:
@@ -522,8 +557,8 @@ def update(team_dir: Path | str, task_id: str, by: str, *,
             entry["until"] = until
             if not when and not current.get("check_after"):
                 entry["check_after"] = _now()
-        if every:
-            entry["poll_every"] = every
+        if poll:
+            entry["poll_every"] = poll
         if due_by:
             entry["deadline"] = due_by
         if channel is not None and channel != (current.get("channel") or ""):
@@ -737,6 +772,34 @@ def _origin(origin) -> dict | None:
             if origin.get(k)}
 
 
+def _every(raw) -> str:
+    try:
+        return duties.parse(raw)
+    except duties.DutyError as e:
+        raise TaskError(str(e)) from None
+
+
+def record_run(team_dir: Path | str, task_id: str, by: str, note: str,
+               evidence: str | None = None) -> dict | None:
+    """One run of a standing duty, done: on its record, and the duty stays
+    open. The run counted is the one out with its owner; done between runs,
+    it is an extra pass and still counts."""
+    with filelock.locked(path(team_dir)):
+        current = snapshot(team_dir).get(task_id)
+        if current is None:
+            return None
+        entry = {"id": task_id, "kind": _KIND_UPDATED, "ts": _now(), "by": by,
+                 "run": "done", "run_for": current.get("run_due"),
+                 "last_done": _now(), "last_note": note.strip()[:2000],
+                 "run_due": None, "missed": 0}
+        if evidence is not None:
+            entry["evidence"] = evidence.strip()
+        if current.get("status") in ("queued", "claimed"):
+            entry["status"] = "running"
+        _append(team_dir, entry)
+    return get(team_dir, task_id)
+
+
 def complete(team_dir: Path | str, task_id: str, by: str, note: str,
              evidence: str | None = None) -> dict | None:
     """Close a task, with the closing note it must carry.
@@ -756,6 +819,8 @@ def complete(team_dir: Path | str, task_id: str, by: str, note: str,
         return None
     if current.get("owner") and current["owner"] != by:
         raise TaskError(f"task {task_id} is owned by '{current['owner']}', not '{by}'")
+    if current.get("every") and current.get("status") not in TERMINAL:
+        return record_run(team_dir, task_id, by, note, evidence)
     from .activity import author_activity
     idle = []
     for c in current.get("collaborators") or []:
@@ -1134,12 +1199,16 @@ def sweep(team_dir: Path | str, send, owners=None,
         return {}
 
     delivered: dict[str, list[dict]] = {}
+    notices: list[tuple] = []           # posted once the log's lock is let go
     with filelock.locked(p):
         state = snapshot(team_dir)
         by_owner: dict[str, list[dict]] = {}
         for t in _due_in(state, now):
             o = t.get("owner")
             if not o or (owners is not None and o not in owners):
+                continue
+            if t.get("every"):
+                by_owner.setdefault(o, []).append(t)
                 continue
             until = t.get("until")
             if until and not unreadable(t):
@@ -1162,16 +1231,37 @@ def sweep(team_dir: Path | str, send, owners=None,
         keyed = _takes_keywords(send)
         for owner, owed in by_owner.items():
             for t in owed:
+                run = duty_miss = None
+                if t.get("every"):
+                    run = duties.catch_up(t["every"], t["check_after"], duties._epoch(now))
+                    duty_miss = t.get("run_due")
+                    text = duties.reminder_text(t, run, duty_miss)
+                else:
+                    text = reminder_text([t])
                 try:
-                    result = (send(owner, reminder_text([t]), kind="reminder",
-                                   task_id=t["id"]) if keyed
-                              else send(owner, reminder_text([t])))
+                    result = (send(owner, text, kind="reminder", task_id=t["id"]) if keyed
+                              else send(owner, text))
                 except Exception:
                     continue
                 if isinstance(result, str) and result.lstrip().startswith("[error"):
                     continue
-                _append(team_dir, {"id": t["id"], "kind": _KIND_SWEPT,
-                                   "ts": now, "check_after": None})
+                if run is None:
+                    _append(team_dir, {"id": t["id"], "kind": _KIND_SWEPT,
+                                       "ts": now, "check_after": None})
+                else:
+                    missed = ([duty_miss] if duty_miss else []) + run["skipped"]
+                    entry = {"id": t["id"], "kind": _KIND_SWEPT, "ts": now,
+                             "check_after": run["next"], "run_due": run["run"], "run": "due"}
+                    if missed:
+                        entry.update(missed=(t.get("missed") or 0) + len(missed),
+                                     missed_total=(t.get("missed_total") or 0) + len(missed),
+                                     last_missed=missed[-1], run_missed=len(missed),
+                                     run_missed_why=("not done" if duty_miss else "")
+                                     + (" and " if duty_miss and run["skipped"] else "")
+                                     + ("nothing delivered" if run["skipped"] else ""))
+                        if t.get("channel"):
+                            notices.append((t, len(missed), run))
+                    _append(team_dir, entry)
                 delivered.setdefault(owner, []).append(t)
         remaining = [r for r in snapshot(team_dir).values()
                      if r.get("status") not in TERMINAL | PAUSED and r.get("check_after")]
@@ -1186,6 +1276,13 @@ def sweep(team_dir: Path | str, send, owners=None,
             _quiet[key] = (st.st_mtime_ns, st.st_size, earliest)
         except OSError:
             _quiet.pop(key, None)
+    for t, n, run in notices:
+        try:
+            _notice(team_dir, get(team_dir, t["id"]) or t, "supervisor",
+                    f"{n} run{'s' if n != 1 else ''} missed; the run due {run['run']} "
+                    f"went to {t.get('owner')}")
+        except Exception:
+            pass
     return delivered
 
 

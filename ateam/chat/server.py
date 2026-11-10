@@ -224,7 +224,9 @@ class App:
                    "requires_review", "updated_at", "created_at", "created_by", "evidence",
                    "channel", "rank", "deadline", "collaborators", "links",
                    "parent", "level", "priority", "auto_close", "archived",
-                   "blocked_by", "writes", "thread", "origin")
+                   "blocked_by", "writes", "thread", "origin",
+                   "every", "run_due", "last_done", "last_note", "missed",
+                   "missed_total", "last_missed")
 
     def tree(self, team_dir) -> dict:
         """Record.task_tree, recomputed only when the event or task log changed."""
@@ -410,11 +412,12 @@ class App:
                 requires_review=bool(body.get("requires_review")), rank=body.get("rank"),
                 parent=body.get("parent") or None, level=body.get("level"),
                 priority=body.get("priority"), auto_close=bool(body.get("auto_close")),
-                thread=body.get("thread") or None, origin=body.get("origin") or None)
+                thread=body.get("thread") or None, origin=body.get("origin") or None,
+                every=body.get("every") or None)
         if action == "update":
             fields = ("status", "owner", "title", "project", "note", "channel", "deadline", "rank",
                       "parent", "level", "priority", "auto_close", "archived",
-                      "blocked_by", "writes")
+                      "blocked_by", "writes", "every")
             return actions.update_task(t.dir, body["id"],
                                        **{k: body[k] for k in fields if k in body})
         if action == "migrate_labels":

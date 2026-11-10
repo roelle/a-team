@@ -368,6 +368,9 @@ function needsItem(n) {
     return row(n.kind === "blocker" ? "bad" : "", `${clear}<span class="what">${esc(nameOf(n.from))}</span> ${text(n.content)}`,
       `${n.kind} from ${n.from}: ${n.content}`, `data-view='${esc(JSON.stringify(v))}'${n.thread ? ` data-then-thread="${esc(n.thread)}"` : ""}`);
   }
+  if (n.kind === "duty")
+    return row("bad", `<a href="${esc(boardURL(n.id))}"><span class="what">${esc(nameOf(n.owner))}'s duty is behind</span> ${text(n.title)}</a>${talkLink(n)}`,
+      `${n.title} (every ${n.every}): ${n.reason}${n.last_done ? "; last done " + n.last_done : "; never done"}`, "");
   const what = n.kind === "stuck" ? `${esc(nameOf(n.owner))} is blocked`
     : S.state.member ? "The operator's task" : "Your task";
   return row(n.kind === "stuck" ? "bad" : "", `<a href="${esc(boardURL(n.id))}"><span class="what">${what}</span> ${text(n.title)}</a>${talkLink(n)}`, n.title, "");

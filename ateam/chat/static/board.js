@@ -13,12 +13,22 @@ const COLS = [
   { key: "icebox", title: "Icebox", statuses: ["icebox"], drop: "icebox" },
   { key: "todo", title: "To do", statuses: ["queued"], drop: "queued" },
   { key: "doing", title: "In progress", statuses: ["claimed", "running"], drop: "running" },
+  // Standing duties (ateam.duties): open work on a schedule, which never
+  // moves to Done when a run is. Blocked or parked, a duty shows there.
+  { key: "duties", title: "Standing", statuses: ["queued", "claimed", "running", "review"], drop: "running", duty: true },
   { key: "blocked", title: "Blocked", statuses: ["blocked"], drop: "blocked" },
   { key: "review", title: "Review", statuses: ["review"], drop: "review" },
   { key: "done", title: "Done", statuses: ["done"], drop: "done" },
   { key: "closed", title: "Failed / cancelled", statuses: ["failed", "cancelled"], drop: "cancelled", optional: true },
 ];
 const TERMINAL = new Set(["done", "failed", "cancelled"]);
+const isDuty = (t) => !!t.every && !TERMINAL.has(t.status);
+const DUTY_COL = COLS.find((c) => c.duty);
+// The column a card is in: its status's, except a duty's, which has its own.
+function inCol(c, t) {
+  if (!c.statuses.includes(t.status)) return false;
+  return c.duty ? isDuty(t) : !(isDuty(t) && DUTY_COL.statuses.includes(t.status));
+}
 const STATUSES = ["icebox", "queued", "claimed", "running", "blocked", "review", "done", "failed", "cancelled"];
 
 const S = { teams: [], team: null, state: null, tasks: [], selected: null, events: null, drag: null };
@@ -154,7 +164,9 @@ function visible() {
     (!f || [t.title, t.id, t.project, t.owner, nameOf(t.owner), t.note, t.channel, ...(t.node?.path || [])].some((x) => (x || "").toLowerCase().includes(f))));
 }
 const order = (a, b) => ((a.rank ?? Infinity) - (b.rank ?? Infinity)) || (b.updated_at || "").localeCompare(a.updated_at || "");
-const cols = () => COLS.filter((c) => !c.optional || $("#show-closed").checked);
+// Standing shows once the team has a duty: a column nobody uses only
+// pushes Done off the screen. Repeats on a card makes the first one.
+const cols = () => COLS.filter((c) => (!c.optional || $("#show-closed").checked) && (!c.duty || S.tasks.some(isDuty)));
 
 function render() {
   renderScope();
@@ -168,7 +180,7 @@ function render() {
     const label = lanesBy === "owner" ? nameOf(lane) : lanesBy === "parent" ? (lane ? byId(lane)?.title || lane : "top level") : lane;
     const head = lane === null ? "" : `<div class="lane-head">${esc(label)}<span class="n">${mine.length}</span></div>`;
     return `<section class="lane" data-lane="${esc(lane ?? "")}">${head}<div class="cols">${cols().map((c) => {
-      const cards = mine.filter((t) => c.statuses.includes(t.status)).sort(order);
+      const cards = mine.filter((t) => inCol(c, t)).sort(order);
       return `<div class="col" data-col="${c.key}" data-lane="${esc(lane ?? "")}">
         <div class="col-head"><span>${esc(c.title)}</span><span class="n">${cards.length}</span></div>
         ${cards.map(cardHTML).join("") || `<div class="empty-col">—</div>`}</div>`;
@@ -197,7 +209,7 @@ function cardHTML(t) {
       ${$("#lanes").value !== "project" ? `<span class="tag">${esc(t.project || "")}</span>` : ""}
       ${t.channel ? `<a class="chan" href="${discussionURL(t)}" title="${t.thread ? "Open its thread" : "Open the channel"}">#${esc(t.channel)}${t.thread ? " 🧵" : ""}</a>` : ""}
       ${t.deadline ? `<span class="due ${over ? "over" : ""}" title="deadline ${esc(t.deadline)}">due ${esc(fmtDate(t.deadline))}</span>` : ""}
-      ${t.check_after && !TERMINAL.has(t.status) ? `<span title="reminder ${esc(t.check_after)}">⏰</span>` : ""}
+      ${isDuty(t) ? dutyBadge(t) : t.check_after && !TERMINAL.has(t.status) ? `<span title="reminder ${esc(t.check_after)}">⏰</span>` : ""}
       ${t.requires_review ? `<span class="tag ${t.reviewed ? "ok" : "rev"}">${t.reviewed ? "reviewed" : "needs review"}</span>` : ""}
       ${waitingFor(t).length ? `<span class="tag rev" title="waits for ${esc(waitingFor(t).map((b) => byId(b)?.title || b).join(", "))}">waits for ${waitingFor(t).length}</span>` : ""}
       ${t.status === "claimed" ? `<span title="claimed, not yet reported running">claimed</span>` : ""}
@@ -205,6 +217,16 @@ function cardHTML(t) {
       ${kids ? `<button class="drill" data-scope="${esc(t.id)}" title="Show what is under it">${kids} ▸</button>` : ""}
     </div></div>`;
 }
+
+// A duty's schedule on its card: how often, when next, and any runs missed.
+function dutyBadge(t) {
+  const tip = [`every ${t.every}`, t.check_after && `next run ${fmtTime(null, t.check_after, "short")}`,
+    t.last_done && `last done ${fmtTime(null, t.last_done, "short")}`,
+    t.missed && `${t.missed} missed in a row`].filter(Boolean).join(" · ");
+  return `<span class="duty" title="${esc(tip)}">🔁 ${esc(shortEvery(t.every))}</span>`
+    + (t.missed ? `<span class="tag missed" title="${esc(t.missed)} run${t.missed === 1 ? "" : "s"} in a row not done; last due ${esc(t.last_missed || "")}">${esc(t.missed)} missed</span>` : "");
+}
+const shortEvery = (e) => String(e || "").replace(/ [A-Za-z_]+\/[A-Za-z_\/+-]+$/, "");
 
 // --- dragging: a column is a status, a lane an owner or project, a position a rank ------
 //
@@ -265,6 +287,14 @@ async function dropCard(id, colKey, lane, beforeId) {
   const t = S.tasks.find((x) => x.id === id); if (!t) return;
   const col = COLS.find((c) => c.key === colKey);
   const change = {};
+  if (col.duty && !t.every) {
+    const every = prompt(`Make “${t.title}” a standing duty, run every… (e.g. 1h, 1d, weekdays 08:00)`);
+    if (!every) return;
+    change.every = every.trim();
+  } else if (!col.duty && isDuty(t) && !TERMINAL.has(col.drop)) {
+    if (!confirm(`“${t.title}” is a standing duty (every ${t.every}). Stop it repeating and make it an ordinary task?`)) return;
+    change.every = "";
+  }
   if (!col.statuses.includes(t.status)) change.status = col.drop;
   const lanesBy = $("#lanes").value;
   if (lanesBy && (t[lanesBy] || "") !== lane) {
@@ -275,7 +305,7 @@ async function dropCard(id, colKey, lane, beforeId) {
   // Rank: between the neighbours it was dropped between. Cards nobody has
   // ordered yet sort after ordered ones; dropping among them orders the
   // ones above it first.
-  const peers = S.tasks.filter((x) => x.id !== id && col.statuses.includes(x.status)
+  const peers = S.tasks.filter((x) => x.id !== id && inCol(col, x)
     && (!lanesBy || (x[lanesBy] || "") === (change[lanesBy] ?? lane))).sort(order);
   const at = beforeId ? peers.findIndex((x) => x.id === beforeId) : peers.length;
   const prev = peers[at - 1], next = peers[at];
@@ -297,7 +327,7 @@ async function dropCard(id, colKey, lane, beforeId) {
     }
     for (const w of writes) await api("/api/task", { action: "update", ...w });
     await api("/api/task", { action: "update", id, ...change });
-    const what = change.status ? `→ ${COLS.find((c) => c.statuses.includes(change.status))?.title || change.status}` : "";
+    const what = change.every ? "→ Standing" : change.status ? `→ ${COLS.find((c) => !c.duty && c.statuses.includes(change.status))?.title || change.status}` : "";
     const who = change.owner !== undefined ? ` · now ${nameOf(change.owner)}` : "";
     if (what || who) toast(`${t.title} ${what}${who}` + (t.owner || change.owner ? " — the owner was told" : ""));
     await refresh(); render(); if (S.selected) openDetail(S.selected);
@@ -334,6 +364,8 @@ async function openDetail(id) {
     <label>Expects to write <span class="hint">(paths, comma-separated: warns when open tasks overlap, locks nothing)</span></label><input type="text" name="writes" value="${esc((t.writes || []).join(", "))}">
     ${(d.overlaps || []).map((o) => `<div class="hint overlap">Overlaps ${esc(o.title)} (${esc(nameOf(o.owner))}), which expects to write ${esc(o.writes.join(", "))}</div>`).join("")}
     <label>Deadline <span class="hint">(e.g. 3d, or 2026-11-01T17:00:00-07:00)</span></label><input type="text" name="deadline" value="${esc(t.deadline || "")}">
+    <label>Repeats <span class="hint">(a standing duty: 1h, 1d, weekdays 08:00… each run goes to its owner; empty for an ordinary task)</span></label><input type="text" name="every" value="${esc(t.every || "")}">
+    ${t.every ? dutyLine(t) : ""}
     <label>Note</label><textarea name="note" rows="5">${esc(t.note || "")}</textarea>
     <label>Links <span class="hint">(one per line: title | link — a web address, go link or path)</span></label>
     <div class="links">${(t.links || []).map(linkHTML).join("") || '<span class="hint">none</span>'}</div>
@@ -366,6 +398,15 @@ async function openDetail(id) {
   });
 }
 
+function dutyLine(t) {
+  const bits = [t.check_after && !TERMINAL.has(t.status) && `next run ${esc(fmtTime(null, t.check_after, "short"))}`,
+    t.run_due && `the run due ${esc(fmtTime(null, t.run_due, "short"))} is out with ${esc(nameOf(t.owner))}`,
+    t.last_done ? `last done ${esc(fmtTime(null, t.last_done, "short"))}${t.last_note ? `: “${esc(t.last_note.slice(0, 200))}”` : ""}` : "no run done yet",
+    t.missed && `<b class="missed">${esc(t.missed)} missed in a row</b>`,
+    t.missed_total && `${esc(t.missed_total)} missed in all`].filter(Boolean);
+  return `<div class="hint duty-line">🔁 ${bits.join(" · ")}</div>`;
+}
+
 function childrenHTML(t) {
   const kids = (t.node?.children || []).map(byId).filter(Boolean)
     .sort((a, b) => TERMINAL.has(a.status) - TERMINAL.has(b.status) || (a.title || "").localeCompare(b.title || ""));
@@ -382,6 +423,8 @@ function historyLine(e) {
   const what = e.kind === "created" ? `created${e.owner ? " for " + esc(nameOf(e.owner)) : ""}` :
     keys.length === 1 && keys[0] === "rank" ? "reordered on the board" :
     keys.length === 1 && keys[0] === "thread" ? "its discussion thread started" :
+    e.run === "due" ? `run due ${esc(fmtTime(null, e.run_due, "short"))} sent to its owner${e.run_missed ? `; <b class="missed">${esc(e.run_missed)} missed</b> (${esc(e.run_missed_why || "")})` : ""}; next ${esc(fmtTime(null, e.check_after, "short"))}` :
+    e.run === "done" ? `run done${e.run_for ? ` (due ${esc(fmtTime(null, e.run_for, "short"))})` : ""}: ${esc(e.last_note || "")}` :
     e.kind === "swept" ? (e.check_after ? `reminder re-armed for ${esc(e.check_after)}` : "reminder delivered") :
     Object.entries(e).filter(([k, v]) => !skip.has(k) && v !== undefined)
       .map(([k, v]) => `${esc(k)} → ${esc(k === "owner" ? nameOf(v) : typeof v === "object" ? JSON.stringify(v) : v)}`).join(", ");
@@ -448,7 +491,7 @@ async function saveDetail(t, fd) {
   }
   if (blockers.join() !== (t.blocked_by || []).join()) change.blocked_by = blockers;
   if (listed("writes").join() !== (t.writes || []).join()) change.writes = listed("writes");
-  for (const k of ["title", "status", "owner", "project", "channel", "deadline", "note"]) {
+  for (const k of ["title", "status", "owner", "project", "channel", "deadline", "note", "every"]) {
     const v = (fd.get(k) ?? "").toString();
     if (v !== (t[k] || "")) change[k] = v;
   }
@@ -486,6 +529,7 @@ function newTask(parentId) {
     <label>Owner</label><select name="owner"><option value="">nobody yet</option>${S.state.agents.map((a) => `<option value="${esc(a.name)}">${esc(nameOf(a.name))}</option>`).join("")}</select>
     <label>Channel</label><select name="channel"><option value="">none</option>${chans.map((n) => `<option>${esc(n)}</option>`).join("")}</select>
     <label>Column</label><select name="status"><option value="queued">To do</option><option value="icebox">Icebox</option></select>
+    <label>Repeats <span class="hint">(optional: a standing duty, e.g. 1h, 1d, weekdays 08:00; needs an owner)</span></label><input type="text" name="every">
     <label>Note</label><textarea name="note" rows="3" style="width:100%"></textarea>
     <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" name="rr"> requires an approved review to close</label>
     <div class="modal-actions"><button type="button" class="btn ghost" data-cancel>Cancel</button><button class="btn">Create</button></div></form>`;
@@ -498,7 +542,7 @@ function newTask(parentId) {
       const t = await api("/api/task", { action: "create", title: fd.get("title"), parent: parent || null,
         level: fd.get("level") === "" ? null : Number(fd.get("level")),
         owner: fd.get("owner") || null, channel: fd.get("channel") || null, status: fd.get("status"),
-        note: fd.get("note"), requires_review: !!fd.get("rr") });
+        note: fd.get("note"), requires_review: !!fd.get("rr"), every: fd.get("every") || null });
       $("#modal").classList.add("hidden"); toast(`created ${t.id}`);
       await refresh(); render(); openDetail(t.id);
     } catch (err) { toast(err.message, true); }
