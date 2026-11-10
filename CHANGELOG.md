@@ -7,6 +7,78 @@ the README for what counts as the public surface.
 
 ## [Unreleased]
 
+## [4.15.0] - 2026-11-10
+
+### Added
+- **A menu on every message.** Right-click a message, in a channel, a direct
+  message or a thread, or click its ⋯ (shown on hover beside "make a task",
+  always shown on a touch screen). It offers Copy link to message; Copy link
+  to thread, when the message is in or has one; Reply in thread, or Open
+  thread; Mark unread from here; Follow up later, or Done following up
+  while one is open for that message; Make a task…; Copy text; and Edit and
+  Delete… on your own messages. A right-click on a link, a picture or a
+  text box, with text selected, or with Shift held, gives the browser's own
+  menu.
+- **Links to messages and threads, pasteable anywhere.** A message's link
+  is `/?team=T#channel=C&msg=ID` (a reply adds `&thread=ROOT`; a direct
+  message is `#dm=coder`, and a conversation between two agents `#dm=a,b`);
+  a thread's is `#channel=C&thread=ROOT`. Opening one opens the view, opens
+  the thread if the message is a reply, scrolls to the message and marks it
+  for a moment; a message older than the 500 the view loads opens in the
+  side panel. A link works pasted anywhere, in the browser that holds the
+  app's cookie. Pasted into a message, a link into this app is shown as a
+  short in-app link named for what it points at: `↪ coder: "first words…"`
+  for a message (looked up if it is not loaded), `↪ a thread in #billing`,
+  `↪ #billing`; `[text](link)` keeps your text. Clicking one stays in the
+  tab, and a link to another team loads that team. The server answers
+  `GET /api/messages?id=ID` with the message.
+- **Mark unread.** From a message's menu, what you have seen is set to just
+  before it: in a thread, the thread's (the drawer closes, and its first
+  message says "N new" again); otherwise the view's, so the **new** line
+  shows above that message and the channel or conversation stays bold in
+  the sidebar until you next open it, even if it is open now. Right-click a
+  channel or conversation in the sidebar for Mark unread, Mark read (its
+  threads too) and Copy link. Like the rest of what you have seen, this is
+  kept in this browser.
+- **Follow up later: a list to get back to, made of tasks you own.** From a
+  message's menu, it makes a task owned by you (owner `user`), titled
+  "Follow up: <first line>", with the message as its origin and a link to
+  it in the note, and no channel, so nothing is posted. It shows in Waiting
+  on you as "Your task", with 💬 to open the message and a ✓ that closes it
+  (marks it done); a 🔖 tag under the message shows it while it is open, and
+  "Done following up" in the menu closes it too. Only the operator has it;
+  people with links of their own do not.
+- **Any message can make tasks, as many as you like.** Every message, a
+  reply in a thread included, has "make a task", and a message can make any
+  number of them; before, "make a task" went away once a message had
+  replies, and a thread reply had none. Each task made from a message is
+  listed under it as a tag with its status dot and title, linking to the
+  board. The new-task form's Owner list has you ("<your name> (you: it waits
+  on you)"). A task's origin link on the board, and the 💬 on its Waiting on
+  you row, now open the exact message, in its thread when it is a reply,
+  not just the thread.
+- **No message from you to you.** A task created for or handed to the
+  operator (owner `user`) no longer sends the operator a message about it;
+  before, the app's "tell the owner" wrote a message from the operator to
+  the operator.
+
+### Fixed
+- **A reply no longer shows in the main channel list, then moves back under
+  its thread on a reload.** Three causes. The live feed sent a reply to a
+  reply as written, naming that reply rather than the thread's first
+  message; on a reload the record resolves it, so the page grouped the
+  reply differently live. The feed now resolves it as a reload does (agents
+  on current code already write the first message; older agent code did
+  not). A message arriving while another view was still loading went into
+  the list of the view being left, where its thread's first message was
+  not, so it showed as a post of its own until the view finished loading;
+  the page now adds live messages only to the list loaded for that view.
+  And a view loads its last 500 messages, so a reply among them whose
+  thread began earlier showed as a post of its own; the view now brings in
+  the first message of each thread it shows. Six tests in
+  `evals/chat/test_app_links_and_followups.py` cover the links, follow-ups
+  and these fixes.
+
 ## [4.14.0] - 2026-11-09
 
 ### Added
@@ -1162,7 +1234,8 @@ MCP memory server.
 ## [1.0] - 2026-09-08
 Milestone tag (pre-semver).
 
-[Unreleased]: https://github.com/roelle/a-team/compare/v4.14.0...HEAD
+[Unreleased]: https://github.com/roelle/a-team/compare/v4.15.0...HEAD
+[4.15.0]: https://github.com/roelle/a-team/compare/v4.14.0...v4.15.0
 [4.14.0]: https://github.com/roelle/a-team/compare/v4.13.0...v4.14.0
 [4.13.0]: https://github.com/roelle/a-team/compare/v4.12.0...v4.13.0
 [4.12.0]: https://github.com/roelle/a-team/compare/v4.11.0...v4.12.0

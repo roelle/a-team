@@ -416,6 +416,8 @@ def update_task(team_dir, task_id: str, **changes) -> dict:
 
 
 def _tell(team_dir, agent: str, t: dict, text: str, wake: bool) -> None:
+    if agent == "user":         # the operator's own task: a follow-up, say
+        return
     try:
         tr = _user_transport(team_dir)
         tr.send_kind(agent, text, kind="work" if wake else "fyi", task_id=t["id"])

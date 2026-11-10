@@ -300,6 +300,15 @@ class App:
 
     def messages(self, team: str, q: dict) -> dict:
         rec = Record(self.team(team).dir)
+        if q.get("id"):
+            # A link to one message (#msg=<id>): the message, so the page
+            # can open where it is, its thread if it is a reply.
+            m = next((r for r in reversed(rec.bus()) if r.get("id") == q["id"]), None)
+            if m is None:
+                raise actions.OperatorError(f"no message {q['id']} in this team")
+            if m.get("channel") and (rec.channels().get(m["channel"]) or {}).get("deleted"):
+                raise actions.OperatorError(f"that message was in #{m['channel']}, which is deleted")
+            return {"message": stamped([dict(m)])[0]}
         if q.get("thread"):
             return {"messages": stamped(rec.thread(q["thread"]))}
         if q.get("channel"):
@@ -312,8 +321,14 @@ class App:
             rows = rec.messages(dm=(a, b), include_plumbing="supervisor" in (a, b))
         else:
             rows = []
-        return {"messages": stamped(rows[-int(q.get("limit") or 500):]),
-                "reply_counts": rec.reply_counts()}
+        shown = rows[-int(q.get("limit") or 500):]
+        # A reply in the window whose thread began before it: bring the
+        # first message too, or the page shows the reply as a post of its own.
+        have = {r.get("id") for r in shown}
+        missing = {r["thread"] for r in shown if r.get("thread") and r["thread"] not in have}
+        if missing:
+            shown = [r for r in rows[:len(rows) - len(shown)] if r.get("id") in missing] + shown
+        return {"messages": stamped(shown), "reply_counts": rec.reply_counts()}
 
     # --- pictures, attachments, bookmarks ---------------------------------------
 
@@ -862,6 +877,7 @@ class Handler(BaseHTTPRequestHandler):
         """Server-sent events: each row appended to the record, as it lands."""
         t = self.app.team(team)
         feed = Feed(t.dir)
+        rec = Record(t.dir)
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-store")
@@ -873,6 +889,11 @@ class Handler(BaseHTTPRequestHandler):
                 for it in items:
                     if isinstance(it, dict) and isinstance(it.get("item"), dict):
                         stamped([it["item"]])
+                        # As the record reads it: a reply to a reply is in
+                        # the thread of the first message, as on a reload.
+                        th = it["item"].get("thread")
+                        if it.get("stream") == "bus" and th:
+                            it["item"]["thread"] = rec.roots().get(th, th)
                     self.wfile.write(b"data: " + json.dumps(it, default=str).encode() + b"\n\n")
                 now = time.monotonic()
                 if now - last_beat > 15:

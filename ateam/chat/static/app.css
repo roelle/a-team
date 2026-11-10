@@ -321,3 +321,19 @@ li.check { list-style: none; margin-left: -18px; }
 .update-banner { position: fixed; top: 52px; left: 50%; transform: translateX(-50%); z-index: 60; background: var(--accent); color: #fff;
                  padding: 8px 14px; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.3); font-size: 13px; display: flex; gap: 10px; align-items: center; }
 .update-banner .btn { background: #fff; color: var(--accent); }
+
+/* The message menu (right-click or ⋯), the tasks made from a message, and
+   links to messages here, pasted into a message. */
+.ctx-menu { position: fixed; min-width: 220px; max-width: 320px; padding: 4px 0; border-radius: 8px;
+            box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+.ctx-menu .item { padding: 6px 12px; border-bottom: 0; }
+.ctx-menu .item .k { float: right; margin: 2px 0 0 12px; text-transform: none; font-size: 11px; }
+.ctx-menu .item.danger { color: var(--bad); }
+.mk-task.more { font-weight: 700; letter-spacing: 1px; padding: 0 4px; }
+.msg-tasks { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.msg-tasks .task-ref { font-size: 12px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; }
+.app-link { display: inline-block; max-width: 100%; padding: 0 6px; border-radius: 4px; background: var(--code);
+            color: var(--accent); text-decoration: none; font-size: 13px; overflow: hidden; text-overflow: ellipsis;
+            white-space: nowrap; vertical-align: bottom; }
+.app-link:hover { text-decoration: underline; }
+@media (hover: none) { .replies.faint { opacity: .8; } }

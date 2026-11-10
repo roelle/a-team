@@ -12,6 +12,10 @@ const S = {
   tseen: load("agychat.tseen", {}), base: "", fresh: {}, threadLatest: {},
   // Unsent text, per view: what you type in one channel stays there.
   drafts: load("agychat.drafts", {}),
+  // Views you marked unread, by team|view, until you next open them.
+  marked: load("agychat.marked", {}),
+  // Every message this page has loaded, by id: for the menu, links, tasks.
+  msgIndex: new Map(), fromMsg: {},
 };
 const TERMINAL = new Set(["done", "failed", "cancelled"]);
 
@@ -110,8 +114,89 @@ Object.assign(RenderCtx, {
   taskURL: (id) => boardURL(id),
   channelURL: (c) => `/?team=${encodeURIComponent(S.team)}#channel=${encodeURIComponent(c)}`,
   fileURL: (p) => `/api/file?${q({ path: p })}`,
+  appLink: (u) => appLink(u),
 });
 const markdown = (src) => markdownHTML(src, RenderCtx);
+
+// --- links to messages, threads and views ------------------------------------------
+// /?team=T#channel=billing&thread=<root>&msg=<id>: where it is, for a person
+// reading the link, and the message itself, which is what the page opens.
+
+const enc = encodeURIComponent;
+function viewOfMsg(m) {
+  if (m.channel) return { type: "channel", id: m.channel };
+  if (m.from === "supervisor" || m.to === "supervisor") return { type: "dm", pair: ["supervisor", "user"] };
+  return { type: "dm", pair: [m.from, m.to] };
+}
+function hashFor(v) {
+  if (v.type === "channel") return `channel=${enc(v.id)}`;
+  const mine = v.pair.includes("user") && !v.pair.includes("supervisor");
+  return `dm=${enc(mine ? v.pair.find((p) => p !== "user") || "user" : [...v.pair].sort().join(","))}`;
+}
+const appURL = (hash) => `${location.origin}/?team=${enc(S.team)}#${hash}`;
+const msgURL = (m) => appURL(`${hashFor(viewOfMsg(m))}${m.thread ? "&thread=" + enc(m.thread) : ""}&msg=${enc(m.id)}`);
+const threadURL = (m) => appURL(`${hashFor(viewOfMsg(m))}&thread=${enc(m.thread || m.id)}`);
+function viewLabel(v) {
+  if (v.type === "channel") return "#" + v.id;
+  const other = v.pair.find((p) => p !== "user");
+  return v.pair.includes("user") ? (other === "supervisor" ? "notices" : nameOf(other)) : v.pair.map(nameOf).join(" ↔ ");
+}
+// A link into this app, for the markdown renderer: named for where it goes.
+function appLink(u) {
+  let x; try { x = new URL(u); } catch { return null; }
+  if (x.origin !== location.origin || !["/", "/index.html"].includes(x.pathname)) return null;
+  const h = new URLSearchParams(x.hash.slice(1));
+  const v = viewFromHash(h); const msg = h.get("msg"); const th = h.get("thread");
+  if (!v && !msg) return null;
+  const team = x.searchParams.get("team");
+  const elsewhere = team && team !== S.team ? ` (${team})` : "";
+  const where = v ? viewLabel(v) : "";
+  const m = msg && S.msgIndex.get(msg);
+  if (m && !elsewhere) return { label: `↪ ${sender(m)}: “${snippet(m.content, 60)}”`, title: `${where} · ${m.ts}` };
+  const label = msg ? `↪ a message${where ? " in " + where : ""}` : th ? `↪ a thread in ${where}` : `↪ ${where}`;
+  return { label: label + elsewhere, title: u };
+}
+const snippet = (t, n) => { const s = String(t || "").replace(/\s+/g, " ").trim(); return s.length > n ? s.slice(0, n - 1) + "…" : s; };
+// Message links whose message was not loaded when they were drawn: ask for
+// it once, then name the link by who said what.
+const linkLookups = new Map();
+function hydrateLinks(box) {
+  for (const a of box.querySelectorAll("a.app-link:not([data-named])")) {
+    a.dataset.named = "1";
+    let x; try { x = new URL(a.href); } catch { continue; }
+    const id = new URLSearchParams(x.hash.slice(1)).get("msg");
+    if (!id || !a.textContent.startsWith("↪ a message") || (x.searchParams.get("team") || S.team) !== S.team) continue;
+    if (!linkLookups.has(id)) linkLookups.set(id, api(`/api/messages?${q({ id })}`).then((r) => r.message).catch(() => null));
+    linkLookups.get(id).then((m) => {
+      if (!m) { a.title = "no such message here"; return; }
+      a.textContent = `↪ ${sender(m)}: “${snippet(m.content, 60)}”`; a.title = `${viewLabel(viewOfMsg(m))} · ${m.ts}`;
+    });
+  }
+}
+
+// Open a message wherever it is: its view, its thread if it is a reply,
+// and mark it for a moment.
+function flash(el) {
+  if (!el) return;
+  el.scrollIntoView({ block: "center" });
+  el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash");
+  setTimeout(() => el.classList.remove("flash"), 2600);
+}
+async function goToMessage(id) {
+  let m = S.msgIndex.get(id);
+  if (!m) { try { m = (await api(`/api/messages?${q({ id })}`)).message; } catch (err) { return toast(err.message, true); } }
+  const v = viewOfMsg(m);
+  if (!S.view || viewKey(S.view) !== viewKey(v)) await openView(v, { jump: false });
+  if (m.thread) {
+    await openThread(m.thread).catch(() => {});
+    return flash($(`#drawer-thread .msg[data-id="${CSS.escape(id)}"]`));
+  }
+  const find = () => $(`#messages .msg[data-id="${CSS.escape(id)}"]`);
+  if (!find() && QUIET.has(m.kind) && !$("#show-quiet").checked) { $("#show-quiet").checked = true; renderMessages(); }
+  if (find()) return flash(find());
+  toast("That message is further back than this view shows; it is open in the side panel.");
+  openThread(id).catch(() => {});
+}
 
 function avatarHTML(who, key) {
   const f = (S.state?.avatars || {})[key];
@@ -144,14 +229,23 @@ function msgHTML(m, opts = {}) {
   const freshText = fr ? ` <span class="fresh">· ${fr.n} new</span>${fr.at ? ` <span class="at-you" title="a reply mentions you">@ you</span>` : ""}` : "";
   const mine = m.from === "user" && m.id && !m.deleted && (!S.state?.member || m.author === S.state.author);
   const own = mine ? `<span class="mk-task" data-edit="${esc(m.id)}">edit</span><span class="mk-task" data-del="${esc(m.id)}">delete</span>` : "";
-  const replies = !opts.inThread && n ? `<div class="replies ${fr ? "new" : ""}" data-thread="${esc(m.id)}">${n} repl${n === 1 ? "y" : "ies"}${freshText}</div>${own ? `<div class="replies faint">${own}</div>` : ""}` :
-                  !opts.inThread && m.id && !m.deleted ? `<div class="replies faint">${m.from === "supervisor" ? "" : `<span data-thread="${esc(m.id)}">reply in thread</span>`}<span class="mk-task" data-mktask="${esc(m.id)}">make a task</span>${own}</div>` :
-                  own ? `<div class="replies faint">${own}</div>` : "";
+  // Any message, a reply in a thread too, can be made into a task, and more
+  // than one; the ⋯ (or a right-click) has the rest.
+  const acts = m.id && !m.deleted
+    ? `${!opts.inThread && !n && m.from !== "supervisor" ? `<span data-thread="${esc(m.id)}">reply in thread</span>` : ""}`
+      + `<span class="mk-task" data-mktask="${esc(m.id)}">make a task</span>${own}`
+      + `<span class="mk-task more" data-menu="${esc(m.id)}" title="Link, mark unread, follow up… (or right-click the message)">⋯</span>`
+    : own;
+  const replies = (!opts.inThread && n ? `<div class="replies ${fr ? "new" : ""}" data-thread="${esc(m.id)}">${n} repl${n === 1 ? "y" : "ies"}${freshText}</div>` : "")
+    + (acts ? `<div class="replies faint">${acts}</div>` : "");
+  // The tasks made from this message, each a link to it on the board.
+  const made = (m.id && S.fromMsg[m.id]) || [];
+  const madeHTML = made.length ? `<div class="msg-tasks">${made.map((t) => `<a class="task-ref" href="${boardURL(t.id)}" title="${esc(t.id)} · ${esc(t.status)} · ${esc(t.owner === "user" ? "yours" : taskOwner(t))}"><span class="st ${esc(t.status)}"></span>${esc(t.owner === "user" && !TERMINAL.has(t.status) ? "🔖 " : "")}${esc(t.title)}</a>`).join("")}</div>` : "";
   const edited = m.edited && !m.deleted ? `<span class="when edited" title="edited ${esc(m.edited)}">(edited)</span>` : "";
   return `<div class="msg ${quiet ? "quiet" : ""} ${LOUD.has(kind) ? kind : ""} ${mentionsMe(m) ? "mentions-me" : ""}" data-id="${esc(m.id || "")}">
     ${avatarHTML(who, m.from)}
     <div><div><span class="who">${esc(who)}</span>${to}<span class="when" title="${esc(m.ts)} (the team's clock)">${esc(fmtTime(m.t, m.ts))}</span>${edited}${badge}${task}</div>
-    <div class="body ${m.deleted ? "deleted" : ""}">${m.deleted ? "<em>message deleted</em>" : markdown(m.content || "")}</div>${replies}</div></div>`;
+    <div class="body ${m.deleted ? "deleted" : ""}">${m.deleted ? "<em>message deleted</em>" : markdown(m.content || "")}</div>${madeHTML}${replies}</div></div>`;
 }
 
 // --- editing what you sent ------------------------------------------------------------
@@ -169,7 +263,7 @@ function applyEdit(e) {
     if (m.id !== e.id) return m;
     return e.deleted ? { ...m, content: "", deleted: e.ts, edited: e.ts } : { ...m, content: e.content, edited: e.ts };
   };
-  if (S.messages.some((m) => m.id === e.id)) { S.messages = S.messages.map(fix); renderMessages(); }
+  if (S.messages.some((m) => m.id === e.id)) { S.messages = S.messages.map(fix); indexMsgs(S.messages); renderMessages(); }
   if (S.thread) openThread(S.thread);
 }
 function startEdit(btn) {
@@ -259,24 +353,31 @@ async function openTeam() {
   const v = linkedView() || load(`agychat.view.${S.team}`, null);
   const chans = Object.keys(S.state.channels || {});
   const open = chans.filter((c) => !S.state.channels[c].archived);
-  await openView(v && (v.type !== "channel" || chans.includes(v.id)) ? v : { type: "channel", id: open[0] || chans[0] || "general" });
-  if (linkedView() && linkedThread()) openThread(linkedThread()).catch(() => {});
+  await openView(v && (v.type !== "channel" || chans.includes(v.id)) ? v : { type: "channel", id: open[0] || chans[0] || "general" },
+                 { jump: !linkedMsg() });
+  if (linkedMsg()) goToMessage(linkedMsg());
+  else if (linkedView() && linkedThread()) openThread(linkedThread()).catch(() => {});
   listen();
 }
 
 // The board links here as /?team=T#channel=billing, #channel=billing&thread=<id>
-// (a task's discussion) or #dm=coder.
+// (a task's discussion) or #dm=coder; a link to one message adds &msg=<id>.
+// #dm=a,b is two agents' conversation.
 function linkedThread() { return new URLSearchParams(location.hash.slice(1)).get("thread"); }
-function linkedView() {
-  const h = new URLSearchParams(location.hash.slice(1));
+function linkedMsg() { return new URLSearchParams(location.hash.slice(1)).get("msg"); }
+function viewFromHash(h) {
   if (h.get("channel")) return { type: "channel", id: h.get("channel") };
-  if (h.get("dm")) return { type: "dm", pair: ["user", h.get("dm")] };
+  if (h.get("dm")) { const p = h.get("dm").split(","); return { type: "dm", pair: p.length > 1 ? p : ["user", p[0]] }; }
   return null;
 }
-window.addEventListener("hashchange", async () => {
-  const v = linkedView(); if (!v || !S.state) return;
+function linkedView() { return viewFromHash(new URLSearchParams(location.hash.slice(1))); }
+async function followHash() {
+  if (!S.state) return;
+  if (linkedMsg()) return goToMessage(linkedMsg());
+  const v = linkedView(); if (!v) return;
   await openView(v); if (linkedThread()) openThread(linkedThread());
-});
+}
+window.addEventListener("hashchange", followHash);
 
 async function refreshState() {
   S.state = await api(`/api/state?${q({})}`);
@@ -295,6 +396,10 @@ async function refreshState() {
     staleServer(S.state.installed_version);
   S.replyCounts = S.state.reply_counts || {};
   S.threadLatest = S.state.thread_latest || {};
+  const before = JSON.stringify(S.fromMsg);
+  S.fromMsg = {};
+  for (const t of S.state.tasks || []) if (t.origin?.id) (S.fromMsg[t.origin.id] ||= []).push({ id: t.id, title: t.title, status: t.status, owner: t.owner });
+  const tasksMoved = JSON.stringify(S.fromMsg) !== before;
   // What each view last had, so unread survives a reload. On a team never
   // opened in this browser, everything so far counts as read.
   const latest = S.state.latest || {};
@@ -311,6 +416,7 @@ async function refreshState() {
   $("#new-channel")?.classList.toggle("hidden", !!S.state.member);
   renderSidebar(); renderAgents(); renderTasks(); renderSupervisor();
   if (S.view) { renderViewTasks(); renderBookmarks(); }
+  if (tasksMoved && S.view && S.messagesFor === viewKey(S.view)) { renderMessages(); if (S.thread) openThread(S.thread).catch(() => {}); }
 }
 
 function renderSupervisor() {
@@ -347,7 +453,7 @@ function threadUnread(k) {
 }
 function navItem(v, label, extra = "", opts) {
   const k = viewKey(v); const active = S.view && viewKey(S.view) === k;
-  const unread = ((S.latest[k] || "") > (S.seen[`${S.team}|${k}`] || "") || threadUnread(k)) && !active;
+  const unread = ((S.latest[k] || "") > (S.seen[`${S.team}|${k}`] || "") || threadUnread(k) || S.marked[`${S.team}|${k}`]) && !active;
   const mentioned = S.atMe[k] && !active;
   const at = mentioned ? `<span class="at" title="${v.type === "dm" ? "a message to you" : "mentions you"}">@</span>` : "";
   return `<li class="${active ? "active" : ""} ${unread ? "unread" : ""} ${mentioned ? "mentioned" : ""} ${opts?.cls || ""}" data-view='${esc(JSON.stringify(v))}'>${label}${at}${extra}</li>`;
@@ -373,12 +479,15 @@ function needsItem(n) {
       `${n.title} (every ${n.every}): ${n.reason}${n.last_done ? "; last done " + n.last_done : "; never done"}`, "");
   const what = n.kind === "stuck" ? `${esc(nameOf(n.owner))} is blocked`
     : S.state.member ? "The operator's task" : "Your task";
-  return row(n.kind === "stuck" ? "bad" : "", `<a href="${esc(boardURL(n.id))}"><span class="what">${what}</span> ${text(n.title)}</a>${talkLink(n)}`, n.title, "");
+  const done = n.kind === "task" && !S.state.member
+    ? `<button class="need-clear" data-done-task="${esc(n.id)}" title="Done: close this task" aria-label="Done">✓</button>` : "";
+  return row(n.kind === "stuck" ? "bad" : "", `${done}<a href="${esc(boardURL(n.id))}"><span class="what">${what}</span> ${text(n.title)}</a>${talkLink(n)}`, n.title, "");
 }
 // Where a task in Needs you is talked about: its thread, its channel, or the
 // message it came from.
 function talkLink(n) {
   const o = n.origin || {};
+  if (o.id) return ` <a href="#" class="need-talk" title="Open the message it came from" data-goto="${esc(o.id)}">💬</a>`;
   const v = n.channel ? { type: "channel", id: n.channel } : o.channel ? { type: "channel", id: o.channel }
     : o.id ? { type: "dm", pair: [o.from, o.to] } : null;
   if (!v) return "";
@@ -496,9 +605,11 @@ function renderTasks() {
     : `<div class="task-group">no tasks</div>`;
 }
 
-async function openView(v) {
+async function openView(v, { jump = true } = {}) {
   keepDraft();
   S.view = v; save(`agychat.view.${S.team}`, v);
+  S.keepUnread = null; S.messagesFor = null;
+  if (S.marked[`${S.team}|${viewKey(v)}`]) { delete S.marked[`${S.team}|${viewKey(v)}`]; save("agychat.marked", S.marked); }
   const st = S.state;
   const c = v.type === "channel" ? (st.channels || {})[v.id] || {} : {};
   delete S.atMe[viewKey(v)];
@@ -533,12 +644,15 @@ async function openView(v) {
     (v.type === "dm" && (!v.pair.includes("user") || v.pair.includes("supervisor"))));
   const params = v.type === "channel" ? { channel: v.id } : { dm: v.pair.join(",") };
   const res = await api(`/api/messages?${q(params)}`);
+  if (S.view !== v) return;                    // another view was opened meanwhile
   S.messages = res.messages; S.replyCounts = res.reply_counts || S.replyCounts;
+  S.messagesFor = viewKey(v); indexMsgs(S.messages);
   S.base = S.seen[`${S.team}|${viewKey(v)}`] || "";
   noteThreads();
   markSeen(); renderMessages(); renderSidebar();
-  jumpToNew();
+  if (jump) jumpToNew();
 }
+function indexMsgs(list) { for (const m of list) if (m.id) S.msgIndex.set(m.id, m); }
 
 // Threads: a reply is new if it came after you last opened its thread, or,
 // for a thread you never opened, after you last looked at the view. That
@@ -666,6 +780,7 @@ function bookmarksModal() {
 function markSeen() {
   const last = S.messages[S.messages.length - 1];
   const k = viewKey(S.view);
+  if (S.keepUnread === k) return;              // marked unread while open
   if (last) { S.seen[`${S.team}|${k}`] = last.ts; S.latest[k] = S.latest[k] > last.ts ? S.latest[k] : last.ts; save("agychat.seen", S.seen); }
 }
 
@@ -686,6 +801,7 @@ function renderMessages() {
   flush();
   const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
   box.innerHTML = html.join("");
+  hydrateLinks(box);
   if (atBottom || !renderMessages.done) box.scrollTop = box.scrollHeight;
   renderMessages.done = true;
 }
@@ -710,6 +826,7 @@ async function openThread(id) {
   if (!kept && pop && pop.closest("#drawer")) { pop.classList.add("hidden"); $("#composer").insertBefore(pop, $("#composer").firstChild); S.ta = null; }
   const { messages } = await api(`/api/messages?${q({ thread: id })}`);
   if (S.thread !== id) return;                 // another thread was opened meanwhile
+  indexMsgs(messages); S.threadMsgs = messages;
   const root = messages.find((m) => m.id === id) || messages[0];
   const last = messages.reduce((a, m) => (m.ts > a ? m.ts : a), "");
   if (last && last !== S.tseen[tKey(id)]) {
@@ -722,12 +839,14 @@ async function openThread(id) {
   const html = messages.map((m) => msgHTML(m, { inThread: true })).join("");
   if (kept && box.querySelector(".thread-msgs")) {
     box.querySelector(".thread-msgs").innerHTML = html;
+    hydrateLinks(box);
   } else {
     box.innerHTML = `<div class="thread-msgs">${html}</div>` +
       (canReply ? `<form class="thread-compose" data-thread="${esc(id)}" data-where='${esc(JSON.stringify(where))}'><textarea rows="2" placeholder="Reply in thread — Enter sends, Shift+Enter for a new line"></textarea>
         <div class="composer-row"><span class="hint">${root.channel ? "mention to wake" : "wakes " + esc(where.to)}</span><button class="btn small">Reply</button></div></form>` : "");
     const ta = box.querySelector(".thread-compose textarea");
     if (ta) ta.value = S.drafts[threadDraftKey(id)] || "";
+    hydrateLinks(box);
   }
   openDrawer("thread");
 }
@@ -985,13 +1104,21 @@ function listen() {
   S.events.onmessage = (ev) => {
     const { stream, item } = JSON.parse(ev.data);
     if (stream === "bus") {
+      // A reply to a reply belongs to the first message's thread, as on a
+      // reload (a server from before 4.15 sends it as written).
+      const up = item.thread && S.msgIndex.get(item.thread);
+      if (up?.thread) item.thread = up.thread;
+      if (item.id) S.msgIndex.set(item.id, item);
       if (item.thread) S.replyCounts[item.thread] = (S.replyCounts[item.thread] || 0) + 1;
       if (item.thread && item.from !== "user" && item.from !== "supervisor" && !QUIET.has(item.kind) && keyOf(item))
         (S.threadLatest[keyOf(item)] ||= {})[item.thread] = item.ts;
       const k = item.from === "supervisor" ? `d:supervisor,user` : keyOf(item);
       if (k && !(item.from === "supervisor" && item.to !== "user")) S.latest[k] = item.ts;
       if (k && forMe(item) && !(S.view && k === viewKey(S.view))) S.atMe[k] = true;
-      if (S.view && k === viewKey(S.view)) { S.messages.push(item); markSeen(); renderMessages(); }
+      // Only into the list loaded for this view: while another view is
+      // loading, S.messages is still the last one's, where a reply would
+      // have no thread to sit under and showed as a post of its own.
+      if (S.view && k === viewKey(S.view) && S.messagesFor === k) { S.messages.push(item); markSeen(); renderMessages(); }
       if (S.thread && (item.thread === S.thread || item.id === S.thread)) openThread(S.thread);
       renderSidebar();
       if (item.from !== "user" && item.from !== "supervisor" && (item.to === "user" || mentionsMe(item))) document.title = `• a-team`;
@@ -1008,6 +1135,21 @@ window.addEventListener("focus", () => { document.title = "a-team"; });
 // --- clicks ---------------------------------------------------------------------------
 
 document.addEventListener("click", async (e) => {
+  const menuItem = e.target.closest("#ctx-menu .item");
+  if (menuItem) { const act = S.menuActs?.[menuItem.dataset.act]; hideMenu(); return act?.(); }
+  hideMenu();
+  const al = e.target.closest("a.app-link");
+  if (al && !e.metaKey && !e.ctrlKey && !e.shiftKey && e.button === 0) {
+    const x = new URL(al.href);
+    if ((x.searchParams.get("team") || S.team) !== S.team) return;      // another team: load it
+    e.preventDefault(); history.pushState(null, "", x.pathname + x.search + x.hash); return followHash();
+  }
+  const go = e.target.closest("[data-goto]");
+  if (go) { e.preventDefault(); return goToMessage(go.dataset.goto); }
+  const dt = e.target.closest("[data-done-task]");
+  if (dt) return doneTask(dt.dataset.doneTask);
+  const mn = e.target.closest("[data-menu]");
+  if (mn) { const m = S.msgIndex.get(mn.dataset.menu); const r = mn.getBoundingClientRect(); return m && msgMenu(m, r.left, r.bottom, !!mn.closest("#drawer")); }
   const clear = e.target.closest("[data-clear], [data-clear-notices]");
   if (clear) return clearWaiting(clear.dataset.clear);
   const nav = e.target.closest("[data-view]");
@@ -1027,7 +1169,7 @@ document.addEventListener("click", async (e) => {
   const del = e.target.closest("[data-del]");
   if (del) return deleteMessage(del.dataset.del);
   const mk = e.target.closest("[data-mktask]");
-  if (mk) return taskModal({ fromMessage: S.messages.find((m) => m.id === mk.dataset.mktask) });
+  if (mk) return taskModal({ fromMessage: S.msgIndex.get(mk.dataset.mktask) });
   const ca = e.target.closest("[data-chan-act]");
   if (ca) return channelAction(ca.dataset.chanAct, S.view.id);
   const f = e.target.closest("[data-path]");
@@ -1184,7 +1326,7 @@ function taskModal({ fromMessage } = {}) {
     <label>Part of <span class="hint">(optional: the larger piece of work it serves)</span></label>
     <input type="text" name="parent" list="parent-tasks" placeholder="top level">
     <datalist id="parent-tasks">${parents.map((t) => `<option value="${esc(t.title)}">${esc((t.node?.path || []).concat(t.title).join(" › "))}</option>`).join("")}</datalist>
-    <label>Owner</label><select name="owner"><option value="">nobody yet</option>${S.state.agents.map((a) => `<option value="${esc(a.name)}">${esc(nameOf(a.name))}</option>`).join("")}</select>
+    <label>Owner</label><select name="owner"><option value="">nobody yet</option>${S.state.member ? "" : `<option value="user">${esc(nameOf("user"))} (you: it waits on you)</option>`}${S.state.agents.map((a) => `<option value="${esc(a.name)}">${esc(nameOf(a.name))}</option>`).join("")}</select>
     <label>Channel</label><select name="channel"><option value="">none</option>${open.map((n) => `<option ${n === channel ? "selected" : ""}>${esc(n)}</option>`).join("")}</select>
     <label>Column</label><select name="status"><option value="queued">To do</option><option value="icebox">Icebox</option></select>
     <label>Note</label><textarea name="note" rows="4" style="width:100%">${esc(note)}</textarea>
@@ -1197,12 +1339,122 @@ function taskModal({ fromMessage } = {}) {
         owner: fd.get("owner") || null, channel: fd.get("channel") || null, status: fd.get("status"),
         note: fd.get("note"), requires_review: !!fd.get("rr"),
         thread: m?.channel && fd.get("channel") === m.channel ? (m.thread || m.id) : null,
-        origin: m?.id ? { id: m.id, channel: m.channel, thread: m.thread, from: m.from, to: m.to } : null });
-      toast(`created ${t.id}` + (t.owner && t.status !== "icebox" ? `; ${nameOf(t.owner)} was told` : ""));
+        origin: m?.id ? originOf(m) : null });
+      toast(`created ${t.id}` + (t.owner && t.owner !== "user" && t.status !== "icebox" ? `; ${nameOf(t.owner)} was told` : ""));
       refreshState();
     });
 }
 $("#new-task").onclick = () => taskModal();
+const originOf = (m) => ({ id: m.id, channel: m.channel, thread: m.thread, from: m.from, to: m.to });
+
+// --- the message menu: right-click a message, or its ⋯ ------------------------------
+
+function showMenu(items, x, y) {
+  let box = $("#ctx-menu");
+  if (!box) { box = document.createElement("div"); box.id = "ctx-menu"; box.className = "popover ctx-menu"; document.body.appendChild(box); }
+  S.menuActs = items.filter(Boolean).map((it) => it.act);
+  box.innerHTML = items.filter(Boolean).map((it, i) => `<div class="item ${it.cls || ""}" data-act="${i}">${esc(it.label)}${it.hint ? ` <span class="k">${esc(it.hint)}</span>` : ""}</div>`).join("");
+  box.classList.remove("hidden");
+  const w = box.offsetWidth, h = box.offsetHeight;
+  box.style.left = Math.max(4, Math.min(x, innerWidth - w - 4)) + "px";
+  box.style.top = Math.max(4, y + h > innerHeight - 4 ? y - h : y) + "px";
+}
+function hideMenu() { $("#ctx-menu")?.classList.add("hidden"); }
+async function copied(text, what) { toast(await copyText(text) ? `${what} copied` : `Could not copy: ${text}`, false); }
+const followUpsOf = (id) => (S.state.tasks || []).filter((t) => t.owner === "user" && t.origin?.id === id && !TERMINAL.has(t.status));
+
+function msgMenu(m, x, y, inThread) {
+  const mine = m.from === "user" && !m.deleted && (!S.state.member || m.author === S.state.author);
+  const open = followUpsOf(m.id);
+  const isRoot = !m.thread;
+  showMenu([
+    { label: "Copy link to message", act: () => copied(msgURL(m), "Link to the message") },
+    (m.thread || S.replyCounts[m.id]) && { label: "Copy link to thread", act: () => copied(threadURL(m), "Link to the thread") },
+    isRoot && !inThread && m.from !== "supervisor" && { label: S.replyCounts[m.id] ? "Open thread" : "Reply in thread", act: () => openThread(m.id) },
+    { label: "Mark unread from here", act: () => markUnread(m) },
+    !S.state.member && (open.length
+      ? { label: "Done following up", hint: "closes the follow-up", act: () => Promise.all(open.map((t) => doneTask(t.id, true))).then(() => toast("Follow-up closed")) }
+      : { label: "Follow up later", hint: "waits on you", act: () => followUp(m) }),
+    { label: "Make a task…", act: () => taskModal({ fromMessage: m }) },
+    !m.deleted && { label: "Copy text", act: () => copied(m.content || "", "Text") },
+    mine && { label: "Edit", act: () => { const b = document.querySelector(`${inThread ? "#drawer-thread" : "#messages"} [data-edit="${CSS.escape(m.id)}"]`); if (b) startEdit(b); } },
+    mine && { label: "Delete…", cls: "danger", act: () => deleteMessage(m.id) },
+  ], x, y);
+}
+function viewMenu(v, x, y) {
+  const k = viewKey(v);
+  showMenu([
+    { label: "Mark unread", act: () => { S.marked[`${S.team}|${k}`] = true; save("agychat.marked", S.marked);
+        if (S.view && viewKey(S.view) === k) { S.keepUnread = k; toast("Marked unread: it stays bold once you go elsewhere"); }
+        renderSidebar(); } },
+    { label: "Mark read", act: () => markViewRead(k) },
+    { label: "Copy link", act: () => copied(appURL(hashFor(v)), "Link") },
+  ], x, y);
+}
+document.addEventListener("contextmenu", (e) => {
+  if (e.shiftKey) return;                       // Shift: the browser's own menu
+  const row = e.target.closest(".msg[data-id]");
+  if (row?.dataset.id) {
+    // On a link, a picture, a text box or a selection, the browser's menu.
+    if (e.target.closest("a, img, textarea, input") || String(getSelection()).trim()) return;
+    const m = S.msgIndex.get(row.dataset.id); if (!m) return;
+    e.preventDefault(); return msgMenu(m, e.clientX, e.clientY, !!row.closest("#drawer"));
+  }
+  const li = e.target.closest(".left li[data-view]");
+  if (li && !li.closest("#needs")) { e.preventDefault(); viewMenu(JSON.parse(li.dataset.view), e.clientX, e.clientY); }
+});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") hideMenu(); });
+document.addEventListener("scroll", hideMenu, true);
+
+// Unread from a message on: what you had seen is set to just before it. In
+// a thread, the thread's; else the view's, which also stays bold (marked)
+// until you next open it, even with the view open now.
+function markUnread(m) {
+  const before = (list) => list.map((x) => x.ts).filter((ts) => ts < m.ts).sort().pop() || "0";
+  if (m.thread) {
+    S.tseen[tKey(m.thread)] = before(S.thread === m.thread && S.threadMsgs ? S.threadMsgs : [...S.msgIndex.values()].filter((x) => x.id === m.thread || x.thread === m.thread));
+    saveThreadsSeen();
+    if (S.thread === m.thread) $("#drawer-close").click();
+    renderMessages(); renderSidebar();
+    return toast("Thread marked unread from that reply");
+  }
+  const k = keyOf(m) && viewKey(viewOfMsg(m));
+  const here = S.view && viewKey(S.view) === k;
+  S.seen[`${S.team}|${k}`] = before(here ? S.messages : [...S.msgIndex.values()].filter((x) => viewKey(viewOfMsg(x)) === k));
+  S.marked[`${S.team}|${k}`] = true;
+  save("agychat.seen", S.seen); save("agychat.marked", S.marked);
+  if (here) { S.keepUnread = k; S.base = S.seen[`${S.team}|${k}`]; renderMessages(); }
+  renderSidebar();
+  toast("Marked unread from here");
+}
+function markViewRead(k) {
+  if (S.latest[k]) S.seen[`${S.team}|${k}`] = S.latest[k];
+  for (const [root, ts] of Object.entries(S.threadLatest[k] || {})) if (ts > (S.tseen[tKey(root)] || "")) S.tseen[tKey(root)] = ts;
+  delete S.marked[`${S.team}|${k}`]; delete S.atMe[k];
+  if (S.keepUnread === k) S.keepUnread = null;
+  save("agychat.seen", S.seen); save("agychat.marked", S.marked); saveThreadsSeen();
+  renderSidebar();
+}
+
+// Follow up later: a task you own, from the message, waiting on you (Waiting
+// on you lists it, 💬 opens the message, ✓ closes it). Agents are not told.
+async function followUp(m) {
+  const first = String(m.content || "").split("\n").find((l) => l.trim()) || "a message";
+  try {
+    await api("/api/task", { action: "create", owner: "user", title: `Follow up: ${snippet(first, 100)}`,
+      note: `${sender(m)}${m.channel ? " in #" + m.channel : ""} at ${m.ts}:\n${m.content || ""}\n\n${msgURL(m)}`,
+      origin: originOf(m) });
+    toast("Added to Waiting on you: ✓ there when you are done");
+    await refreshState();
+  } catch (err) { toast(err.message, true); }
+}
+async function doneTask(id, quiet) {
+  try {
+    await api("/api/task", { action: "update", id, status: "done" });
+    if (!quiet) toast("Done");
+    await refreshState();
+  } catch (err) { toast(err.message, true); }
+}
 
 // A listed model's quota and price, where its runner knows them.
 function modelExtras(o) {

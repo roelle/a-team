@@ -17,11 +17,11 @@ It is also a lab for watching agent teams fail. Most of what is interesting here
 ## Install
 
 ```bash
-pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.14.0"
+pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.15.0"
 a-team
 ```
 
-Or with [uv](https://docs.astral.sh/uv/): `uv tool install "a-team @ git+https://github.com/roelle/a-team.git@v4.14.0"`.
+Or with [uv](https://docs.astral.sh/uv/): `uv tool install "a-team @ git+https://github.com/roelle/a-team.git@v4.15.0"`.
 
 It opens your browser, shows what this machine can run agents on, and creates a team. It takes no keys; put an API key in the environment you start it from.
 
@@ -944,6 +944,9 @@ operator owns, and a task an agent marked `blocked`. Only those two message
 kinds count, so an ordinary report stays a report, and agents are told to use
 them for that alone. A reply in the same conversation or thread clears a
 message. a-team shows the list at the top of the sidebar when it has anything on it.
+A task the operator owns is how the app's "Follow up later" works: it makes one
+from a message, with no channel, and the ✓ on its row marks it done. A task
+the operator gives themself tells no agent; nothing is posted or sent.
 
 ### Knowing when to stop
 
@@ -2107,7 +2110,7 @@ Releases follow [Semantic Versioning](https://semver.org/), tagged
 in [RELEASING.md](RELEASING.md). Pin a tag rather than `main`:
 
 ```bash
-pip install "a-team @ git+https://github.com/roelle/a-team.git@v4.14.0"
+pip install "a-team @ git+https://github.com/roelle/a-team.git@v4.15.0"
 python -m ateam.supervisor --version
 ```
 

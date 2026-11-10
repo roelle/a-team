@@ -240,6 +240,12 @@ class Record:
         rows = self.bus()
         return [r for r in rows if r.get("id") == root_id or r.get("thread") == root_id]
 
+    def roots(self) -> dict[str, str]:
+        """Each reply's id -> the first message of its thread."""
+        def build():
+            return {r["id"]: r["thread"] for r in self.bus() if r.get("id") and r.get("thread")}
+        return self._from_bus("roots", build)
+
     def reply_counts(self) -> dict[str, int]:
         def count():
             out: dict[str, int] = {}

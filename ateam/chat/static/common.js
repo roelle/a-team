@@ -45,6 +45,7 @@ const RenderCtx = {
   taskURL: (id) => `/board#task=${encodeURIComponent(id)}`,
   channelURL: (name) => `/#channel=${encodeURIComponent(name)}`,
   fileURL: (path) => `/api/file?path=${encodeURIComponent(path)}`,
+  appLink: (url) => null,           // a link into this app -> {label, title}
 };
 
 // In the order they win when two start at the same place. Text arrives
@@ -88,16 +89,28 @@ function inlineHTML(text, ctx = RenderCtx) {
   return out;
 }
 
+// A link to a message, thread or channel here, pasted into a message: it
+// opens in this tab, named for where it goes rather than as a long URL.
+function appLinkHTML(u, app, labelHTML) {
+  return `<a class="app-link" href="${escHTML(unesc(u))}" title="${escHTML(app.title || "")}">${labelHTML}</a>`;
+}
+
 function renderToken(kind, m, ctx) {
   switch (kind) {
     case "code": return `<code>${m[1]}</code>`;
     case "bold": return `<strong>${inlineHTML(m[1], ctx)}</strong>`;
     case "strike": return `<del>${inlineHTML(m[1], ctx)}</del>`;
     case "italic": return `<em>${inlineHTML(m[1] ?? m[2], ctx)}</em>`;
-    case "url": return `<a href="${href(m[0])}" target="_blank" rel="noopener">${m[0]}</a>`;
+    case "url": {
+      const app = ctx.appLink?.(unesc(m[0]));
+      if (app) return appLinkHTML(m[0], app, escHTML(app.label));
+      return `<a href="${href(m[0])}" target="_blank" rel="noopener">${m[0]}</a>`;
+    }
     case "golink": return `<a class="golink" href="${href(m[0])}" target="_blank" rel="noopener" title="${escHTML(href(m[0]) ? unesc(href(m[0])) : "")}">${m[0]}</a>`;
     case "link": {
       const h = href(m[2]);
+      const app = h && ctx.appLink?.(unesc(m[2]));
+      if (app) return appLinkHTML(m[2], app, inlineHTML(m[1], ctx));
       if (h) return `<a href="${h}" target="_blank" rel="noopener">${inlineHTML(m[1], ctx)}</a>`;
       return `<span class="pill-file" data-path="${m[2]}">${inlineHTML(m[1], ctx)}</span>`;
     }

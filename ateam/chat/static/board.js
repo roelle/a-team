@@ -435,12 +435,14 @@ function historyLine(e) {
 function discussionURL(t) {
   return chatURL("channel=" + encodeURIComponent(t.channel) + (t.thread ? "&thread=" + encodeURIComponent(t.thread) : ""));
 }
-// The message a task came from, a direct message included.
+// The message a task came from, a direct message included: the link opens
+// that message (msg=), in its thread when it is a reply.
 function originHTML(o) {
   if (!o || !o.id) return "";
-  const th = encodeURIComponent(o.thread || o.id);
-  const url = o.channel ? chatURL(`channel=${encodeURIComponent(o.channel)}&thread=${th}`)
-    : chatURL(`dm=${encodeURIComponent(o.from === "user" ? o.to : o.from)}&thread=${th}`);
+  const th = o.thread ? `&thread=${encodeURIComponent(o.thread)}` : "";
+  const at = `${th}&msg=${encodeURIComponent(o.id)}`;
+  const url = o.channel ? chatURL(`channel=${encodeURIComponent(o.channel)}${at}`)
+    : chatURL(`dm=${encodeURIComponent(o.from === "user" ? o.to : o.from)}${at}`);
   const label = o.channel ? "#" + o.channel : `${nameOf(o.from)} → ${nameOf(o.to)}`;
   return ` · from <a href="${url}">${esc(label)}</a>`;
 }

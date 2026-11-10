@@ -12,7 +12,7 @@ beside the conversation.
 ## Run it
 
 ```bash
-pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.14.0"
+pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.15.0"
 a-team
 ```
 
@@ -143,7 +143,13 @@ untick that and pick some.
   supervisor have nobody to reply to, so they have the × and **Clear all**, and
   a notice that an agent keeps failing clears itself once that agent's turn
   works. Cleared messages stay where they were sent, so notices stay readable
-  under **notices**. Only the operator can clear.
+  under **notices**. Only the operator can clear. Your own tasks are listed
+  as "Your task", with 💬 to open the message they came from and a ✓ that
+  marks one done; **Follow up later** on a message (in its menu) makes one,
+  titled "Follow up: <first line>", with no channel, so nothing is posted
+  and no agent is told. A 🔖 tag under the message shows it while it is
+  open, and "Done following up" in the menu closes it. Only the operator
+  has follow-ups.
 - **Channels are pull, mentions are push.** Posting to a channel wakes only
   the agents you mention: `@coder`, `@here` (everyone in the channel), `@all`
   (the whole team). Everyone else in the channel gets the post as unread mail
@@ -155,6 +161,13 @@ untick that and pick some.
 - **Direct messages wake.** A message to one agent was addressed to it.
 - **Threads.** Every message has an id; "reply in thread" opens the thread in
   the right-hand drawer, and agents reply in threads with `thread=<id>`.
+- **The message menu.** Right-click any message (in a channel, a DM or a
+  thread), or click its ⋯ (on hover beside "make a task"; always shown on
+  a touch screen): Copy link to message; Copy link to thread, when it is in
+  or has one; Reply in thread or Open thread; Mark unread from here; Follow
+  up later (or Done following up); Make a task…; Copy text; and Edit and
+  Delete… on your own messages. Right-click on a link, a picture or a text
+  box, with text selected, or with Shift held, gives the browser's own menu.
 - **Editing and deleting what you sent.** Your own messages have **edit**
   and **delete** under them; an agent's message is the team's record and
   cannot be changed, and someone with a link of their own can change only
@@ -190,7 +203,12 @@ untick that and pick some.
   go-link address in ⚙ Preferences, `http://go/` by default); `#channel`
   (opens it); `@name` (shown by the agent's alias, and resolved as a-team
   resolves it); task ids (shown as the task's title, linked to the board);
-  file paths, absolute, `~/`, or relative to the team's folders.
+  file paths, absolute, `~/`, or relative to the team's folders. A link
+  into this app (copied from a message's menu) is shown as a short in-app
+  link named for what it points at: `↪ coder: "first words…"` for a
+  message (looked up if it is not loaded), `↪ a thread in #billing`,
+  `↪ #billing`; `[text](link)` keeps your text. Clicking one stays in the
+  tab; a link to another team loads that team.
 - **Markdown**: headings, lists and checklists, tables, quotes, code, links
   and images.
 - **Times** are shown in full, as day, date, time and zone, in your time
@@ -219,7 +237,13 @@ untick that and pick some.
   you), until you open it. Opening a channel goes to the first thing that
   changed, mentions of you first, and marks it for a moment; a mention in
   a thread opens the thread. A **new** line shows where the unseen
-  messages start. What you have seen is kept in this browser.
+  messages start. **Mark unread from here** on a message sets what you have
+  seen to just before it: in a thread, the thread's (the drawer closes and
+  its first message says "N new" again); otherwise the view's, so the
+  **new** line shows above it and the channel stays bold until you next
+  open it, even if it is open now. Right-click a channel or conversation in
+  the sidebar for **Mark unread**, **Mark read** (its threads too) and
+  **Copy link**. What you have seen is kept in this browser.
 - **Emoji**: 😀 in the message box, or type `:` and a name (`:rocket:`), or
   your system's picker.
 - **Long code blocks wrap** to the pane, as prose does, so one long line
@@ -277,18 +301,25 @@ untick that and pick some.
 - **Chat and board link to each other.**
   - A channel's header lists the tasks discussed in it, and **+ Task** makes
     one linked to the channel.
-  - Any message can be *made a task*; the task is linked to that message's
-    thread and remembers the message as its origin.
+  - Any message, a reply in a thread included, can be *made a task*, and
+    as many times as you like; the task is linked to that message's thread
+    and remembers the message as its origin. The tasks made from a message
+    are listed under it as tags with their status dot and title, linking
+    to the board. The new-task form's Owner list has you ("<your name>
+    (you: it waits on you)").
   - A card's `#channel` opens that channel, or, with 🧵, the task's thread
     in it. The card's detail has *Open its thread in #channel* and says
     where the task came from next to "created by": *from #channel*, or
-    *from A → B* for a DM. *Message* opens a DM with its owner.
+    *from A → B* for a DM, and that link opens the exact message, in its
+    thread when it is a reply. *Message* opens a DM with its owner.
   - In chat, a 💬 on a *Waiting on you* row (a blocked task, or one of yours)
-    opens its discussion; a question or blocker message row opens its thread
-    too.
+    opens its discussion, at the message it came from; a question or
+    blocker message row opens its thread too.
   - Links are plain URLs (`/board?team=T#task=ID`, `/?team=T#channel=C`,
-    `/?team=T#channel=C&thread=ID` for a thread), so each page keeps its own
-    tab.
+    `/?team=T#channel=C&thread=ID` for a thread, `&msg=ID` for a message,
+    `#dm=coder` for a DM and `#dm=a,b` for two agents' conversation), so
+    each page keeps its own tab, and a link works pasted anywhere in the
+    browser that holds the app's cookie.
 - **Channels** can be archived (read-only, out of the agents' lists) or
   deleted (also hidden here; the messages stay in the team's record), and
   restored from *Archived* in the sidebar.
