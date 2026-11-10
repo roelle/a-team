@@ -34,7 +34,6 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from ateam import actions, scope, starter
-from ateam import channels as channels_lib
 from ateam import roster as roster_lib
 from ateam.record import Feed, Record
 
@@ -86,6 +85,8 @@ class App:
         # to post as the operator.
         self.token = os.environ.pop("ATEAM_TOKEN", "") or secrets.token_urlsafe(18)
         self._teams: dict[str, Team] = {}
+        self._news_cache: dict[str, tuple] = {}
+        self._mention_memo: dict[str, tuple] = {}
         self.updating: dict = {"state": "idle", "log": []}
         self.argv: list[str] = []        # main's arguments, for a restart in place
         self.reexec = self._reexec
@@ -140,11 +141,47 @@ class App:
                            "load": load.get(n)})
         sup = rec.supervisor()
         handles = self.my_handles(rec)
-        # Keyed as the client keys its views ("c:<channel>", "d:<a>,<b>"):
-        # when each last had something from someone else, and when an agent
-        # last addressed the operator there (an @mention, or a direct
-        # message). So what arrived while nobody was looking still shows.
-        mentions, latest = {}, {}
+        news = self.news(rec, handles)
+        return {"team": team, "author": self.author, "member": bool(self.person),
+                "operator": rec.operator(),
+                "mentions_of_user": news["mentions"], "latest": news["latest"],
+                "thread_latest": news["threads"],
+                "my_handles": sorted(handles),
+                "needs_you": rec.needs_you(),
+                "agents": agents, "channels": rec.channels(),
+                "conversations": rec.conversations(), "tasks": self.tasks(team)[:300],
+                "supervisor": sup, "stopped": rec.stopped(),
+                "reply_counts": rec.reply_counts(), "avatars": rec.avatars(),
+                "task_levels": self.tree(t.dir).get("levels") or [],
+                "app_version": _app_version(),
+                "installed_version": _installed_version(),
+                "server_tz": time.strftime("%Z")}
+
+    #: Thread replies the sidebar is told about, per view: the most recent.
+    THREADS_PER_VIEW = 50
+
+    def news(self, rec: Record, handles: set[str]) -> dict:
+        """Keyed as the client keys its views ("c:<channel>", "d:<a>,<b>"):
+        when each last had something from someone else ("latest"), when an
+        agent last addressed the operator there ("mentions": an @ of them,
+        or a direct message), and when each thread there last had a reply
+        worth reading ("threads": {root: ts}, quiet kinds left out), so a
+        channel stays marked while a thread in it is unread. So what arrived
+        while nobody was looking still shows. Worked out once per change to
+        the record, not once per request."""
+        sig = (rec.bus_signature(), frozenset(handles))
+        cache = self._news_cache
+        hit = cache.get(str(rec.team_dir))
+        if hit and hit[0] == sig:
+            return hit[1]
+        said = _handles_re(handles)
+        # Whether each message mentions you, remembered: reading every
+        # message's text again for each new one cost more than all the rest.
+        memo_handles, memo = self._mention_memo.get(str(rec.team_dir), (None, {}))
+        if memo_handles != sig[1]:
+            memo = {}
+        self._mention_memo[str(rec.team_dir)] = (sig[1], memo)
+        mentions, latest, threads = {}, {}, {}
         for m in rec.bus():
             frm = m.get("from")
             if not frm or frm == "user":
@@ -158,22 +195,22 @@ class App:
             if frm == "supervisor" and m.get("to") != "user":
                 continue
             latest[key] = m.get("ts")
-            if frm != "supervisor" and (mentions_me(m, handles)
-                                        or (not m.get("channel") and m.get("to") == "user")):
+            if frm == "supervisor":
+                continue
+            mk = (m.get("id"), hash(m.get("content") or ""))
+            hit = memo.get(mk)
+            if hit is None:
+                hit = memo[mk] = mentions_me(m, handles, said)
+            if hit or (not m.get("channel") and m.get("to") == "user"):
                 mentions[key] = m.get("ts")
-        return {"team": team, "author": self.author, "member": bool(self.person),
-                "operator": rec.operator(),
-                "mentions_of_user": mentions, "latest": latest,
-                "my_handles": sorted(handles),
-                "needs_you": rec.needs_you(),
-                "agents": agents, "channels": rec.channels(),
-                "conversations": rec.conversations(), "tasks": self.tasks(team)[:300],
-                "supervisor": sup, "stopped": rec.stopped(),
-                "reply_counts": rec.reply_counts(), "avatars": rec.avatars(),
-                "task_levels": self.tree(t.dir).get("levels") or [],
-                "app_version": _app_version(),
-                "installed_version": _installed_version(),
-                "server_tz": time.strftime("%Z")}
+            if m.get("thread") and m.get("kind") not in QUIET_KINDS:
+                view = threads.setdefault(key, {})
+                view.pop(m["thread"], None)             # most recent last
+                view[m["thread"]] = m.get("ts")
+        threads = {k: dict(list(v.items())[-self.THREADS_PER_VIEW:]) for k, v in threads.items()}
+        out = {"mentions": mentions, "latest": latest, "threads": threads}
+        cache[str(rec.team_dir)] = (sig, out)
+        return out
 
     def my_handles(self, rec: Record) -> set[str]:
         """What an @ that means you can say, lowercased: @user, the roster
@@ -580,13 +617,25 @@ def _installed_version() -> str | None:
     return _INSTALLED.get("version")
 
 
-def mentions_me(m: dict, handles: set[str]) -> bool:
+#: Kinds the page folds away as quiet updates; a thread reply of one of
+#: these does not mark its channel.
+QUIET_KINDS = {"ack", "fyi", "status"}
+
+
+def _handles_re(handles: set[str]):
+    """One pattern for an @ of any of `handles`, as channels reads an @."""
+    alts = "|".join(sorted((re.escape(h) for h in handles), key=len, reverse=True))
+    return re.compile(r"(?<![\w@])@(?:" + alts + r")(?![\w-]|\.\w)", re.I) if alts else None
+
+
+def mentions_me(m: dict, handles: set[str], said=None) -> bool:
     """Whether a message mentions you: recorded so when it was posted, or an
     @ of one of your handles in it. The text is read too, because what was
     recorded depends on the code the agent posted with and the roster then."""
     if "user" in (m.get("mentions") or []):
         return True
-    return any(h.lower() in handles for h in channels_lib.handles_in(m.get("content") or ""))
+    said = said if said is not None else _handles_re(handles)
+    return bool(said and said.search(m.get("content") or ""))
 
 
 def _distill_queue():

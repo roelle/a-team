@@ -98,7 +98,10 @@ button { font: inherit; cursor: pointer; }
 .stream-tools { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; color: var(--dim); max-width: 100%; }
 .stream-tools .toggle { margin-left: 0; }
 .messages { flex: 1; overflow: auto; padding: 10px 0; }
-.msg { display: grid; grid-template-columns: 36px 1fr; gap: 0 10px; padding: 6px 18px; }
+/* A message's column is the pane's width. Plain 1fr cannot shrink below
+   its widest line, so one long code line widened every paragraph past the
+   pane; code wraps instead, since nothing can hang past a pane's edge. */
+.msg { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 0 10px; padding: 6px 18px; }
 .msg:hover { background: rgba(127,127,127,.06); }
 .msg.flash { animation: flash 1.6s; }
 @keyframes flash { from { background: var(--mention); } }
@@ -120,7 +123,7 @@ button { font: inherit; cursor: pointer; }
 .msg.deliverable { border-left: 3px solid var(--ok); }
 .body { white-space: normal; overflow-wrap: anywhere; }
 .body p { margin: 2px 0; }
-.body pre { background: var(--code); padding: 8px 10px; border-radius: 6px; overflow: auto; font-size: 12.5px; margin: 6px 0; }
+.body pre { background: var(--code); padding: 8px 10px; border-radius: 6px; overflow: auto; font-size: 12.5px; margin: 6px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .body code { background: var(--code); padding: 1px 4px; border-radius: 4px; font-size: 12.5px; }
 .body pre code { background: none; padding: 0; }
 pre.code { position: relative; }

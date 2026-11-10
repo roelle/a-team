@@ -18,6 +18,7 @@ Everything here reads. Changing the team goes through ateam.actions.
 import hashlib
 import json
 import os
+import threading
 import time
 from pathlib import Path
 
@@ -44,6 +45,55 @@ def _jsonl(path: Path) -> list[dict]:
         if isinstance(row, dict):
             out.append(row)
     return out
+
+
+# An append-only log, parsed once per process: later reads parse only what
+# was appended since. The app re-read the whole bus on every request (six
+# times for one state), so a team's history made every click slower; at 20
+# MB and 11,000 messages a channel took a quarter of a second.
+_TAILS: dict[str, dict] = {}
+_TAILS_LOCK = threading.Lock()
+
+
+def _tail(path: Path) -> tuple[list[dict], tuple]:
+    """The rows of an append-only JSONL log, and a signature that changes
+    whenever they do. The rows are shared between callers: do not change
+    them. A log that shrank or was replaced is read again from the start;
+    a line still being written is left for the next read."""
+    key = str(path)
+    try:
+        st = path.stat()
+    except OSError:
+        _TAILS.pop(key, None)
+        return [], ()
+    with _TAILS_LOCK:
+        t = _TAILS.get(key)
+        if t is None or t["ino"] != (st.st_dev, st.st_ino) or st.st_size < t["offset"]:
+            t = _TAILS[key] = {"ino": (st.st_dev, st.st_ino), "offset": 0, "rows": [], "edge": b""}
+        if st.st_size > t["offset"]:
+            with path.open("rb") as f:
+                # The bytes before where it left off, read again: a file
+                # rewritten in place rather than appended to is read anew.
+                f.seek(t["offset"] - len(t["edge"]))
+                if f.read(len(t["edge"])) != t["edge"]:
+                    t = _TAILS[key] = {"ino": t["ino"], "offset": 0, "rows": [], "edge": b""}
+                    f.seek(0)
+                chunk = f.read(st.st_size - t["offset"])
+            end = chunk.rfind(b"\n") + 1
+            rows = list(t["rows"])
+            for line in chunk[:end].decode("utf-8", errors="replace").splitlines():
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(row, dict):
+                    rows.append(row)
+            if end:
+                t.update(offset=t["offset"] + end, rows=rows, edge=chunk[max(0, end - 256):end])
+        return t["rows"], (key, t["ino"], t["offset"])
+
+
+_BUS: dict[str, tuple] = {}
 
 
 def _key(m: dict) -> str:
@@ -119,7 +169,30 @@ class Record:
         """Every message, with each reply's `thread` set to the first message
         of its thread. Replies used to be stored under whatever message they
         answered, often another reply, where no client looked for them."""
-        rows = _fold_edits(_jsonl(self.team_dir / "bus.jsonl"), self.team_dir)
+        return list(self._bus()[0])
+
+    def bus_signature(self) -> tuple:
+        """Changes whenever bus() would: for caching what is derived from it."""
+        return self._bus()[1]
+
+    def _bus(self) -> tuple[list[dict], tuple]:
+        raw, sig = _tail(self.team_dir / "bus.jsonl")
+        edits = self.team_dir / "edits.jsonl"
+        try:
+            est = edits.stat()
+            sig = (sig, est.st_ino, est.st_size, est.st_mtime_ns)
+        except OSError:
+            sig = (sig,)
+        key = str(self.team_dir)
+        hit = _BUS.get(key)
+        if hit and hit[0] == sig:
+            return hit[1], sig
+        out = self._resolve(_fold_edits(raw, self.team_dir))
+        _BUS[key] = (sig, out)
+        return out, sig
+
+    @staticmethod
+    def _resolve(rows: list[dict]) -> list[dict]:
         parents = {r["id"]: r["thread"] for r in rows if r.get("id") and r.get("thread")}
         if not parents:
             return rows
@@ -155,20 +228,36 @@ class Record:
 
     def conversations(self) -> list[tuple[str, str]]:
         """Every pair that has exchanged direct messages, the user's first."""
-        pairs = {tuple(sorted((r.get("from"), r.get("to")))) for r in self.bus()
-                 if not r.get("channel") and r.get("from") and r.get("to")
-                 and r.get("from") not in PLUMBING_SENDERS}
-        return sorted(pairs, key=lambda p: (0 if "user" in p else 1, p))
+        def pairs():
+            found = {tuple(sorted((r.get("from"), r.get("to")))) for r in self.bus()
+                     if not r.get("channel") and r.get("from") and r.get("to")
+                     and r.get("from") not in PLUMBING_SENDERS}
+            return sorted(found, key=lambda p: (0 if "user" in p else 1, p))
+        return list(self._from_bus("conversations", pairs))
 
     def thread(self, root_id: str) -> list[dict]:
         rows = self.bus()
         return [r for r in rows if r.get("id") == root_id or r.get("thread") == root_id]
 
     def reply_counts(self) -> dict[str, int]:
-        out: dict[str, int] = {}
-        for r in self.bus():
-            if r.get("thread"):
-                out[r["thread"]] = out.get(r["thread"], 0) + 1
+        def count():
+            out: dict[str, int] = {}
+            for r in self.bus():
+                if r.get("thread"):
+                    out[r["thread"]] = out.get(r["thread"], 0) + 1
+            return out
+        return dict(self._from_bus("reply_counts", count))
+
+    def _from_bus(self, what: str, compute):
+        """What `compute` derives from the bus, worked out again only when
+        the bus changes. Shared between callers: copy it before changing it."""
+        sig = self.bus_signature()
+        key = (str(self.team_dir), what)
+        hit = _BUS.get(key)
+        if hit and hit[0] == sig:
+            return hit[1]
+        out = compute()
+        _BUS[key] = (sig, out)
         return out
 
     # --- the work ------------------------------------------------------------------

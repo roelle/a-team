@@ -9,7 +9,7 @@ const S = {
   thread: null, events: null, seen: load("agychat.seen", {}), latest: {}, atMe: {},
   // When each thread was last opened, by root id; and, for the view on
   // screen, what had been seen before it was opened (`base`).
-  tseen: load("agychat.tseen", {}), base: "", fresh: {},
+  tseen: load("agychat.tseen", {}), base: "", fresh: {}, threadLatest: {},
   // Unsent text, per view: what you type in one channel stays there.
   drafts: load("agychat.drafts", {}),
 };
@@ -294,6 +294,7 @@ async function refreshState() {
   if (S.state.installed_version && S.state.app_version && S.state.installed_version !== S.state.app_version)
     staleServer(S.state.installed_version);
   S.replyCounts = S.state.reply_counts || {};
+  S.threadLatest = S.state.thread_latest || {};
   // What each view last had, so unread survives a reload. On a team never
   // opened in this browser, everything so far counts as read.
   const latest = S.state.latest || {};
@@ -336,9 +337,17 @@ function renderSupervisor() {
   $("#sup-restart").classList.toggle("hidden", !st.supervisor || !!st.supervisor.draining || !!S.state.member);
 }
 
+// A view is unread while anything in it is: a message since you last
+// looked, or a thread there with a reply since you last opened it (a thread
+// never opened counts from when you last looked at the view). Opening the
+// channel alone no longer clears a thread you have not read.
+function threadUnread(k) {
+  const base = S.seen[`${S.team}|${k}`] || "";
+  return Object.entries(S.threadLatest?.[k] || {}).some(([root, ts]) => ts > (S.tseen[tKey(root)] ?? base));
+}
 function navItem(v, label, extra = "", opts) {
   const k = viewKey(v); const active = S.view && viewKey(S.view) === k;
-  const unread = (S.latest[k] || "") > (S.seen[`${S.team}|${k}`] || "") && !active;
+  const unread = ((S.latest[k] || "") > (S.seen[`${S.team}|${k}`] || "") || threadUnread(k)) && !active;
   const mentioned = S.atMe[k] && !active;
   const at = mentioned ? `<span class="at" title="${v.type === "dm" ? "a message to you" : "mentions you"}">@</span>` : "";
   return `<li class="${active ? "active" : ""} ${unread ? "unread" : ""} ${mentioned ? "mentioned" : ""} ${opts?.cls || ""}" data-view='${esc(JSON.stringify(v))}'>${label}${at}${extra}</li>`;
@@ -703,6 +712,7 @@ async function openThread(id) {
   if (last && last !== S.tseen[tKey(id)]) {
     S.tseen[tKey(id)] = last; saveThreadsSeen();
     if (S.fresh[id]) renderMessages();
+    renderSidebar();
   }
   const where = root?.channel ? { channel: root.channel } : { to: (root?.from === "user" ? root?.to : root?.from) };
   const canReply = root && root.from !== "supervisor" && (root.channel || root.from === "user" || root.to === "user");
@@ -973,6 +983,8 @@ function listen() {
     const { stream, item } = JSON.parse(ev.data);
     if (stream === "bus") {
       if (item.thread) S.replyCounts[item.thread] = (S.replyCounts[item.thread] || 0) + 1;
+      if (item.thread && item.from !== "user" && item.from !== "supervisor" && !QUIET.has(item.kind) && keyOf(item))
+        (S.threadLatest[keyOf(item)] ||= {})[item.thread] = item.ts;
       const k = item.from === "supervisor" ? `d:supervisor,user` : keyOf(item);
       if (k && !(item.from === "supervisor" && item.to !== "user")) S.latest[k] = item.ts;
       if (k && forMe(item) && !(S.view && k === viewKey(S.view))) S.atMe[k] = true;

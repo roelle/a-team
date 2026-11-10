@@ -12,7 +12,7 @@ beside the conversation.
 ## Run it
 
 ```bash
-pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.12.0"
+pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.13.0"
 a-team
 ```
 
@@ -208,16 +208,21 @@ untick that and pick some.
   and the tokens spent on each.
 - **Bookmarks** on a channel (links, go links, paths) sit under its name.
 - **What's new, and where.** A channel or conversation with something you
-  have not seen is bold. One where an agent addressed you (an @mention, or
-  a direct message) is yellow with a red **@**. A thread with replies since
-  you last opened it says so on its first message (**2 replies · 1 new**,
-  and **@ you** if one of them mentions you), until you open it. Opening a
-  channel goes to the first thing that changed, mentions of you first, and
-  marks it for a moment; a mention in a thread opens the thread. A **new**
-  line shows where the unseen messages start. What you have seen is kept in
-  this browser.
+  have not seen is bold, and stays bold while any thread in it has a reply
+  you have not opened the thread to see (your own replies and quiet
+  updates such as task notices do not count). One where an agent addressed
+  you (an @mention, or a direct message) is yellow with a red **@**. A
+  thread with replies since you last opened it says so on its first
+  message (**2 replies · 1 new**, and **@ you** if one of them mentions
+  you), until you open it. Opening a channel goes to the first thing that
+  changed, mentions of you first, and marks it for a moment; a mention in
+  a thread opens the thread. A **new** line shows where the unseen
+  messages start. What you have seen is kept in this browser.
 - **Emoji**: 😀 in the message box, or type `:` and a name (`:rocket:`), or
   your system's picker.
+- **Long code blocks wrap** to the pane, as prose does, so one long line
+  never widens a message or makes the pane scroll sideways. Copy still
+  gives you the code as written.
 - **`/` commands**: `/task`, `/project` (and one for each of the team's
   levels) pick a task by its title and put it in the message, shown as its
   title. `/new-task`, `/bookmark` and `/help` do what they say.

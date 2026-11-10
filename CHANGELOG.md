@@ -7,6 +7,40 @@ the README for what counts as the public surface.
 
 ## [Unreleased]
 
+## [4.13.0] - 2026-11-09
+
+### Fixed
+- **The app no longer slows down as the history grows.** Every request
+  re-read and re-parsed the whole message log, six times for one state
+  refresh, and the 4.12.0 mention check ran a regex over every message's
+  text on every refresh; on a 16 MB, 11,000-message team a channel took a
+  quarter of a second and got slower with every message. The log is now
+  parsed once per app process and then only what was appended (a line
+  still being written waits for its end; a log rewritten in place or
+  replaced is read from the start again). What is derived from it, the
+  merged edits, thread roots, reply counts, conversations, the per-view
+  "what's new" and the mentions of you, is worked out again only when the
+  log or the edits change, and whether a message mentions you is
+  remembered per message. Measured on that team: a channel view 105 ms →
+  2 ms in-process (9-12 ms over HTTP in the browser), a state refresh
+  350 ms → 3 ms, and 14 ms right after a new message.
+- **A channel stays bold while a thread in it has unread replies.** Opening
+  a channel marked it read even when a thread in it had replies you had
+  not opened, so a reply in a thread you were not looking at went unseen.
+  Now a channel or conversation stays bold while any thread in it has a
+  reply since you last opened that thread; a thread you never opened
+  counts from when you last looked at the channel. Your own replies and
+  quiet updates (ack, fyi, status, task notices for one) do not count. The
+  server's state carries `thread_latest`: per view, the 50 most recently
+  replied threads and when each last had a reply worth reading.
+- **A long code line no longer widens the whole message.** A message's
+  column could not shrink below its widest line, so one long line of code
+  pushed every paragraph in the message past the pane, and you scrolled
+  sideways to read prose. Worst in the narrow thread pane. A message now
+  keeps to its pane: prose wraps to it, and code blocks wrap too (nothing
+  hangs past a pane's edge, since that is what made the pane scroll
+  sideways). The copy button still copies the code as written.
+
 ## [4.12.0] - 2026-11-06
 
 ### Added
@@ -1072,7 +1106,8 @@ MCP memory server.
 ## [1.0] - 2026-09-08
 Milestone tag (pre-semver).
 
-[Unreleased]: https://github.com/roelle/a-team/compare/v4.12.0...HEAD
+[Unreleased]: https://github.com/roelle/a-team/compare/v4.13.0...HEAD
+[4.13.0]: https://github.com/roelle/a-team/compare/v4.12.0...v4.13.0
 [4.12.0]: https://github.com/roelle/a-team/compare/v4.11.0...v4.12.0
 [4.11.0]: https://github.com/roelle/a-team/compare/v4.10.0...v4.11.0
 [4.10.0]: https://github.com/roelle/a-team/compare/v4.9.0...v4.10.0
