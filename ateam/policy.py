@@ -43,6 +43,10 @@ Per agent:
     "allowed_task_projects": ["home", "web-*"] the task projects it may create,
                                                claim, change or list tasks in;
                                                absent = every project
+    "task_projects_limit": "create_assign"     allowed_task_projects holds only
+                                               for creating and assigning tasks;
+                                               it sees and works any task.
+                                               Also team-wide under "policy"
 
 Team-wide, under "policy" (each also accepted per agent):
 
@@ -485,6 +489,22 @@ def allowed_task_projects(agent: str, roster: dict) -> list[str] | None:
     if v is None:
         return None
     return [str(x) for x in (v if isinstance(v, list) else [v])]
+
+
+def task_projects_limit_all(agent: str, roster: dict) -> bool:
+    """Does allowed_task_projects hold for everything the agent does with
+    tasks (the default), or only for creating and assigning them?
+
+    Kept to its projects for listing too, an agent that coordinates across
+    them could not see the tasks it was meant to follow, or the one a
+    teammate asked it to pick up. "task_projects_limit": "create_assign" (in
+    its entry, or team-wide under "policy") limits where it makes and hands
+    out work, and leaves it free to read, claim and finish any task.
+    """
+    entry = _entry(roster, agent)
+    v = entry["task_projects_limit"] if "task_projects_limit" in entry else \
+        (roster.get("policy") or {}).get("task_projects_limit")
+    return str(v or "all").strip().lower().replace("-", "_") not in ("create_assign", "assign")
 
 
 def task_project_refusal(agent: str, roster: dict, project: str | None,

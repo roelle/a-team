@@ -7,6 +7,71 @@ the README for what counts as the public surface.
 
 ## [Unreleased]
 
+## [4.16.0] - 2026-11-11
+
+### Added
+- **`task_projects_limit`.** `allowed_task_projects` held for everything an
+  agent does with tasks, `list_tasks` included, so an agent that coordinates
+  across projects could not see the tasks it was meant to follow, or one a
+  teammate asked it to pick up. `"task_projects_limit": "create_assign"` in
+  the agent's roster entry, or team-wide under `"policy"` (the entry wins),
+  keeps the limit to creating and assigning: `create_task` in or under a
+  project outside them, and `update_task` giving a task outside them an
+  owner or moving it under a parent outside them, are refused. Listing
+  (`under` included), claiming, updating notes or status and completing any
+  task are open. `"all"`, or no key, is unchanged: the limit holds for
+  everything. `"create-assign"` and `"assign"` are accepted too.
+
+### Fixed
+- **Heartbeat while the supervisor waits on a turn of its own.** The
+  supervisor writes `<team_dir>/supervisor.json` from its dispatch pass, and
+  it is stale after 2 minutes. A distill (auto-cycle's, or the nightly
+  sweep), a memory review or a retro waits on its turn in the supervisor's
+  own thread, so the pass did not run, the heartbeat went stale, the app
+  said "no supervisor: nothing will wake" and a watcher reading the
+  heartbeat paged the operator. Now a background thread rewrites the
+  heartbeat every 15 s during such a wait, and a new field `busy` says what
+  it waits on (`distilling coder`, `reviewing coder's memories`, `retro: qa
+  reflecting`), cleared when the wait ends; the app's status pill shows it
+  ("running · claude · distilling coder"). A one-off `--distill` run that
+  does not drive the team writes no heartbeat, so it never passes for the
+  team's supervisor.
+- **The "skipping auto-cycle: work outstanding" log line.** Auto-cycle runs
+  on every idle pass, about once a second, so an agent over its context
+  threshold with mail pending logged that line every second: some 20 MB of
+  log a day. It also counted quiet mail (ack, fyi, status, or a channel post
+  that does not mention the agent) as work outstanding; quiet mail does not
+  wake an agent, so it could hold the cycle off for days. Now only mail that
+  will wake the agent holds off the cycle (quiet mail waits for the next
+  wake, which a reset does not lose), the line reads "not cycling coder
+  yet: N message(s) waiting to wake it; it cycles once they are handled"
+  and is said once per agent, then at most every 10 minutes while it lasts.
+  Inboxes are peeked once per pass instead of once per agent.
+- **A full disk killed the daemon.** The supervisor's log is its stdout
+  redirected to a file. When the disk filled briefly, the next print raised
+  `OSError` (ENOSPC) out of the dispatch loop and the daemon exited; the
+  disk came back, the team did not. Now `--daemon` wraps stdout and stderr:
+  a write that fails is dropped and counted, and the first write that works
+  again is preceded by "[supervisor] N log line(s) lost: OSError: ...".
+  This covers prints from runners in the same process too, and `_log`
+  itself swallows the error.
+- **A turn that timed out after repeated 503s is a capacity failure.** A
+  host CLI that retries a 503 inside the turn can spend the turn's whole
+  clock being refused. The turn ended as "[error: the turn ran past 600s]",
+  which reads as a slow agent, so `fallback_models` never kicked in and the
+  next turn went to the same model. Now a turn that ran out its time after
+  2 or more capacity refusals says so ("[error: the turn ran past 600s
+  after the provider refused it 3 times for capacity (last: 503 ...)]"),
+  the fallback reads it as capacity, the model is cooled down and the next
+  attempt runs on the next fallback model. The Claude runner sees the
+  refusals in the CLI's `api_retry` notices, Codex in app-server `error`
+  notifications with `willRetry` and its stderr, ACP in the harness's
+  stderr, agy in what it wrote to stderr before the timeout; the host
+  runner cannot see inside the turn, so its timeouts are unchanged. With no
+  fallback named, such a timeout is not retried on the same model, as a
+  plain timeout never was. One refusal, or a timeout with none, is still a
+  plain timeout.
+
 ## [4.15.0] - 2026-11-10
 
 ### Added
@@ -1234,7 +1299,8 @@ MCP memory server.
 ## [1.0] - 2026-09-08
 Milestone tag (pre-semver).
 
-[Unreleased]: https://github.com/roelle/a-team/compare/v4.15.0...HEAD
+[Unreleased]: https://github.com/roelle/a-team/compare/v4.16.0...HEAD
+[4.16.0]: https://github.com/roelle/a-team/compare/v4.15.0...v4.16.0
 [4.15.0]: https://github.com/roelle/a-team/compare/v4.14.0...v4.15.0
 [4.14.0]: https://github.com/roelle/a-team/compare/v4.13.0...v4.14.0
 [4.13.0]: https://github.com/roelle/a-team/compare/v4.12.0...v4.13.0

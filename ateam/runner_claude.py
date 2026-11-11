@@ -37,7 +37,8 @@ from urllib.parse import urlsplit
 from pathlib import Path
 
 from claude_agent_sdk import (AssistantMessage, ClaudeAgentOptions, ClaudeSDKError,
-                              HookMatcher, RateLimitEvent, ResultMessage, TextBlock, query)
+                              HookMatcher, RateLimitEvent, ResultMessage, SystemMessage,
+                              TextBlock, query)
 
 from . import config as cfg
 from . import hook_pre_tool_use
@@ -46,7 +47,7 @@ from . import policy
 from . import roster as roster_lib
 from . import scope
 from . import steer
-from .runner import Runner, with_retry
+from .runner import Runner, capacity_note, with_retry
 from .transport import load as load_transport
 
 DEFAULT_MODEL = "claude-sonnet-5-5"
@@ -154,6 +155,7 @@ class ClaudeRunner(Runner):
         self.use_workers = self.config.get("workers", True)
         self.scopes = scope.load()
         self._live: dict[str, tuple] = {}       # agent -> (loop, task) of its turn
+        self._refusals: dict[str, list] = {}    # agent -> API retries in its turn
         self._started: dict[str, float] = {}    # tool_use_id -> when it was called
 
     def _model_for(self, agent: str, spec: dict) -> str:
@@ -366,6 +368,7 @@ class ClaudeRunner(Runner):
         if (effort or self.effort) not in EFFORT:
             return f"[error: unknown effort {effort!r}; use one of {', '.join(sorted(EFFORT))}]"
         texts, result, last = [], None, None
+        refusals = self._refusals[agent] = []
         try:
             if self._gateway(spec):
                 _gateway_env(self._gateway(spec), model)
@@ -381,6 +384,10 @@ class ClaudeRunner(Runner):
                     result = m
                 elif isinstance(m, RateLimitEvent):
                     self._quota(model, m.rate_limit_info)
+                elif isinstance(m, SystemMessage) and m.subtype == "api_retry":
+                    # The CLI retrying a failed API call inside the turn.
+                    d = m.data or {}
+                    refusals.append(f"{d.get('error_status') or ''} {d.get('error') or ''}")
         except ClaudeSDKError as e:
             # A single query raises after yielding an error result, and the
             # result says more. Anything else never got as far as a result.
@@ -414,7 +421,8 @@ class ClaudeRunner(Runner):
             return await asyncio.wait_for(self._query(agent, message), self.timeout)
         except asyncio.TimeoutError:
             # Not the word with_retry waits out: this turn had its time.
-            return f"[error: the turn ran past {self.timeout:.0f}s]"
+            return (f"[error: the turn ran past {self.timeout:.0f}s"
+                    f"{capacity_note(self._refusals.get(agent))}]")
         except asyncio.CancelledError:
             return "[error: turn cancelled]"
         finally:

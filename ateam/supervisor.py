@@ -18,6 +18,7 @@ budget away), and a failing agent is logged and skipped rather than stopping
 the team.
 """
 import argparse
+import contextlib
 import signal
 import json
 import os
@@ -67,6 +68,58 @@ def _rewrite(path: Path, text: str | bytes) -> None:
         except OSError:
             pass
         raise
+
+
+#: How often the heartbeat is written while this thread waits on a turn of
+#: its own (a distill, a memory review, a retro); well inside STALE_AFTER_S.
+BEAT_WHILE_BLOCKED_S = 15.0
+#: How often "not cycling: mail waiting" is said again for the same agent.
+CYCLE_WAIT_NOTE_S = 600.0
+
+
+class _GuardedStream:
+    """stdout or stderr for a supervisor that runs for days.
+
+    Its log is this stream, redirected to a file. When the disk filled for a
+    minute, the next print raised OSError (ENOSPC) out of the dispatch loop
+    and the daemon died; the disk came back, the team did not. A write that
+    fails now drops that line, counts it, and says how many were lost on the
+    first write that works again.
+    """
+
+    def __init__(self, stream):
+        self._stream = stream
+        self.lost = 0
+        self.error = ""
+
+    def write(self, text):
+        try:
+            if self.lost:
+                self._stream.write(f"[supervisor] {self.lost} log line(s) lost: {self.error}\n")
+                self.lost, self.error = 0, ""
+            return self._stream.write(text)
+        except (OSError, ValueError) as e:
+            if text.strip():
+                self.lost += 1
+                self.error = f"{type(e).__name__}: {e}"
+            return 0
+
+    def flush(self):
+        try:
+            self._stream.flush()
+        except (OSError, ValueError) as e:
+            self.error = self.error or f"{type(e).__name__}: {e}"
+
+    def __getattr__(self, name):
+        return getattr(self._stream, name)
+
+
+def guard_output() -> None:
+    """Make this process's prints unable to raise: see _GuardedStream."""
+    for name in ("stdout", "stderr"):
+        stream = getattr(sys, name)
+        if stream is not None and not isinstance(stream, _GuardedStream):
+            setattr(sys, name, _GuardedStream(stream))
 
 
 def supervisor_running(team_dir: Path | str) -> dict | None:
@@ -788,7 +841,10 @@ class Supervisor:
 
     def _log(self, msg: str):
         if not self.quiet:
-            print(msg, flush=True)
+            try:
+                print(msg, flush=True)
+            except (OSError, ValueError):
+                pass                # a full disk must not stop dispatch
 
     def pending(self) -> dict[str, list[Message] | None]:
         """Mail waiting, without consuming it. None where unsupported."""
@@ -1323,7 +1379,7 @@ class Supervisor:
         age = time.time() - began
         return f"{age / 60:.0f} minutes ago" if age > limit else ""
 
-    def _heartbeat(self, mode: str = "running") -> None:
+    def _heartbeat(self, mode: str = "running", force: bool = False) -> None:
         """Say that a supervisor is alive, for tools that need to know.
 
         send_to_teammate reports whether anyone will wake the recipient, and
@@ -1331,7 +1387,7 @@ class Supervisor:
         this file. Written at most every few seconds.
         """
         now = time.monotonic()
-        if now - self._heartbeat_at < 5 and mode in ("running", "draining") \
+        if not force and now - self._heartbeat_at < 5 and mode in ("running", "draining") \
                 and mode == getattr(self, "_heartbeat_mode", mode):
             return
         self._heartbeat_at = now
@@ -1356,6 +1412,9 @@ class Supervisor:
                 # supervisor without it does not know the request.
                 "restartable": True,
                 "draining": self.draining is not None,
+                # What this supervisor is waiting on outside the dispatch
+                # loop, if anything: "distilling coder", say.
+                "busy": getattr(self, "_busy", None),
                 # Agents whose waking mail the hop budget is holding back.
                 "held": sorted(self._held),
                 "hops": {"used": self.hops, "max": self.max_hops,
@@ -1363,6 +1422,52 @@ class Supervisor:
                          if getattr(self, "_daemon", False) else None}}) + "\n")
         except OSError:
             pass
+
+    @contextlib.contextmanager
+    def _beating(self, why: str):
+        """Keep the heartbeat fresh while this thread waits on a turn.
+
+        A distill, a memory review or a retro waits on its turn right here,
+        and the pass that writes the heartbeat does not run until it ends. A
+        distill or a sweep took longer than the two minutes after which a
+        heartbeat is stale, so the app said no supervisor was running and a
+        watcher paged the operator about a supervisor that was working. A
+        thread writes it every BEAT_WHILE_BLOCKED_S meanwhile, saying what
+        the wait is for.
+        """
+        if getattr(self, "_busy", None) is not None or getattr(self, "_team_lock", None) is None:
+            # Already beating, for the outer wait; or not the team's driver
+            # (a one-off --distill), which must not claim to be one.
+            yield
+            return
+        self._busy = why
+        stop = threading.Event()
+
+        def beat():
+            while True:
+                try:
+                    self._heartbeat(getattr(self, "_heartbeat_mode", "running"), force=True)
+                except Exception:
+                    pass
+                if stop.wait(BEAT_WHILE_BLOCKED_S):
+                    return
+        t = threading.Thread(target=beat, name="heartbeat", daemon=True)
+        t.start()
+        try:
+            yield
+        finally:
+            stop.set()
+            t.join(timeout=5)
+            self._busy = None
+            try:
+                self._heartbeat(getattr(self, "_heartbeat_mode", "running"), force=True)
+            except Exception:
+                pass
+
+    def _wake_blocking(self, agent: str, prompt: str, why: str) -> str:
+        """runner.wake, with the heartbeat kept fresh while it runs."""
+        with self._beating(why):
+            return self.runner.wake(agent, prompt)
 
     @staticmethod
     def _fit_wake(msgs: list[Message]) -> tuple[list[Message], int]:
@@ -2672,7 +2777,7 @@ class Supervisor:
         self._begin_memory_turn(agent)
         self._distilling(agent, True)
         try:
-            reply = self.runner.wake(agent, DISTILL_PROMPT)
+            reply = self._wake_blocking(agent, DISTILL_PROMPT, f"distilling {agent}")
         except Exception as e:
             reply = self._distill_raised(agent, e, time.monotonic() - t0)
         finally:
@@ -2800,6 +2905,11 @@ class Supervisor:
                     self.distill_failed.add(agent)
                 continue
             running[agent] = (handle, before_snap, t0)
+        with self._beating(f"distilling {', '.join(running)}" if running else "distilling"):
+            self._wait_distills(running, out)
+        return out
+
+    def _wait_distills(self, running: dict, out: dict) -> None:
         while running:
             for agent, (handle, before_snap, t0) in list(running.items()):
                 try:
@@ -2817,7 +2927,6 @@ class Supervisor:
                     self.distill_failed.add(agent)
             if running:
                 self.runner.wait_turn(self.poll)
-        return out
 
     # --- the scheduled sweep ---------------------------------------------------
     #
@@ -3130,7 +3239,7 @@ class Supervisor:
         t0 = time.monotonic()
         self._begin_memory_turn(agent)
         try:
-            reply = self.runner.wake(agent, prompt)
+            reply = self._wake_blocking(agent, prompt, f"reviewing {agent}'s memories")
         except Exception as e:
             reply = self._distill_raised(agent, e, time.monotonic() - t0)
         finally:
@@ -3437,6 +3546,7 @@ class Supervisor:
             return []
 
         cycled = []
+        pending = None
         for agent in self.agents:
             if agent in self._purged_agents:
                 continue
@@ -3475,10 +3585,25 @@ class Supervisor:
                     del self._distilled_above[agent]     # compacted below: re-arm
                 continue
 
-            pending_msgs = self.pending().get(agent) or []
-            if pending_msgs:
-                self._log(f"  → skipping auto-cycle for {agent}: work outstanding ({len(pending_msgs)} pending messages)")
+            # Only mail that will wake it is work outstanding. Quiet mail
+            # (an fyi) waits for the next wake, which a reset does not lose,
+            # and counting it held the cycle off for as long as it sat there.
+            # This runs on every idle second: it said so every second, about
+            # 20 MB of log a day, and peeked every inbox once per agent.
+            if pending is None:
+                pending = self.pending()
+            waiting = [m for m in (pending.get(agent) or [])
+                       if getattr(m, "wakes", wakes(getattr(m, "kind", "work")))]
+            if waiting:
+                said = getattr(self, "_said_cycle_wait", {})
+                self._said_cycle_wait = said
+                now = time.monotonic()
+                if now - said.get(agent, -CYCLE_WAIT_NOTE_S) >= CYCLE_WAIT_NOTE_S:
+                    said[agent] = now
+                    self._log(f"  → not cycling {agent} yet: {len(waiting)} message(s) "
+                              f"waiting to wake it; it cycles once they are handled")
                 continue
+            getattr(self, "_said_cycle_wait", {}).pop(agent, None)
 
             if mode == "distill_only":
                 # The host compacts this conversation itself, and a reset
@@ -3738,7 +3863,7 @@ class Supervisor:
             t0 = time.monotonic()
             self._begin_memory_turn(agent)
             try:
-                reply = self.runner.wake(agent, prompt)
+                reply = self._wake_blocking(agent, prompt, f"retro: {agent} reflecting")
             except Exception as e:
                 dur = time.monotonic() - t0
                 reply = f"[error: {type(e).__name__}: {e}]"
@@ -3788,7 +3913,7 @@ class Supervisor:
         t0 = time.monotonic()
         self._begin_memory_turn(leader)
         try:
-            leader_reply = self.runner.wake(leader, leader_prompt)
+            leader_reply = self._wake_blocking(leader, leader_prompt, f"retro: {leader} leading")
         except Exception as e:
             dur = time.monotonic() - t0
             leader_reply = f"[error: {type(e).__name__}: {e}]"
@@ -4843,6 +4968,7 @@ def main(argv=None, runner=None):
                 except TypeError:
                     user_t.acknowledge()
         elif args.daemon:
+            guard_output()
             if hasattr(signal, "SIGHUP"):
                 # The conventional "reload": drain and restart, as a request does.
                 signal.signal(signal.SIGHUP, lambda *_: request_restart(

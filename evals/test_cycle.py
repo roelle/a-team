@@ -585,7 +585,7 @@ def test_auto_cycle_never_mid_episode_with_work_outstanding() -> tuple[int, int]
     return sum([
         check("auto_cycle returns empty while work outstanding", cycled == []),
         check("runner was not reset while busy", resets_while_busy == []),
-        check("skip logged with pending count", "skipping auto-cycle for coder: work outstanding (1 pending messages)" in out, out),
+        check("skip logged with pending count", "not cycling coder yet: 1 message(s) waiting to wake it" in out, out),
         check("cycled once work is no longer outstanding", cycled_after_work == ["coder"]),
         check("runner reset after idle", runner.resets == ["coder"]),
     ]), 5

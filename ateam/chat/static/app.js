@@ -429,7 +429,7 @@ function renderSupervisor() {
   }
   else if (st.supervisor) {
     const b = st.supervisor, src = b.source || {};
-    pill.textContent = "running" + (b.runner ? ` · ${b.runner}` : "");
+    pill.textContent = "running" + (b.runner ? ` · ${b.runner}` : "") + (b.busy ? ` · ${b.busy}` : "");
     // Where the runner came from: "default" on a team that needs another
     // runner is the misconfiguration the roster's supervisor block fixes.
     pill.title = b.runner ? `runner ${b.runner_class || b.runner} (from ${src.runner || "?"}); manager ${b.manager || "none"}`

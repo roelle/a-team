@@ -65,7 +65,7 @@ from . import persona
 from . import roster as roster_lib
 from . import scope
 from . import steer
-from .runner import Runner, with_retry
+from .runner import Runner, capacity_note, with_retry
 
 SERVERS = ("memory", "bus", "tasks", "self")
 PROTOCOL_VERSION = 1
@@ -393,8 +393,9 @@ class AcpRunner(Runner):
         if cancel.is_set():
             return "[error: turn cancelled]"
         if result is None or stop == "cancelled":
-            # Not the word with_retry waits out: this turn had its time.
-            return f"[error: the turn ran past {self.timeout:.0f}s]"
+            # Not the word with_retry waits out: this turn had its time,
+            # unless it spent it being refused for capacity.
+            return f"[error: the turn ran past {self.timeout:.0f}s{capacity_note(conn.stderr)}]"
         if stop == "refusal":
             return f"[error: {self.label}: the model refused to continue]"
         return "".join(texts).strip()

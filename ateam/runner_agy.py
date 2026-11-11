@@ -36,7 +36,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from .runner import Runner, is_retryable
+from .runner import Runner, capacity_note, is_retryable
 
 PERMISSION_HINT = (
     'called a tool that needs approval, which headless mode cannot prompt for. '
@@ -243,8 +243,11 @@ class AgyRunner(Runner):
                     and not is_retryable(f"{r.stdout}\n{r.stderr}")):
                 self.reset(agent)
                 r = self._run(agent, opening(message), None)
-        except subprocess.TimeoutExpired:
-            err = f"[error: {agent} timed out after {self.timeout}s]"
+        except subprocess.TimeoutExpired as e:
+            # What agy said before the clock ran out: a 503 it retried until
+            # then makes this a capacity failure, which falls back.
+            said = e.stderr.decode(errors="replace") if isinstance(e.stderr, bytes) else (e.stderr or "")
+            err = f"[error: {agent} timed out after {self.timeout}s{capacity_note(said.splitlines())}]"
             self._record_failure(agent, conv_id or "", err, duration_s=time.monotonic() - t0)
             return err
         except OSError as e:

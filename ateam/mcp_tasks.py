@@ -349,19 +349,24 @@ def _policy(agent: str, team_dir: Path, tool_name: str, args: dict) -> str | Non
                                     check_paths=False)
 
 
-def _scope(agent: str, team_dir: Path, task_id: str, what: str) -> str | None:
+def _scope(agent: str, team_dir: Path, task_id: str, what: str,
+           assigning: bool = False) -> str | None:
     """A refusal if the task is in a project outside the agent's (roster
-    allowed_task_projects); None if it is in scope, or unknown."""
+    allowed_task_projects); None if it is in scope, or unknown. With
+    task_projects_limit "create_assign", only `assigning` is limited."""
     roster = policy.load_roster(team_dir)
     if policy.allowed_task_projects(agent, roster) is None:
+        return None
+    if not assigning and not policy.task_projects_limit_all(agent, roster):
         return None
     t = tasks_lib.get(team_dir, task_id)
     return policy.task_project_refusal(agent, roster, t.get("project"), what) if t else None
 
 
 def _in_scope(agent: str, team_dir: Path, rows: list[dict]) -> list[dict]:
-    allowed = policy.allowed_task_projects(agent, policy.load_roster(team_dir))
-    if allowed is None:
+    roster = policy.load_roster(team_dir)
+    allowed = policy.allowed_task_projects(agent, roster)
+    if allowed is None or not policy.task_projects_limit_all(agent, roster):
         return rows
     import fnmatch
     return [r for r in rows if any(fnmatch.fnmatchcase(r.get("project") or "", p) for p in allowed)]
@@ -451,9 +456,12 @@ def _update_task(agent: str, team_dir: Path, a: dict) -> str:
         refusal = _policy(agent, team_dir, "update_task", {"owner": owner})
         if refusal:
             return refusal
-    refusal = _scope(agent, team_dir, task_id, f"task {task_id}")
+    # Handing it to someone is assigning; so is moving it under a parent,
+    # which moves it into that parent's project.
+    refusal = _scope(agent, team_dir, task_id, f"task {task_id}", assigning=bool(owner))
     if not refusal and _parent_arg(a):
-        refusal = _scope(agent, team_dir, _parent_arg(a), f"task {_parent_arg(a)}, its new parent")
+        refusal = _scope(agent, team_dir, _parent_arg(a), f"task {_parent_arg(a)}, its new parent",
+                         assigning=True)
     if not refusal and isinstance(a.get("project"), str):
         refusal = policy.task_project_refusal(agent, policy.load_roster(team_dir),
                                               a["project"].strip(), "the project it would move to")

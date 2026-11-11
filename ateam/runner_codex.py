@@ -54,7 +54,7 @@ from . import persona
 from . import roster as roster_lib
 from . import scope
 from . import steer
-from .runner import Runner, with_retry
+from .runner import Runner, capacity_note, with_retry
 from .transport import load as load_transport
 
 DEFAULT_MODEL = "gpt-6.1-sol"
@@ -362,7 +362,8 @@ class CodexRunner(Runner):
         cwd = spaces[0] if spaces else str(Path.cwd())
         cap = self._turn_tokens(spec)
         texts, started, usage = [], {}, {"base": None, "total": None, "last": None}
-        state = {"turn": None, "thread": None, "done": None, "error": None, "capped": False}
+        state = {"turn": None, "thread": None, "done": None, "error": None, "capped": False,
+                 "refusals": []}
 
         srv = _Server(self._argv(agent, spec, spaces), self._env(agent), cwd)
 
@@ -400,6 +401,8 @@ class CodexRunner(Runner):
                 self._quota(model, p.get("rateLimits") or {})
             elif method == "error" and not p.get("willRetry"):
                 state["error"] = p.get("error")
+            elif method == "error":
+                state["refusals"].append(json.dumps(p.get("error")))
             elif method == "turn/completed":
                 state["done"] = p.get("turn") or {}
 
@@ -468,9 +471,11 @@ class CodexRunner(Runner):
         if state["capped"]:
             return self._limit_reached(agent, conv, model, t0, usage, cap)
         if turn.get("status") is None or (turn.get("status") == "interrupted" and not state["capped"]):
-            # Not the word with_retry waits out: this turn had its time.
+            # Not the word with_retry waits out: this turn had its time,
+            # unless it spent it being refused for capacity.
             self._record(agent, conv, model, t0, usage)
-            return f"[error: the turn ran past {self.timeout:.0f}s]"
+            return (f"[error: the turn ran past {self.timeout:.0f}s"
+                    f"{capacity_note(state['refusals'] + srv.stderr)}]")
         if turn.get("status") == "failed":
             return _error_text(turn.get("error") or state["error"])
         self._record(agent, conv, model, t0, usage)

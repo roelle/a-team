@@ -62,6 +62,35 @@ def is_capacity(text: str) -> bool:
     return is_retryable(text) and any(k in low for k in CAPACITY)
 
 
+#: A turn that ran out its time after at least this many refusals for
+#: capacity inside it is a capacity failure, not a slow turn.
+CAPACITY_TIMEOUT_REFUSALS = 2
+
+
+def capacity_note(seen) -> str:
+    """For the error of a turn that ran past its time: what it was refused.
+
+    A host that retries a 503 inside the turn can spend the turn's whole
+    clock being refused. That turn ended as "ran past 600s", which reads as
+    a slow agent: not a capacity failure, so it never fell back to another
+    model, and the next turn went to the same one. `seen` is what the turn
+    reported along the way (retry notices, stderr lines); with
+    CAPACITY_TIMEOUT_REFUSALS or more refusals for capacity among them, this
+    says so in the words is_capacity reads. Otherwise "".
+    """
+    refusals = [str(x) for x in seen or () if x and is_capacity(str(x))]
+    if len(refusals) < CAPACITY_TIMEOUT_REFUSALS:
+        return ""
+    return (f" after the provider refused it {len(refusals)} times for capacity "
+            f"(last: {' '.join(refusals[-1].split())[:200]})")
+
+
+def is_capacity_timeout(text: str) -> bool:
+    """A turn that ran out its time being refused for capacity: see capacity_note."""
+    low = (text or "").lower()
+    return ("ran past" in low or "timed out" in low) and "refused it" in low and is_capacity(text)
+
+
 def is_retryable(text: str) -> bool:
     """True if this failure is worth waiting out rather than reporting."""
     low = (text or "").lower()
@@ -98,6 +127,10 @@ def with_retry(fn, *, attempts: int | None = None, on_wait=None, on_capacity=Non
             last = f"[error: {type(e).__name__}: {e}]"
         if i < attempts - 1 and on_capacity and is_capacity(last) and on_capacity(last):
             continue
+        if is_capacity_timeout(last):
+            # It had its time. Another model gets another go, above; the
+            # same one, waited for again, is the timeout over again.
+            return last
         if i < attempts - 1:
             # Jittered exponential backoff: a capacity spike hits every agent at
             # once, and synchronised retries reproduce the spike.

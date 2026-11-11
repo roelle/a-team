@@ -17,11 +17,11 @@ It is also a lab for watching agent teams fail. Most of what is interesting here
 ## Install
 
 ```bash
-pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.15.0"
+pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.16.0"
 a-team
 ```
 
-Or with [uv](https://docs.astral.sh/uv/): `uv tool install "a-team @ git+https://github.com/roelle/a-team.git@v4.15.0"`.
+Or with [uv](https://docs.astral.sh/uv/): `uv tool install "a-team @ git+https://github.com/roelle/a-team.git@v4.16.0"`.
 
 It opens your browser, shows what this machine can run agents on, and creates a team. It takes no keys; put an API key in the environment you start it from.
 
@@ -551,6 +551,14 @@ is refused, and with exactly one literal project named and none given,
 `create_task` defaults to it. A subtask is always in its parent's project
 (see Tasks form a tree), so scoping a project scopes its whole tree. It is
 enforced in the task server, so it holds on any host.
+`"task_projects_limit": "create_assign"` (in the agent's entry, or team-wide
+under `"policy"`; the entry wins) narrows the limit to creating and
+assigning, for an agent that coordinates across projects: `create_task` in
+or under a project outside them, and `update_task` giving a task outside
+them an owner or moving it under a parent outside them, are refused, while
+listing (`under` included), claiming, updating notes or status and
+completing any task are open. `"all"`, the default, is the limit on
+everything. `"create-assign"` and `"assign"` are accepted too.
 
 Team-wide, `"policy": {"detach_commands": [regex...]}` refuses a foreground
 run of a command that takes hours unless it is already detached, and
@@ -1712,11 +1720,18 @@ and again at 100%. It never switches a model on its own.
 `"fallback_models"` is the one case where it does, and only for as long as a
 model has no room. When a turn fails for capacity (a 429, 503 or 529:
 overloaded, unavailable, rate limited, resource exhausted, too many requests;
-not a timeout or a bad request), the model that ran is cooled down for the
-whole team for `fallback_cooldown` seconds (600 by default), and every agent
-on it runs on the first of its fallbacks that is not cooling and that the
-runner offers, until the cool-down ends; then it is back on its own model.
-Both keys go at the roster's top level, or in an agent's entry, which wins:
+not a bad request), the model that ran is cooled down for the whole team for
+`fallback_cooldown` seconds (600 by default), and every agent on it runs on
+the first of its fallbacks that is not cooling and that the runner offers,
+until the cool-down ends; then it is back on its own model. A timeout counts
+as capacity when the turn saw two or more such refusals on the way (a host
+CLI that retries a 503 inside the turn can spend the whole clock being
+refused), and the error says so: "[error: the turn ran past 600s after the
+provider refused it 3 times for capacity (last: 503 ...)]"; a timeout with
+one refusal or none is a plain timeout and does not count. The Claude,
+Codex, ACP and agy runners see those refusals; the host runner cannot see
+inside the turn, so its timeouts never count. Both keys go at the roster's
+top level, or in an agent's entry, which wins:
 
 ```json
 {"fallback_models": ["claude-sonnet-5-5"],
@@ -2110,7 +2125,7 @@ Releases follow [Semantic Versioning](https://semver.org/), tagged
 in [RELEASING.md](RELEASING.md). Pin a tag rather than `main`:
 
 ```bash
-pip install "a-team @ git+https://github.com/roelle/a-team.git@v4.15.0"
+pip install "a-team @ git+https://github.com/roelle/a-team.git@v4.16.0"
 python -m ateam.supervisor --version
 ```
 
