@@ -46,6 +46,12 @@ CONTRACT = """\
   something applies. A value true only for this task (a size, a count) does
   not; a command, a path or a limit that stays true does. The description
   says when the memory applies: it is all you see when choosing what to read.
+- A lesson about using a tool or doing an action (a command's gotchas,
+  how to write to the user) belongs in a memory with `triggers`: it is
+  then put in front of you before that call, not loaded on every wake.
+  Name the calls like permission rules, several separated by `;`:
+  `Bash(kubectl *)` is a shell command that runs kubectl,
+  `send_to_teammate(user)` is a message to the operator.
 """
 
 # Conversations now persist across wakes, so the old "you wake with no

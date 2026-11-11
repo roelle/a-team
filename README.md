@@ -17,11 +17,11 @@ It is also a lab for watching agent teams fail. Most of what is interesting here
 ## Install
 
 ```bash
-pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.16.0"
+pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.17.0"
 a-team
 ```
 
-Or with [uv](https://docs.astral.sh/uv/): `uv tool install "a-team @ git+https://github.com/roelle/a-team.git@v4.16.0"`.
+Or with [uv](https://docs.astral.sh/uv/): `uv tool install "a-team @ git+https://github.com/roelle/a-team.git@v4.17.0"`.
 
 It opens your browser, shows what this machine can run agents on, and creates a team. It takes no keys; put an API key in the environment you start it from.
 
@@ -1474,6 +1474,79 @@ Check sample size and variance before calling a winner. ...
   2,500. Memory review, which merges and retires memories, is what keeps
   reach high. See `bench/recall/README.md`.
 
+### Triggers: memories and norms that come up before the call
+
+Recall put the right memories in front of an agent at wake. Many of
+them were not about the wake at all. They were about one call: the
+flags a command needs, the context it must never run in, how to word a
+message to the operator. Loaded at every wake, they cost tokens each
+time and were a long way back in the context by the time the call came;
+on a hard tool the agent made the call wrong, read the error and tried
+again, which took longer than reading the memory would have. Triggers
+tie a memory to its calls. The memory leaves wake recall, and the first
+matching call is held while the agent reads it:
+
+```
+[held: this Bash call did not run. Here is what you have on it. Read
+it, then make the call again, changed if it says so; that one goes
+through.]
+
+## Your memory 'kubectl-on-staging'
+(triggers: Bash(kubectl *))
+
+Always pass --context staging; the default context is production.
+`kubectl apply` needs -n web or it lands in default.
+```
+
+The agent makes the call again, and that one goes through.
+
+- `save_memory` and `merge_memories` take `triggers`, written like
+  Claude Code permission rules: `Tool` or `Tool(pattern)`, several
+  separated by `;`. `Bash(kubectl *)` matches a shell command or any
+  part of one (`cd x && kubectl apply` matches); `Bash(git push)`,
+  with no wildcard, is that command with any arguments;
+  `send_to_teammate(user)` is writing to the operator and `(*)` any
+  teammate; `create_task(web*)` is a task in a matching project, and
+  `claim_task`, `update_task` and `complete_task` match on the task's
+  project; `Edit(*.ipynb)` is a file tool on a matching path;
+  `mcp__github__*` is any call to that MCP server's tools. `Bash` or
+  `shell` means every host's shell tool whatever it is called
+  (`run_command`, `exec_command`...), and team tools match however a
+  host prefixes them. A trigger that is not a call ("before deploying")
+  is refused with the syntax. Left out on a re-save, a memory keeps its
+  triggers; `none` removes them; a merge keeps every trigger its sources
+  had unless given. Triggers are stored as a `- Triggers:` line in the
+  memory's header, so they work with any memory store, and
+  `memory_index` shows them as `(before Bash(kubectl *))`.
+- Team norms work the same way. A `## ` section of the team's NORMS.md
+  whose first lines include `Triggers: send_to_teammate(user)` comes up
+  before matching calls, for every agent. The operator writes it; agents
+  cannot edit the wiki.
+- A memory with triggers is not recalled on a wake; it comes up before
+  its calls instead. One showing covers every trigger of that memory.
+- It is shown again when it may have dropped out of the agent's
+  context: a new conversation (cycle or reset); a compaction (the Claude
+  runner sees the CLI's `compact_boundary`, Codex the app-server's
+  compaction notice; elsewhere it is detected when the agent's context
+  at its last turn is under half the last seen); the context grown by
+  `rearm_tokens` since it was shown; or `rearm_hours` passed. A memory
+  or norm that changed is shown at its next call.
+- The call is held, not run, in the Claude runner (its pre-tool hook),
+  the Antigravity SDK runner, OpenCode over ACP (its policy plugin), any
+  host running `python -m ateam.hook_pre_tool_use`, and the team's own
+  tools (`send_to_teammate`, tasks and so on) on every host, inside the
+  MCP servers. Where nothing can stop a call before it runs (agy's and
+  Codex's own tools) what it triggered is a note at the agent's next
+  step: after the first use, before the second.
+- Each showing is a `triggered` event in `events.jsonl` (agent, tool,
+  what was shown). State is per agent in `<team_dir>/triggers/<agent>.json`.
+- On by default; it only does anything once a memory or norm names
+  triggers. In the roster, `"memory_triggers": false` turns it off, and
+  an object overrides the defaults: `{"rearm_tokens": 100000,
+  "rearm_hours": 6, "max_chars": 6000}`. `max_chars` caps what one
+  showing carries; past it a memory is cut with `read_memory('name')
+  for the rest`.
+
 ## agy CLI plugin (the installable form)
 
 The plugin supplies **tools**, not agents. Agents are defined in
@@ -2125,7 +2198,7 @@ Releases follow [Semantic Versioning](https://semver.org/), tagged
 in [RELEASING.md](RELEASING.md). Pin a tag rather than `main`:
 
 ```bash
-pip install "a-team @ git+https://github.com/roelle/a-team.git@v4.16.0"
+pip install "a-team @ git+https://github.com/roelle/a-team.git@v4.17.0"
 python -m ateam.supervisor --version
 ```
 

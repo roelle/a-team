@@ -128,6 +128,19 @@ def check_args(tools: list[dict], name: str, args: dict) -> dict:
     return out
 
 
+def _held(name: str, args: dict) -> str:
+    """A team tool's call held for what its agent has on it (ateam.triggers):
+    here, it holds on a host with no pre-tool hook of its own."""
+    agent = os.environ.get("ATEAM_AGENT", "")
+    if not agent:
+        return ""
+    try:
+        from . import scope, triggers
+        return triggers.hold(scope.team_dir(os.environ.get("ATEAM_TEAM_DIR")), agent, name, args)
+    except Exception:
+        return ""
+
+
 def serve(server_name: str, tools: list[dict], dispatch, footer=None) -> None:
     """Run the stdio loop. `dispatch(tool_name, args) -> str`.
 
@@ -167,7 +180,8 @@ def serve(server_name: str, tools: list[dict], dispatch, footer=None) -> None:
             p = msg.get("params", {})
             try:
                 name = p.get("name", "")
-                out = dispatch(name, check_args(tools, name, p.get("arguments", {}) or {}))
+                args = check_args(tools, name, p.get("arguments", {}) or {})
+                out = _held(name, args) or dispatch(name, args)
                 err = False
             except Exception as e:
                 out, err = f"[error: {e}]", True

@@ -12,7 +12,7 @@ beside the conversation.
 ## Run it
 
 ```bash
-pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.16.0"
+pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.17.0"
 a-team
 ```
 
@@ -332,7 +332,15 @@ untick that and pick some.
   divider inside the sidebar. A double-click resets one.
 - **Search** (⌘K / Ctrl+K) covers messages, tasks and the team's norms.
 - **Team wiki** opens the team's `NORMS.md` and every agent's saved memories
-  in a new tab.
+  in a new tab. A NORMS.md section whose first lines include a `Triggers:`
+  line, such as `Triggers: send_to_teammate(user)`, comes up in front of
+  every agent before a matching call.
+- **Back and Forward** in the browser walk what you opened: each
+  channel or conversation, thread and message is a history entry, so
+  Alt+← or a mouse's back button returns to the prior one. Going back
+  past a thread closes its panel; a message link you followed goes back
+  to where you were. Opening a team starts its history, and an entry
+  for another team reloads that team.
 
 ## More than one person
 

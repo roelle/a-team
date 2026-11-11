@@ -175,6 +175,22 @@ def test_the_page_links_marks_unread_and_follows_up():
     assert "&msg=${encodeURIComponent(o.id)}" in board
 
 
+def test_back_and_forward_walk_the_views_threads_and_messages_opened():
+    """Asked for: "if the browser back button took me to the prior message".
+    Each view, thread and message opened is a history entry; going back or
+    forward opens it again without adding one, and closes a thread the
+    entry did not have."""
+    app = (ROOT / "ateam/chat/static/app.js").read_text()
+    for needle in ("function remember(h)", 'window.addEventListener("popstate", restore)',
+                   "if (!S.view || viewKey(S.view) !== viewKey(v)) remember(hashFor(v))",
+                   "if (S.thread !== id && S.view) remember(",
+                   "remember(msgHash(m))", "S.goingTo = true",
+                   'else if (S.thread && !$("#drawer-thread").classList.contains("hidden")) closeDrawer()'):
+        assert needle in app, needle
+    remember = app[app.index("function remember(h)"):app.index('window.addEventListener("hashchange"')]
+    assert "restoring" in remember and "pushState" in remember
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main([__file__, *sys.argv[1:]]))

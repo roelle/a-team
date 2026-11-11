@@ -134,7 +134,8 @@ function hashFor(v) {
   return `dm=${enc(mine ? v.pair.find((p) => p !== "user") || "user" : [...v.pair].sort().join(","))}`;
 }
 const appURL = (hash) => `${location.origin}/?team=${enc(S.team)}#${hash}`;
-const msgURL = (m) => appURL(`${hashFor(viewOfMsg(m))}${m.thread ? "&thread=" + enc(m.thread) : ""}&msg=${enc(m.id)}`);
+const msgHash = (m) => `${hashFor(viewOfMsg(m))}${m.thread ? "&thread=" + enc(m.thread) : ""}&msg=${enc(m.id)}`;
+const msgURL = (m) => appURL(msgHash(m));
 const threadURL = (m) => appURL(`${hashFor(viewOfMsg(m))}&thread=${enc(m.thread || m.id)}`);
 function viewLabel(v) {
   if (v.type === "channel") return "#" + v.id;
@@ -183,6 +184,11 @@ function flash(el) {
   setTimeout(() => el.classList.remove("flash"), 2600);
 }
 async function goToMessage(id) {
+  S.goingTo = true;                 // one history entry for the message, not one per step
+  try { return await showMessage(id); }
+  finally { S.goingTo = false; const m = S.msgIndex.get(id); if (m) remember(msgHash(m)); }
+}
+async function showMessage(id) {
   let m = S.msgIndex.get(id);
   if (!m) { try { m = (await api(`/api/messages?${q({ id })}`)).message; } catch (err) { return toast(err.message, true); } }
   const v = viewOfMsg(m);
@@ -353,8 +359,15 @@ async function openTeam() {
   const v = linkedView() || load(`agychat.view.${S.team}`, null);
   const chans = Object.keys(S.state.channels || {});
   const open = chans.filter((c) => !S.state.channels[c].archived);
-  await openView(v && (v.type !== "channel" || chans.includes(v.id)) ? v : { type: "channel", id: open[0] || chans[0] || "general" },
-                 { jump: !linkedMsg() });
+  // Opening a team is where its history starts, in this entry: what Back
+  // walks is this team's views, and a link to another team's reloads.
+  S.view = null; S.thread = null; restoring++;
+  try {
+    await openView(v && (v.type !== "channel" || chans.includes(v.id)) ? v : { type: "channel", id: open[0] || chans[0] || "general" },
+                   { jump: !linkedMsg() });
+  } finally { restoring--; }
+  history.replaceState(null, "", `${location.pathname}?team=${enc(S.team)}#${linkedMsg() || linkedView() ? location.hash.slice(1) : hashFor(S.view)}`);
+  lastHash = location.hash;
   if (linkedMsg()) goToMessage(linkedMsg());
   else if (linkedView() && linkedThread()) openThread(linkedThread()).catch(() => {});
   listen();
@@ -375,9 +388,28 @@ async function followHash() {
   if (!S.state) return;
   if (linkedMsg()) return goToMessage(linkedMsg());
   const v = linkedView(); if (!v) return;
-  await openView(v); if (linkedThread()) openThread(linkedThread());
+  await openView(v);
+  if (linkedThread()) openThread(linkedThread());
+  else if (S.thread && !$("#drawer-thread").classList.contains("hidden")) closeDrawer();
 }
-window.addEventListener("hashchange", followHash);
+// Back and forward walk what you opened: each view, thread and message is a
+// history entry (remember), and going back or forward opens it again
+// without adding one (restore).
+let restoring = 0, lastHash = location.hash;
+async function restore() {
+  const team = new URLSearchParams(location.search).get("team");
+  if (team && S.team && team !== S.team) return location.reload();
+  if (location.hash === lastHash) return;
+  lastHash = location.hash; restoring++;
+  try { await followHash(); } finally { restoring--; }
+}
+function remember(h) {
+  if (restoring || S.goingTo || !S.state || location.hash.slice(1) === h) return;
+  history.pushState(null, "", `${location.pathname}${location.search}#${h}`);
+  lastHash = location.hash;
+}
+window.addEventListener("hashchange", restore);
+window.addEventListener("popstate", restore);
 
 async function refreshState() {
   S.state = await api(`/api/state?${q({})}`);
@@ -607,6 +639,7 @@ function renderTasks() {
 
 async function openView(v, { jump = true } = {}) {
   keepDraft();
+  if (!S.view || viewKey(S.view) !== viewKey(v)) remember(hashFor(v));
   S.view = v; save(`agychat.view.${S.team}`, v);
   S.keepUnread = null; S.messagesFor = null;
   if (S.marked[`${S.team}|${viewKey(v)}`]) { delete S.marked[`${S.team}|${viewKey(v)}`]; save("agychat.marked", S.marked); }
@@ -819,6 +852,7 @@ function openDrawer(tab) {
 // what is being typed in it, stays as it is. What is typed is also kept under
 // the thread (S.drafts), so another thread or a reload does not lose it.
 async function openThread(id) {
+  if (S.thread !== id && S.view) remember(`${hashFor(S.view)}&thread=${enc(id)}`);
   S.thread = id;
   const box = $("#drawer-thread");
   const kept = box.querySelector(`.thread-compose[data-thread="${CSS.escape(id)}"]`);
@@ -1142,7 +1176,7 @@ document.addEventListener("click", async (e) => {
   if (al && !e.metaKey && !e.ctrlKey && !e.shiftKey && e.button === 0) {
     const x = new URL(al.href);
     if ((x.searchParams.get("team") || S.team) !== S.team) return;      // another team: load it
-    e.preventDefault(); history.pushState(null, "", x.pathname + x.search + x.hash); return followHash();
+    e.preventDefault(); history.pushState(null, "", x.pathname + x.search + x.hash); return restore();
   }
   const go = e.target.closest("[data-goto]");
   if (go) { e.preventDefault(); return goToMessage(go.dataset.goto); }
@@ -1229,7 +1263,12 @@ document.addEventListener("drop", (e) => {
   if (files.length) { e.preventDefault(); uploadFiles(files, ta); }
 });
 
-$("#drawer-close").onclick = () => { $("#drawer").classList.add("hidden"); $("#drawer-split").classList.add("hidden"); S.thread = null; };
+function closeDrawer() {
+  $("#drawer").classList.add("hidden"); $("#drawer-split").classList.add("hidden");
+  if (S.thread && S.view) remember(hashFor(S.view));
+  S.thread = null;
+}
+$("#drawer-close").onclick = closeDrawer;
 $("#team").onchange = (e) => { S.team = e.target.value; openTeam(); };
 $("#show-quiet").onchange = renderMessages;
 $("#show-done").onchange = renderTasks;

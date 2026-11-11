@@ -54,6 +54,7 @@ from . import persona
 from . import roster as roster_lib
 from . import scope
 from . import steer
+from . import triggers
 from .runner import Runner, capacity_note, with_retry
 from .transport import load as load_transport
 
@@ -403,6 +404,10 @@ class CodexRunner(Runner):
                 state["error"] = p.get("error")
             elif method == "error":
                 state["refusals"].append(json.dumps(p.get("error")))
+            elif "compact" in method.lower():
+                # The thread was compacted: what triggered memories put in
+                # front of the agent is gone, so it is shown again.
+                triggers.rearm(self.team_dir, agent, "compacted")
             elif method == "turn/completed":
                 state["done"] = p.get("turn") or {}
 

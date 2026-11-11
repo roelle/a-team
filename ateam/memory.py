@@ -139,6 +139,8 @@ def extract_provenance(text: str) -> tuple[str | None, str | None, str]:
             if stripped.startswith(("- Why:", "Why:")):
                 why = stripped.split(":", 1)[1].strip()
                 continue
+            if stripped.lower().startswith(("- triggers:", "triggers:")):
+                continue                # ateam.triggers reads it from the text
             if not stripped:
                 continue
             in_header = False

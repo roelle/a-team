@@ -38,7 +38,7 @@ import os
 import sys
 from pathlib import Path
 
-from . import policy
+from . import policy, triggers
 
 
 def agent_for(payload: dict, team_dir: Path) -> str | None:
@@ -101,6 +101,9 @@ def decide(payload: dict, team_dir: Path) -> tuple[int, str]:
     refusal = policy.check_tool_policy(agent, tool, args, team_dir=team_dir)
     if refusal:
         return 2, refusal
+    held = triggers.hold(team_dir, agent, tool, args)
+    if held:
+        return 2, held
     return 0, ""
 
 

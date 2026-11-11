@@ -136,7 +136,13 @@ def count_call(team_dir, agent: str, tool: str, args) -> None:
                 state["due"] = state["count"]
             _save(path, state)
     except Exception:
-        pass
+        return
+    # Where nothing could hold the call (agy's and Codex's own tools), what
+    # it triggered is in front of the agent at the next step instead.
+    from . import triggers
+    note = triggers.after(team_dir, agent, tool, args or {})
+    if note:
+        leave_note(team_dir, agent, turn.get("ts"), note)
 
 
 def _new_mail(team_dir, agent: str, turn: dict, transport) -> list[Message]:

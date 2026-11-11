@@ -21,7 +21,7 @@ from google.antigravity.hooks import (on_compaction, policy, post_tool_call,
                                       pre_tool_call_decide)
 
 from . import config as cfg
-from . import scope, steer
+from . import scope, steer, triggers
 from .persona import CONTRACT
 from .store import Toolbox
 
@@ -209,6 +209,9 @@ def build_config(workspace: Path, model: str = cfg.DEFAULT_MODEL,
             check_paths=False)
         if refusal:
             return types.HookResult(allow=False, message=refusal)
+        held = triggers.hold(_team_dir, name, tname, dict(tool_call.args or {}))
+        if held:
+            return types.HookResult(allow=False, message=held)
         return types.HookResult(allow=True)
 
     hooks.append(team_policy)

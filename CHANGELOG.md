@@ -7,6 +7,33 @@ the README for what counts as the public surface.
 
 ## [Unreleased]
 
+## [4.17.0] - 2026-11-11
+
+### Added
+- **Memory triggers.** A memory can name the calls it is about, and it
+  then comes up before those calls instead of on every wake.
+  `save_memory` and `merge_memories` take `triggers`, written like
+  Claude Code permission rules and separated by `;`: `Bash(kubectl *)`,
+  `Bash(git push)`, `send_to_teammate(user)`, `create_task(web*)`,
+  `Edit(*.ipynb)`, `mcp__github__*`. The first matching call is held
+  and the agent gets what it has on that call, with a request to make
+  the call again; the second call goes through. A NORMS.md section with
+  a `Triggers:` line in its first lines does the same for every agent.
+  Shown again after a new conversation, a compaction, `rearm_tokens`
+  (100,000) of context growth or `rearm_hours` (6), and when the memory
+  or norm changed. Held in the Claude runner, the Antigravity SDK
+  runner, OpenCode over ACP, any host running
+  `python -m ateam.hook_pre_tool_use` and the team's own tools on every
+  host; where a call cannot be stopped (agy's and Codex's own tools) it
+  is a note at the next step. Each showing is a `triggered` event.
+  Roster: `"memory_triggers": false` turns it off; an object overrides
+  `rearm_tokens`, `rearm_hours` and `max_chars` (6000).
+- **Browser Back and Forward in the chat app.** Each channel or
+  conversation, thread and message you open is a history entry, so
+  Back and Forward (and Alt+Left, a mouse's back button) walk them.
+  Going back to a view without a thread closes the thread panel; a
+  message link you followed goes back to where you were.
+
 ## [4.16.0] - 2026-11-11
 
 ### Added
@@ -1299,7 +1326,8 @@ MCP memory server.
 ## [1.0] - 2026-09-08
 Milestone tag (pre-semver).
 
-[Unreleased]: https://github.com/roelle/a-team/compare/v4.16.0...HEAD
+[Unreleased]: https://github.com/roelle/a-team/compare/v4.17.0...HEAD
+[4.17.0]: https://github.com/roelle/a-team/compare/v4.16.0...v4.17.0
 [4.16.0]: https://github.com/roelle/a-team/compare/v4.15.0...v4.16.0
 [4.15.0]: https://github.com/roelle/a-team/compare/v4.14.0...v4.15.0
 [4.14.0]: https://github.com/roelle/a-team/compare/v4.13.0...v4.14.0

@@ -65,6 +65,7 @@ from . import persona
 from . import roster as roster_lib
 from . import scope
 from . import steer
+from . import triggers
 from .runner import Runner, capacity_note, with_retry
 
 SERVERS = ("memory", "bus", "tasks", "self")
@@ -613,8 +614,12 @@ def main(argv=None) -> int:
     args = dict(doc.get("args") or {})
     if doc.get("cwd"):
         args.setdefault("cwd", doc["cwd"])
-    refusal = check(str(doc.get("agent") or os.environ.get("ATEAM_AGENT") or ""),
-                    str(doc.get("tool") or ""), args)
+    agent = str(doc.get("agent") or os.environ.get("ATEAM_AGENT") or "")
+    refusal = check(agent, str(doc.get("tool") or ""), args)
+    # Held here, where the reason reaches the model, and not on a permission
+    # request (_answer), whose refusal carries none.
+    refusal = refusal or triggers.hold(os.environ.get("ATEAM_TEAM_DIR"), agent,
+                                       team_tool(str(doc.get("tool") or "")), args)
     if refusal:
         print(refusal)
         return 2

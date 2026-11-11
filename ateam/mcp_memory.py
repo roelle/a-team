@@ -20,11 +20,20 @@ repo it happened to be working in.
 import os
 import sys
 
-from . import memory_log, origin, scope, steer
+from . import memory_log, origin, scope, steer, triggers
 from .mcp_base import serve, string, tool
 from .memory import (MemoryStore, detect_conflicts, extract_provenance,
                      normalize_name, review_memories)
 from .memory import load as load_store
+
+TRIGGERS_ARG = ("The calls this memory is about. It is put in front of you before "
+                "you make one (the first such call is held while you read it) "
+                "instead of being loaded on every wake. Write each as a tool and "
+                "what it is called on, like Claude Code permission rules: "
+                "'Bash(kubectl *)', 'Bash(git push)', 'send_to_teammate(user)', "
+                "'create_task(web*)', 'Edit(*.ipynb)', 'mcp__github__*'; separate "
+                "several with ';'. Left out, the memory keeps the triggers it has; "
+                "'none' removes them.")
 
 TOOLS = [
     tool("save_memory",
@@ -41,7 +50,8 @@ TOOLS = [
           "content": string("The memory content in markdown"),
           "why": string("Why this was learned: the situation or trigger that produced "
                         "the lesson, so future sessions can judge if it is still true"),
-          "when": string("When this was learned (timestamp, optional, defaults to now)")},
+          "when": string("When this was learned (timestamp, optional, defaults to now)"),
+          "triggers": string(TRIGGERS_ARG)},
          ["name", "description", "content"]),
     tool("read_memory",
          "Read one of your memory files by name; lists available names on a miss.",
@@ -59,7 +69,9 @@ TOOLS = [
           "into": string("Name of the merged memory: one of them, or a new name"),
           "description": string("One line for your index saying when this applies"),
           "content": string("The merged content in markdown"),
-          "why": string("Why these were merged, and what each came from")},
+          "why": string("Why these were merged, and what each came from"),
+          "triggers": string(TRIGGERS_ARG + " Left out, the merged memory keeps "
+                             "every trigger its sources had.")},
          ["names", "into", "description", "content"]),
     tool("memory_index",
          "List everything you remember (name + one-line description each). "
@@ -77,8 +89,22 @@ def render_index(store: MemoryStore) -> str:
     entries = store.index()
     if not entries:
         return "# Memory index\n(empty — you have not saved anything yet)"
+
+    def before(name):
+        trig = triggers.of(store.read(name) or "")
+        return f" (before {'; '.join(trig)})" if trig else ""
     return "# Memory index\n" + "\n".join(
-        f"- [{e.name}] {e.description}" for e in entries)
+        f"- [{e.name}]{before(e.name)} {e.description}" for e in entries)
+
+
+def _with_triggers(store: MemoryStore, name: str, content: str, why: str,
+                   raw_triggers, keep: list[str]) -> tuple[str, str, list[str]]:
+    """(content, why, triggers) to save: the triggers asked for, else those
+    the content or the memory already has, written into the content."""
+    _, old_why, body = extract_provenance(content)
+    trig = (triggers.parse(raw_triggers) if raw_triggers is not None and str(raw_triggers).strip()
+            else triggers.of(content) or keep)
+    return triggers.with_triggers(body, trig), (why or old_why or ""), trig
 
 
 def handlers(store: MemoryStore, team=None) -> dict:
@@ -90,7 +116,13 @@ def handlers(store: MemoryStore, team=None) -> dict:
 
     def save(a):
         name = normalize_name(a["name"])
-        why = a.get("why", "")
+        try:
+            content, why, trig = _with_triggers(
+                store, name, a["content"], a.get("why", ""), a.get("triggers"),
+                triggers.of(store.read(name) or ""))
+        except triggers.TriggerError as e:
+            return f"[error: {e}]"
+        a = {**a, "content": content}
         when = a.get("when")
 
         # Check for contradictions or overlap against existing memories
@@ -108,6 +140,9 @@ def handlers(store: MemoryStore, team=None) -> dict:
                           **origin.stamp(team, store.agent))
         verb = "saved" if created else "updated"
         msg = f"[memory '{name}' {verb}]"
+        if trig:
+            msg += (f"\n[it comes up before {'; '.join(trig)}, and is not loaded "
+                    f"on a wake]")
         if conflicts:
             conflict_lines = "\n".join(f"- '{c['name']}': {c['reason']}" for c in conflicts)
             msg += (
@@ -149,10 +184,16 @@ def handlers(store: MemoryStore, team=None) -> dict:
                     f"{', '.join(e.name for e in store.index()) or 'none'}]")
         if not (a.get("content") or "").strip():
             return "[error: write the merged content; a merge never drops its sources unread]"
+        had = [t for n in names for t in triggers.of(store.read(n) or "")]
+        try:
+            content, why, _ = _with_triggers(store, into, a["content"], a.get("why", ""),
+                                             a.get("triggers"), list(dict.fromkeys(had)))
+        except triggers.TriggerError as e:
+            return f"[error: {e}]"
         for n in names:
             memory_log.archive(team, store.agent, n, describe(n), store.read(n) or "",
                                reason=f"merged into {into}", by=store.agent)
-        store.save(into, a["description"], a["content"], why=a.get("why", "") or
+        store.save(into, a["description"], content, why=why or
                    f"merged from {', '.join(names)}")
         for n in names:
             if n != into:

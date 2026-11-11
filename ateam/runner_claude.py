@@ -47,6 +47,7 @@ from . import policy
 from . import roster as roster_lib
 from . import scope
 from . import steer
+from . import triggers
 from .runner import Runner, capacity_note, with_retry
 from .transport import load as load_transport
 
@@ -233,6 +234,11 @@ class ClaudeRunner(Runner):
                 return {"hookSpecificOutput": {"hookEventName": "PreToolUse",
                                                "permissionDecision": "deny",
                                                "permissionDecisionReason": refusal}}
+            held = triggers.hold(team_dir, agent, raw, args)
+            if held:
+                return {"hookSpecificOutput": {"hookEventName": "PreToolUse",
+                                               "permissionDecision": "deny",
+                                               "permissionDecisionReason": held}}
             if tool_use_id:
                 self._started[tool_use_id] = time.monotonic()
             if tool == "Bash" and args.get("command"):
@@ -384,6 +390,9 @@ class ClaudeRunner(Runner):
                     result = m
                 elif isinstance(m, RateLimitEvent):
                     self._quota(model, m.rate_limit_info)
+                elif isinstance(m, SystemMessage) and m.subtype == "compact_boundary":
+                    # What triggered memories put in front of it is gone.
+                    triggers.rearm(self.team_dir, agent, "compacted")
                 elif isinstance(m, SystemMessage) and m.subtype == "api_retry":
                     # The CLI retrying a failed API call inside the turn.
                     d = m.data or {}
