@@ -137,6 +137,7 @@ from . import distill_queue
 from . import receipts
 from . import recall as recall_lib
 from . import recall_fast
+from . import trigger_learn
 from . import second_review
 from . import tasks as tasks_lib
 from .transport import Message, wakes
@@ -1991,6 +1992,21 @@ class Supervisor:
         self._background(self._used, agent, picked, last.get("query") or "",
                          turn.get("ts") or "", reply, cfg, last.get("rid"))
 
+    def _learn_triggers(self, agent: str, since: str) -> None:
+        """Correct which memories come up before which calls from what this
+        turn did (ateam/trigger_learn.py). Off the supervisor's thread."""
+        try:
+            for line in trigger_learn.observe_turn(self.team_dir, agent, since,
+                                                   record=self.observer.record_event):
+                self._log(f"    {agent}: {line}")
+        except Exception as e:
+            self._log(f"    {agent}: triggers not learned ({type(e).__name__}: {e})")
+
+    def _distill_prompt(self, agent: str) -> str:
+        """DISTILL_PROMPT, with the calls that went wrong and were made
+        again since the agent last wrote down what it learned."""
+        return DISTILL_PROMPT + trigger_learn.missing(self.team_dir, agent)
+
     def _teach(self, ar, agent: str, query: str, labels) -> None:
         """Tell the fast path what happened after a recall."""
         try:
@@ -2193,6 +2209,8 @@ class Supervisor:
             self._check_found(agent, turn)
             self._check_used(agent, turn, reply)
             self._check_second()
+        if turn.get("ts"):              # what came up before its calls, judged afterwards
+            self._background(self._learn_triggers, agent, str(turn["ts"]))
         if failed:
             self._log(f"    {agent}: {reply[:200]}")
         elif not self.quiet:
@@ -2778,7 +2796,7 @@ class Supervisor:
         self._begin_memory_turn(agent)
         self._distilling(agent, True)
         try:
-            reply = self._wake_blocking(agent, DISTILL_PROMPT, f"distilling {agent}")
+            reply = self._wake_blocking(agent, self._distill_prompt(agent), f"distilling {agent}")
         except Exception as e:
             reply = self._distill_raised(agent, e, time.monotonic() - t0)
         finally:
@@ -2896,7 +2914,7 @@ class Supervisor:
             t0 = time.monotonic()
             self._begin_memory_turn(agent)
             try:
-                handle = self.runner.begin(agent, DISTILL_PROMPT)
+                handle = self.runner.begin(agent, self._distill_prompt(agent))
             except Exception as e:
                 self._end_memory_turn(agent)
                 reply = self._distill_raised(agent, e, time.monotonic() - t0)
@@ -3177,7 +3195,8 @@ class Supervisor:
             time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() - 14 * 86400))
         return MEMORY_REVIEW_PROMPT.format(count=len(entries), table="\n".join(rows),
                                            flags=flags.strip(),
-                                           evidence=self._review_evidence(agent, since))
+                                           evidence=self._review_evidence(agent, since)
+                                           + trigger_learn.review(self.team_dir, agent, since))
 
     REVIEW_EVIDENCE_CHARS = 4000
 
@@ -3403,7 +3422,7 @@ class Supervisor:
         self._distill_before[agent] = self._memory_snapshot(agent)
         self._begin_memory_turn(agent)
         try:
-            handle = self.runner.begin(agent, DISTILL_PROMPT)
+            handle = self.runner.begin(agent, self._distill_prompt(agent))
         except Exception as e:
             self._end_memory_turn(agent)
             self._distill_before.pop(agent, None)

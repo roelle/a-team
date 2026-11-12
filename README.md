@@ -17,11 +17,11 @@ It is also a lab for watching agent teams fail. Most of what is interesting here
 ## Install
 
 ```bash
-pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.17.0"
+pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.18.0"
 a-team
 ```
 
-Or with [uv](https://docs.astral.sh/uv/): `uv tool install "a-team @ git+https://github.com/roelle/a-team.git@v4.17.0"`.
+Or with [uv](https://docs.astral.sh/uv/): `uv tool install "a-team @ git+https://github.com/roelle/a-team.git@v4.18.0"`.
 
 It opens your browser, shows what this machine can run agents on, and creates a team. It takes no keys; put an API key in the environment you start it from.
 
@@ -1543,9 +1543,83 @@ The agent makes the call again, and that one goes through.
 - On by default; it only does anything once a memory or norm names
   triggers. In the roster, `"memory_triggers": false` turns it off, and
   an object overrides the defaults: `{"rearm_tokens": 100000,
-  "rearm_hours": 6, "max_chars": 6000}`. `max_chars` caps what one
+  "rearm_hours": 6, "max_chars": 6000, "learn": true, "show_above": 0.3,
+  "decay": 0.9, "judge_max": 3}`. `max_chars` caps what one
   showing carries; past it a memory is cut with `read_memory('name')
   for the rest`.
+
+### Learned triggers: judged by what happened after
+
+Nothing says a memory has to share words with the call it helps on, and
+an agent does not always know which of its memories a call needs. So
+which memory comes up before which call is not left to what was written
+down. It is a record, kept per agent, of each memory and trigger and how
+showing it went, and it is corrected after every turn from what the turn
+did. It does not have to be right the first time: the same calls come
+round again, and the record moves toward the memories that help.
+
+```
+    coder: 'kubectl-context' now comes up before Bash(kubectl apply) (opened after the call went wrong)
+    coder: 'git-push-rules' no longer comes up before Bash(git *): it has not borne on those calls
+    coder: 'git-push-rules' now comes up before Bash(git push *) (would have made a failed call go right)
+    coder: Bash(helm upgrade) took 3 tries, with no memory on it
+```
+
+- **A call went wrong and was made again**, differently, with no file
+  changed in between (a test that failed until the code was fixed is
+  ordinary work, and a bare exit code or the same call repeated is not a
+  mistake). If the agent opened a memory before the try that worked,
+  that memory gains a trigger for such calls, at no cost. Otherwise the
+  judge is given the call, what came back, what worked and the agent's
+  memories, and names the memory that would have made the first try go
+  right, and its trigger. Every memory is a candidate while there are
+  thirty or fewer; past that, the nearest in words and a few drawn at
+  random. A memory with a learned trigger stays in wake recall, and
+  `memory_index` shows it as `(before Bash(kubectl apply) [learned])`.
+- **A memory was shown** before a call. The judge is given the call,
+  the memory and what the agent did next, and says whether the memory
+  bore on it. "No" counts against that trigger, whoever wrote it.
+- **A trigger is shown while its recent record says it helps at least
+  `show_above` of the time** (0.3: a held call costs one step, a call
+  made wrong costs several). Below that a learned trigger is retired
+  and a written one is muted: the memory's text is not touched,
+  `memory_index` marks it `[not shown: ...]`, and with no trigger left
+  the memory is recalled on wakes again. A trigger the agent wrote is
+  trusted until five verdicts in a row say otherwise; a learned one is
+  retired by two. The same evidence brings either back, often narrower:
+  `Bash(git *)` muted, `Bash(git push *)` learned.
+- **The record forgets.** Each new verdict keeps `decay` (0.9) of the
+  old counts, so it is a running average over about the last ten:
+  between every call ever made and only the last one.
+- **A call went wrong with its memory out of sight** (shown earlier in a
+  long conversation and not yet due again): the memory is shown at the
+  next such call, without waiting for `rearm_tokens` or `rearm_hours`.
+- **Where no memory would have helped, the lesson is missing.** When the
+  agent next writes down what it learned (distillation), the prompt
+  lists those calls: the first try, what came back, how many tries it
+  took and what worked, with the trigger to save the lesson under. Its
+  memory review lists them too, with what was learned and muted since
+  the last one, and any memory that was shown before a call that went
+  wrong anyway, to be deepened. Looking up `--help` before a call counts
+  as a lesson missing.
+- **The agent has the last word.** Saving a memory with `triggers` set
+  (a list, or `none`) clears what was learned for it; a merge keeps its
+  sources' learned triggers as written ones.
+- **The judge** is the model recall uses (`memory_recall`), or its own:
+  `"memory_triggers": {"judge": {"judge_via": "agy"}}` takes the same
+  settings as recall, `{"judge": true}` its defaults, `{"judge": false}`
+  none. At most `judge_max` (3) questions a turn. Without a judge only
+  what can be read off the record counts (a memory opened after a
+  failed call; a held call that came back changed and went through),
+  and nothing is ever muted.
+- On the record: `trigger_learned`, `trigger_muted`, `trigger_verdict`
+  and `trigger_trouble` events; `triggered` now carries the call and the
+  trigger each memory came up by. State is
+  `<team_dir>/triggers/<agent>.learned.json`, and
+  `python -m ateam.trigger_learn [agent]` prints it: each trigger with
+  its score, whether it is shown, and the calls with no memory yet.
+  `"memory_triggers": {"learn": false}` turns learning off and leaves
+  written triggers as they were.
 
 ## agy CLI plugin (the installable form)
 
@@ -2198,7 +2272,7 @@ Releases follow [Semantic Versioning](https://semver.org/), tagged
 in [RELEASING.md](RELEASING.md). Pin a tag rather than `main`:
 
 ```bash
-pip install "a-team @ git+https://github.com/roelle/a-team.git@v4.17.0"
+pip install "a-team @ git+https://github.com/roelle/a-team.git@v4.18.0"
 python -m ateam.supervisor --version
 ```
 

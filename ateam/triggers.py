@@ -55,8 +55,18 @@ before it runs (agy's and Codex's own tools), what it triggered is a note at
 the next step instead (steer.count_call): after the first use, before the
 second.
 
+## Triggers nobody wrote
+
+Which memory comes up before which call is also learned, and every trigger,
+written or learned, is judged by what happened after it was shown
+(ateam/trigger_learn.py). A memory that would have made a failed call go
+right gains a trigger for such calls; a trigger that keeps being shown
+before calls it does not bear on stops being shown. memories() below is
+where both take effect.
+
 Roster: "memory_triggers": false turns it off; {"rearm_tokens": 100000,
-"rearm_hours": 6, "max_chars": 6000} are the defaults.
+"rearm_hours": 6, "max_chars": 6000, "learn": true, "show_above": 0.3,
+"decay": 0.9, "judge_max": 3} are the defaults.
 """
 from __future__ import annotations
 
@@ -71,7 +81,12 @@ from pathlib import Path
 from . import filelock
 
 DIR = "triggers"
-DEFAULTS = {"rearm_tokens": 100_000, "rearm_hours": 6.0, "max_chars": 6000}
+DEFAULTS = {"rearm_tokens": 100_000, "rearm_hours": 6.0, "max_chars": 6000,
+            # ateam/trigger_learn.py: learn triggers and judge them afterwards;
+            # show one while its recent record helps this share of the time;
+            # how much of the old record each new verdict keeps; and how many
+            # questions a turn's record may put to the judge.
+            "learn": True, "show_above": 0.3, "decay": 0.9, "judge_max": 3}
 #: A context this much smaller than the last one seen was compacted.
 COMPACTED_BELOW = 0.5
 #: How long a process keeps an agent's triggered memories before reading
@@ -87,6 +102,18 @@ PATH_KEYS = ("file_path", "path", "notebook_path", "AbsolutePath", "TargetFile",
 _HEAD = re.compile(r"^\s*-?\s*triggers\s*:\s*(.*)$", re.IGNORECASE)
 _ONE = re.compile(r"^([A-Za-z0-9_.*?\[\]-]+)\s*(?:\((.*)\))?$")
 _SPLIT = re.compile(r"\s*(?:&&|\|\||;|\||\n)\s*")
+_ASSIGN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+_SUB = re.compile(r"^[a-z][a-z0-9-]{1,15}$")
+#: Words in front of a command that are not the command.
+WRAPPERS = {"sudo", "time", "nohup", "env", "command", "exec"}
+#: Commands a shell line is never about.
+TRIVIAL = {"cd", "export", "unset", "source", ".", "set", "echo", "true", "sleep",
+           "pushd", "popd", "printf", "wait"}
+#: Commands whose second word is a file or an expression, not a subcommand.
+NO_SUB = {"cat", "ls", "grep", "rg", "sed", "awk", "find", "rm", "cp", "mv", "mkdir",
+          "touch", "head", "tail", "python", "python3", "bash", "sh", "zsh", "node",
+          "pytest", "ruby", "perl", "less", "wc", "chmod", "chown", "tar", "curl",
+          "wget", "diff", "test", "which", "tee", "xargs", "sort", "jq"}
 
 
 class TriggerError(ValueError):
@@ -183,13 +210,68 @@ def _strings(v) -> list[str]:
     return []
 
 
+def command(args: dict) -> str:
+    """The command line of a shell call."""
+    args = args or {}
+    return " ".join(_strings(args.get("command") or args.get("cmd")
+                             or args.get("CommandLine") or "")).strip()
+
+
+def bare(part: str, named: bool = False) -> str:
+    """One command of a shell line without what stands in front of it:
+    'kubectl apply' of 'sudo KUBECONFIG=x kubectl apply'. With `named`,
+    without the directory it was run from either: 'python -m pytest' of
+    '.venv/bin/python -m pytest'."""
+    words = part.split()
+    while words and (words[0] in WRAPPERS or _ASSIGN.match(words[0])):
+        words.pop(0)
+    if named and words and "/" in words[0]:
+        words[0] = words[0].rstrip("/").rsplit("/", 1)[-1] or words[0]
+    return " ".join(words)
+
+
+def head(cmd: str, sub: bool = True) -> str:
+    """The command a shell line is about: 'git push' of 'cd repo && git
+    push origin main', 'python -m pytest' of 'python -m pytest -q'; with
+    sub=False the program alone, 'git' and 'python', wherever it was run
+    from."""
+    for part in _SPLIT.split(cmd or ""):
+        words = bare(part, named=True).split()
+        if not words or words[0] in TRIVIAL:
+            continue
+        if sub and len(words) > 2 and words[1] == "-m":
+            return " ".join(words[:3])
+        if sub and len(words) > 1 and words[0] not in NO_SUB and _SUB.match(words[1]):
+            return f"{words[0]} {words[1]}"
+        return words[0]
+    return ""
+
+
+def shape(tool: str, args: dict, sub: bool = True) -> str:
+    """The kind of call this is, written as a trigger that matches it and
+    the next one like it: 'Bash(git push)', 'Edit(*.ipynb)',
+    'send_to_teammate(user)'. With sub=False a shell call is its command
+    alone ('Bash(git)'): what a second try shares with the first."""
+    name, args = tool_name(tool), args or {}
+    if name.lower() in SHELL:
+        h = head(command(args), sub)
+        return f"Bash({h})" if h else ""
+    if name == "send_to_teammate" or name in ("create_task", *TASK_TOOLS):
+        on = next((s for s in subjects(tool, args) if s), "")
+        return f"{name}({on})" if on else name
+    paths = [s for k in PATH_KEYS for s in _strings(args.get(k))]
+    ext = Path(paths[0]).suffix if paths else ""
+    return f"{name}(*{ext})" if ext else name
+
+
 def subjects(tool: str, args: dict, team_dir=None) -> list[str]:
     """What a pattern is matched against, for this call."""
     name, args = tool_name(tool).lower(), args or {}
     if name in SHELL:
-        cmd = " ".join(_strings(args.get("command") or args.get("cmd")
-                                or args.get("CommandLine") or ""))
-        return [cmd.strip()] + [s for s in _SPLIT.split(cmd) if s.strip()]
+        cmd = command(args)
+        parts = [s for s in _SPLIT.split(cmd) if s.strip()]
+        return list(dict.fromkeys([cmd, *parts, *(bare(p) for p in parts),
+                                   *(bare(p, named=True) for p in parts)]))
     if name == "send_to_teammate":
         return [n.strip() for s in _strings(args.get("to")) for n in s.split(",") if n.strip()]
     if name in ("create_task", *TASK_TOOLS):
@@ -268,18 +350,23 @@ def norms(team_dir) -> list[dict]:
 
 
 def memories(team_dir, agent: str) -> list[dict]:
-    """The agent's own memories that name triggers."""
-    from . import memory_log
+    """The agent's own memories that come up before a call: the triggers
+    each one names, less those found not to bear on their calls, and the
+    ones learned for it (ateam/trigger_learn.py)."""
+    from . import memory_log, trigger_learn
     from .memory import extract_provenance
     try:
         store = memory_log.open_store(team_dir, agent)
     except Exception:
         return []
+    learned, muted = trigger_learn.standing(team_dir, agent)
     out = []
     try:
         for e in store.index():
             raw = store.read(e.name) or ""
-            trig = of(raw)
+            written = of(raw)
+            trig = [t for t in written if (e.name, t) not in muted]
+            trig += [t for t in learned.get(e.name, []) if t not in written]
             if trig:
                 _, _, body = extract_provenance(raw)
                 body = strip(body).strip()
@@ -309,9 +396,14 @@ def forget_cache() -> None:
 
 
 def due_for(team_dir, agent: str, tool: str, args: dict) -> list[dict]:
-    """Memories and norms whose triggers match this call (shown or not)."""
-    return [s for s in _sources(team_dir, agent)
-            if any(matches(t, tool, args, team_dir) for t in s["triggers"])]
+    """Memories and norms whose triggers match this call (shown or not),
+    each with the trigger that matched as "via"."""
+    out = []
+    for s in _sources(team_dir, agent):
+        via = next((t for t in s["triggers"] if matches(t, tool, args, team_dir)), None)
+        if via:
+            out.append({**s, "via": via})
+    return out
 
 
 # --- what has been shown -------------------------------------------------------------
@@ -363,6 +455,20 @@ def rearm(team_dir, agent: str, why: str = "") -> None:
             state["shown"] = {}
             state["rearmed"] = {"ts": time.time(), "why": why}
             _save(path, state)
+    except Exception:
+        pass
+
+
+def rearm_some(team_dir, agent: str, keys: list[str]) -> None:
+    """These are shown again at their next call: a call they are about went
+    wrong with them out of sight. Never raises."""
+    try:
+        path = _path(team_dir, agent)
+        with filelock.locked(path):
+            state = _load(path)
+            shown = state.get("shown") or {}
+            if any(shown.pop(k, None) for k in keys):
+                _save(path, state)
     except Exception:
         pass
 
@@ -420,7 +526,7 @@ def check(team_dir, agent: str, tool: str, args: dict, now: float | None = None)
             if not due:
                 return ""
             _save(path, state)
-        _record(team_dir, agent, tool, due)
+        _record(team_dir, agent, tool, args or {}, due)
         return render(due, tool_name(tool), cfg["max_chars"])
     except Exception:
         return ""
@@ -459,11 +565,17 @@ def after(team_dir, agent: str, tool: str, args: dict) -> str:
     return AFTER.format(tool=tool_name(tool), text=text) if text else ""
 
 
-def _record(team_dir, agent: str, tool: str, items: list[dict]) -> None:
+def _record(team_dir, agent: str, tool: str, args: dict, items: list[dict]) -> None:
+    """On the record with the call and the trigger each one came up by:
+    what trigger_learn judges afterwards."""
     try:
         from . import observer
+        name = tool_name(tool)
+        text = command(args) if name.lower() in SHELL else json.dumps(args, default=str)
         observer.load().record_event(
-            "triggered", agent=agent, tool=tool_name(tool),
-            shown=[i["key"].rsplit(":", 1)[0] for i in items])
+            "triggered", agent=agent, tool=name,
+            shown=[i["key"].rsplit(":", 1)[0] for i in items],
+            via=[i.get("via") or "" for i in items],
+            call=text[:400], family=shape(tool, args, sub=False))
     except Exception:
         pass

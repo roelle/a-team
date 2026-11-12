@@ -20,7 +20,7 @@ repo it happened to be working in.
 import os
 import sys
 
-from . import memory_log, origin, scope, steer, triggers
+from . import memory_log, origin, scope, steer, trigger_learn, triggers
 from .mcp_base import serve, string, tool
 from .memory import (MemoryStore, detect_conflicts, extract_provenance,
                      normalize_name, review_memories)
@@ -85,13 +85,19 @@ TOOLS = [
 ]
 
 
-def render_index(store: MemoryStore) -> str:
+def render_index(store: MemoryStore, team=None) -> str:
     entries = store.index()
     if not entries:
         return "# Memory index\n(empty — you have not saved anything yet)"
+    learned, muted = trigger_learn.standing(team, store.agent) if team else ({}, set())
 
     def before(name):
-        trig = triggers.of(store.read(name) or "")
+        """The calls it comes up before: the ones it names, marked where
+        they have stopped being shown, and the ones learned for it."""
+        written = triggers.of(store.read(name) or "")
+        trig = [t + (" [not shown: it has not borne on those calls]" if (name, t) in muted else "")
+                for t in written]
+        trig += [f"{t} [learned]" for t in learned.get(name, []) if t not in written]
         return f" (before {'; '.join(trig)})" if trig else ""
     return "# Memory index\n" + "\n".join(
         f"- [{e.name}]{before(e.name)} {e.description}" for e in entries)
@@ -136,6 +142,8 @@ def handlers(store: MemoryStore, team=None) -> dict:
 
         created = store.save(name, a["description"], a["content"],
                              why=why, when=when)
+        if team and str(a.get("triggers") or "").strip():
+            trigger_learn.forget(team, store.agent, name)   # the agent has decided
         memory_log.record(team, store.agent, "save", name, new=bool(created),
                           **origin.stamp(team, store.agent))
         verb = "saved" if created else "updated"
@@ -150,7 +158,7 @@ def handlers(store: MemoryStore, team=None) -> dict:
                 f"existing memories]\n{conflict_lines}\n"
                 f"Please review and reconcile if appropriate."
             )
-        return f"{msg}\nCurrent memory index:\n{render_index(store)}"
+        return f"{msg}\nCurrent memory index:\n{render_index(store, team)}"
 
     def read(a):
         name = normalize_name(a["name"])
@@ -171,7 +179,7 @@ def handlers(store: MemoryStore, team=None) -> dict:
                            reason="deleted", by=store.agent)
         store.delete(name)
         memory_log.record(team, store.agent, "delete", name)
-        return f"[memory '{name}' deleted (archived)]\nCurrent memory index:\n{render_index(store)}"
+        return f"[memory '{name}' deleted (archived)]\nCurrent memory index:\n{render_index(store, team)}"
 
     def merge(a):
         names = [normalize_name(n) for n in str(a.get("names") or "").split(",") if n.strip()]
@@ -185,6 +193,9 @@ def handlers(store: MemoryStore, team=None) -> dict:
         if not (a.get("content") or "").strip():
             return "[error: write the merged content; a merge never drops its sources unread]"
         had = [t for n in names for t in triggers.of(store.read(n) or "")]
+        if team:                        # and the ones learned for them
+            learned, _ = trigger_learn.standing(team, store.agent)
+            had += [t for n in names for t in learned.get(n, [])]
         try:
             content, why, _ = _with_triggers(store, into, a["content"], a.get("why", ""),
                                              a.get("triggers"), list(dict.fromkeys(had)))
@@ -201,11 +212,11 @@ def handlers(store: MemoryStore, team=None) -> dict:
         memory_log.record(team, store.agent, "merge", into, sources=names,
                           **origin.stamp(team, store.agent))
         return (f"[merged {', '.join(names)} into '{into}'; the sources are archived]\n"
-                f"Current memory index:\n{render_index(store)}")
+                f"Current memory index:\n{render_index(store, team)}")
 
     return {"save_memory": save, "read_memory": read,
             "delete_memory": delete, "merge_memories": merge,
-            "memory_index": lambda a: render_index(store),
+            "memory_index": lambda a: render_index(store, team),
             "review_memory": lambda a: review_memories(store)}
 
 

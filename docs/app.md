@@ -12,7 +12,7 @@ beside the conversation.
 ## Run it
 
 ```bash
-pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.17.0"
+pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.18.0"
 a-team
 ```
 

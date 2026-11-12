@@ -472,14 +472,15 @@ class AgentRecall:
             return {}
 
     def memories(self) -> list[dict]:
-        from . import triggers
+        from . import trigger_learn, triggers
         from .memory import extract_provenance
         store = self._open_store()
+        _, muted = trigger_learn.standing(self.team_dir, self.agent)
         try:
             out = []
             for e in store.index():
                 raw = store.read(e.name) or ""
-                if triggers.of(raw):
+                if any((e.name, t) not in muted for t in triggers.of(raw)):
                     continue            # it comes up before its calls, not on a wake
                 when, why, body = extract_provenance(raw)
                 out.append({"id": e.name, "name": e.name, "description": e.description,

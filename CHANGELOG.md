@@ -7,6 +7,45 @@ the README for what counts as the public surface.
 
 ## [Unreleased]
 
+## [4.18.0] - 2026-11-12
+
+### Added
+- **Learned triggers, judged by what happened after.** Which memory
+  comes up before which call is now a record that each turn corrects
+  (`ateam/trigger_learn.py`). When a call goes wrong and is made again
+  differently, with no file changed in between, the memory that would
+  have made the first try go right gains a trigger for such calls: the
+  one the agent opened before the try that worked, or else the one a
+  judge names from the call, what came back, what worked and the
+  agent's memories. When a memory is shown before a call, the judge says
+  whether it bore on it. A trigger whose recent record falls below
+  `show_above` (0.3) stops being shown, whoever wrote it: a learned one
+  is retired, a written one is muted with the memory untouched and back
+  in wake recall, and the same evidence brings either back. Each verdict
+  keeps `decay` (0.9) of the old counts. A memory that was out of sight
+  when its call went wrong is shown again at the next one. Saving a
+  memory with `triggers` set clears what was learned for it.
+  `memory_index` marks `[learned]` and `[not shown: ...]`. The judge is
+  recall's, or `"memory_triggers": {"judge": ...}`; without one, only a
+  memory opened after a failed call and a held call that came back
+  changed count, and nothing is muted. New events `trigger_learned`,
+  `trigger_muted`, `trigger_verdict`, `trigger_trouble`;
+  `python -m ateam.trigger_learn [agent]` prints the record.
+  `"memory_triggers": {"learn": false}` turns it off.
+- **Lessons that are missing are asked for.** Calls that went wrong and
+  were made again with no memory to help (and calls the agent looked up
+  with `--help` first) are listed in the agent's next distillation
+  prompt and memory review: the first try, what came back, the number
+  of tries and what worked, with the trigger to save the lesson under.
+  A memory that was shown before a call that went wrong anyway is named
+  as one to deepen.
+
+### Changed
+- A trigger matches a command behind `sudo`, `env`, `time`, `nohup` or
+  `VAR=value`: `Bash(kubectl *)` now matches `sudo kubectl apply`.
+- The `triggered` event carries `via` (the trigger each memory came up
+  by), `call` and `family`.
+
 ## [4.17.0] - 2026-11-11
 
 ### Added
@@ -1326,7 +1365,8 @@ MCP memory server.
 ## [1.0] - 2026-09-08
 Milestone tag (pre-semver).
 
-[Unreleased]: https://github.com/roelle/a-team/compare/v4.17.0...HEAD
+[Unreleased]: https://github.com/roelle/a-team/compare/v4.18.0...HEAD
+[4.18.0]: https://github.com/roelle/a-team/compare/v4.17.0...v4.18.0
 [4.17.0]: https://github.com/roelle/a-team/compare/v4.16.0...v4.17.0
 [4.16.0]: https://github.com/roelle/a-team/compare/v4.15.0...v4.16.0
 [4.15.0]: https://github.com/roelle/a-team/compare/v4.14.0...v4.15.0
