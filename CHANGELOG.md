@@ -42,7 +42,9 @@ the README for what counts as the public surface.
 
 ### Changed
 - A trigger matches a command behind `sudo`, `env`, `time`, `nohup` or
-  `VAR=value`: `Bash(kubectl *)` now matches `sudo kubectl apply`.
+  `VAR=value`, and by the program's name wherever it is run from:
+  `Bash(kubectl *)` now matches `sudo kubectl apply` and
+  `/usr/local/bin/kubectl apply`.
 - The `triggered` event carries `via` (the trigger each memory came up
   by), `call` and `family`.
 
