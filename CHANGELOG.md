@@ -7,6 +7,66 @@ the README for what counts as the public surface.
 
 ## [Unreleased]
 
+## [4.19.0] - 2026-11-12
+
+### Fixed
+- **The app on a long event log.** Activity and the board took 10 to 60
+  seconds, and opening the board could hang the app for minutes. The
+  event log is mostly tool calls, each with what the tool returned; one
+  refresh read and parsed the whole log three times, the board's five,
+  every tool call the team made told every open page to refresh, and
+  refreshes that overlapped each slowed the others. Now the log is
+  parsed once per process and then only what was appended, tool calls
+  are skipped before a byte of them is parsed, and what is worked out
+  from turns (who is failing, how busy each agent is, tokens per task)
+  is worked out again only when a turn is recorded. Tool calls are no
+  longer sent to the page as events. People asking for the state
+  together share one answer, never one older than they asked for, and a
+  page asks for one refresh at a time. An agent's Activity is read from
+  the end of the log. Measured on 200 MB of events: a refresh 3.8 s to
+  16 ms (0.4 s the first time after a start), six board refreshes at
+  once 14 s to 0.1 s, Activity 0.7 s to 2 ms. The server's listen queue
+  is 128, from 5.
+- **The supervisor on a long event log.** It read the whole log for the
+  turns on every pass, and again after a turn for that turn's tool
+  calls. `FileObserver.events(kind)` now costs what was appended
+  since, and a turn's calls are read back from the end of the log
+  (`Observer.calls`). The review gate's reads (`ateam.activity`) leave
+  the tool calls out as well.
+
+### Added
+- **A thread opens where the unread begins.** Opening a thread with
+  replies you have not read starts the pane at the first of them, under
+  a "new" line, where it used to start at the thread's first message.
+  The line stays where it was while you read and replies arrive.
+- **`Record.activity(agent, limit=120)`**: an agent's latest events, tool
+  calls included, read from the end of the log. `Record.events_signature()`
+  changes when an event other than a tool call is recorded.
+  `Feed(team_dir, tool_calls=False)` leaves tool calls out of what it
+  follows. `Observer.calls(agent, since)` is one agent's tool calls from
+  a time on; a custom observer inherits a version built on `events()`.
+  `ateam.logtail` is the reader behind them: `tail(path, without=kind)`
+  and `newest(path)`.
+
+### Changed
+- **The event log keeps less of each tool call**: the start and end of
+  what it returned (1,000 characters, where it kept up to 20,000), of an
+  error (4,000) and of each argument (2,000), with a note of how much
+  was left out. Nothing in a-team read more of a result than the 600
+  characters Activity shows. `ATEAM_TOOL_RESULT_LOG_CHARS`,
+  `ATEAM_TOOL_ERROR_LOG_CHARS` and `ATEAM_TOOL_ARG_LOG_CHARS` change the
+  limits; 0 keeps everything. Logs already written are left as they are.
+  The observer contract (`evals/test_observer.py`) now asks that a long
+  result be cut and say by how much, whatever the length kept.
+- **`/api/events` no longer carries `tool_call` events.** A client that
+  wants them reads `/api/activity`, or follows the log with `Feed`.
+- **`Record.events(kind)` returns copies** for one kind of event; asking
+  for everything, or for the tool calls, still reads the whole file.
+- **A handle in code is not a mention.** `@name` inside backticks, inline
+  or in a fenced block, wakes nobody and marks nothing as mentioning you,
+  in a channel or a direct message. A mention recorded from one by
+  earlier versions no longer shows the red @.
+
 ## [4.18.0] - 2026-11-12
 
 ### Added
@@ -1367,7 +1427,8 @@ MCP memory server.
 ## [1.0] - 2026-09-08
 Milestone tag (pre-semver).
 
-[Unreleased]: https://github.com/roelle/a-team/compare/v4.18.0...HEAD
+[Unreleased]: https://github.com/roelle/a-team/compare/v4.19.0...HEAD
+[4.19.0]: https://github.com/roelle/a-team/compare/v4.18.0...v4.19.0
 [4.18.0]: https://github.com/roelle/a-team/compare/v4.17.0...v4.18.0
 [4.17.0]: https://github.com/roelle/a-team/compare/v4.16.0...v4.17.0
 [4.16.0]: https://github.com/roelle/a-team/compare/v4.15.0...v4.16.0

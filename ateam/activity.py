@@ -31,6 +31,13 @@ def jsonl(path: Path) -> list[dict]:
     return out
 
 
+def _events(team_dir: Path) -> list[dict]:
+    """The event log without its tool calls, which nothing here reads and
+    which are most of it. Shared: do not change the rows."""
+    from . import logtail
+    return logtail.tail(Path(team_dir) / "events.jsonl", without="tool_call")[0]
+
+
 def episode_start(team_dir: Path) -> str:
     """When the episode a review recorded now belongs to began; "" for all history.
 
@@ -53,7 +60,7 @@ def episode_start(team_dir: Path) -> str:
     duration either, its end is the boundary, which is strict rather than
     open-ended.
     """
-    marks = [e for e in jsonl(team_dir / "events.jsonl")
+    marks = [e for e in _events(team_dir)
              if e.get("event") in ("episode_start", "episode")]
     if not marks:
         return ""
@@ -101,7 +108,7 @@ def author_activity(team_dir: Path, author: str, since: str) -> tuple[bool, list
         if sent:
             evidence.append(f"{len(sent)} bus message(s)")
 
-    events = jsonl(team_dir / "events.jsonl")
+    events = _events(team_dir)
     if events:
         channels += 1
         turns = [e for e in events

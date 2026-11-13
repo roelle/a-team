@@ -556,16 +556,23 @@ function newTask(parentId) {
 function listen() {
   if (S.events) S.events.close();
   S.events = new EventSource(`/api/events?${q({})}`);
-  let later = null;
+  // One look at a time: while one is on its way, what arrives asks for one
+  // more after it, not one each. Looks that overlap each slow the others.
+  let later = null, looking = false, again = false;
+  const look = async () => {
+    if (S.drag) return;
+    if (looking) { again = true; return; }
+    looking = true;
+    try {
+      await refresh(); render();
+      if (S.selected && !document.activeElement?.closest?.("#detail-form")) openDetail(S.selected);
+    } catch {} finally { looking = false; if (again) { again = false; soon(); } }
+  };
+  const soon = () => { clearTimeout(later); later = setTimeout(look, 400); };
   S.events.onmessage = (ev) => {
     const { stream, item } = JSON.parse(ev.data);
     if (stream === "bus" && !item.task_id) return;
-    clearTimeout(later);
-    later = setTimeout(async () => {
-      if (S.drag) return;
-      await refresh().catch(() => {}); render();
-      if (S.selected && !document.activeElement?.closest?.("#detail-form")) openDetail(S.selected);
-    }, 400);
+    soon();
   };
   S.events.onerror = () => { setTimeout(() => { if (S.events.readyState === 2) listen(); }, 3000); };
 }

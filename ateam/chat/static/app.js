@@ -217,8 +217,17 @@ function sender(m) {
 }
 // Recorded as a mention of you when it was posted, or an @ of one of your
 // handles in it: what was recorded depends on the code the agent posted with.
-const mentionsMe = (m) => m.from !== "user" && ((m.mentions || []).includes("user")
-  || [...(m.content || "").matchAll(HANDLE_RE)].some((x) => myHandles().has(x[1].toLowerCase())));
+// A handle in backticks is written about, not called: `@roelle` in a note on
+// how mentions work is no mention, including one recorded as such before
+// code was left out.
+const CODE_RE = /```[\s\S]*?(?:```|$)|`[^`\n]*`/g;
+const prose = (s) => (s || "").replace(CODE_RE, " ");
+const namesMe = (text) => [...text.matchAll(HANDLE_RE)].some((x) => myHandles().has(x[1].toLowerCase()));
+function mentionsMe(m) {
+  if (m.from === "user") return false;
+  if (namesMe(prose(m.content))) return true;
+  return (m.mentions || []).includes("user") && !namesMe(m.content || "");
+}
 // Addressed to you: an @mention, or an agent's direct message.
 const forMe = (m) => m.from !== "user" && m.from !== "supervisor" && (mentionsMe(m) || (!m.channel && m.to === "user"));
 
@@ -852,6 +861,8 @@ function openDrawer(tab) {
 // what is being typed in it, stays as it is. What is typed is also kept under
 // the thread (S.drafts), so another thread or a reload does not lose it.
 async function openThread(id) {
+  // Opened, as against drawn again because a reply arrived while it was open.
+  const opening = S.thread !== id || $("#drawer").classList.contains("hidden") || $("#drawer-thread").classList.contains("hidden");
   if (S.thread !== id && S.view) remember(`${hashFor(S.view)}&thread=${enc(id)}`);
   S.thread = id;
   const box = $("#drawer-thread");
@@ -863,6 +874,15 @@ async function openThread(id) {
   indexMsgs(messages); S.threadMsgs = messages;
   const root = messages.find((m) => m.id === id) || messages[0];
   const last = messages.reduce((a, m) => (m.ts > a ? m.ts : a), "");
+  // Where what you have not read begins, as it was when you opened the
+  // thread: marked "new", and where the pane starts. A long thread opened
+  // at its first message had you scroll past all you had read to find it.
+  if (opening) {
+    const since = S.tseen[tKey(id)] ?? (S.base || undefined);
+    const first = since === undefined ? null : messages.find((m) => m.id !== id && m.from !== "user" && m.ts > since);
+    S.threadNew = first ? { thread: id, id: first.id } : null;
+  }
+  const newAt = S.threadNew?.thread === id ? S.threadNew.id : null;
   if (last && last !== S.tseen[tKey(id)]) {
     S.tseen[tKey(id)] = last; saveThreadsSeen();
     if (S.fresh[id]) renderMessages();
@@ -870,7 +890,7 @@ async function openThread(id) {
   }
   const where = root?.channel ? { channel: root.channel } : { to: (root?.from === "user" ? root?.to : root?.from) };
   const canReply = root && root.from !== "supervisor" && (root.channel || root.from === "user" || root.to === "user");
-  const html = messages.map((m) => msgHTML(m, { inThread: true })).join("");
+  const html = messages.map((m) => (newAt && m.id === newAt ? `<div class="new-divider"><span>new</span></div>` : "") + msgHTML(m, { inThread: true })).join("");
   if (kept && box.querySelector(".thread-msgs")) {
     box.querySelector(".thread-msgs").innerHTML = html;
     hydrateLinks(box);
@@ -883,6 +903,10 @@ async function openThread(id) {
     hydrateLinks(box);
   }
   openDrawer("thread");
+  if (opening) {
+    const mark = box.querySelector(".new-divider");
+    box.scrollTop = mark ? box.scrollTop + mark.getBoundingClientRect().top - box.getBoundingClientRect().top - 4 : 0;
+  }
 }
 
 function threadDraftKey(id) { return `${S.team}|thread:${id}`; }
@@ -1133,8 +1157,15 @@ $("#mention-box").addEventListener("mousedown", (e) => {
 function listen() {
   if (S.events) S.events.close();
   S.events = new EventSource(`/api/events?${q({})}`);
-  let refetch = null;
-  const later = () => { clearTimeout(refetch); refetch = setTimeout(() => refreshState().catch(() => {}), 400); };
+  // One look at a time: while one is on its way, what arrives asks for one
+  // more after it, not one each. Looks that overlap each slow the others.
+  let refetch = null, looking = false, again = false;
+  const look = async () => {
+    if (looking) { again = true; return; }
+    looking = true;
+    try { await refreshState(); } catch {} finally { looking = false; if (again) { again = false; later(); } }
+  };
+  const later = () => { clearTimeout(refetch); refetch = setTimeout(look, 400); };
   S.events.onmessage = (ev) => {
     const { stream, item } = JSON.parse(ev.data);
     if (stream === "bus") {

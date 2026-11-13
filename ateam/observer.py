@@ -90,6 +90,14 @@ class Observer(ABC):
         """
         return []
 
+    def calls(self, agent: str, since: str = "") -> list[dict]:
+        """One agent's tool calls from `since` (a record timestamp), oldest
+        first. A store that can find them without reading everything it
+        holds should: this is asked after every turn, and tool calls are
+        most of what is recorded."""
+        return [e for e in self.events("tool_call")
+                if e.get("agent") == agent and str(e.get("ts") or "") >= since]
+
     def summary(self) -> dict:
         """Aggregate totals per-agent and per-episode.
 

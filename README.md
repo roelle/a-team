@@ -17,11 +17,11 @@ It is also a lab for watching agent teams fail. Most of what is interesting here
 ## Install
 
 ```bash
-pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.18.0"
+pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.19.0"
 a-team
 ```
 
-Or with [uv](https://docs.astral.sh/uv/): `uv tool install "a-team @ git+https://github.com/roelle/a-team.git@v4.18.0"`.
+Or with [uv](https://docs.astral.sh/uv/): `uv tool install "a-team @ git+https://github.com/roelle/a-team.git@v4.19.0"`.
 
 It opens your browser, shows what this machine can run agents on, and creates a team. It takes no keys; put an API key in the environment you start it from.
 
@@ -1779,7 +1779,16 @@ presence, models and the task board, in a local web app with no build step.
 gives messages by channel or conversation, threads and reply counts, tasks,
 reviews, events, presence (running, idle, failing, offline), each agent's
 model and where it comes from, and search; `Feed(team_dir).poll()` returns
-what has been appended since the last poll, never half a line.
+what has been appended since the last poll, never half a line. The logs
+are parsed once per process and then only what was appended. The event
+log is mostly tool calls, so `Record.events("turn")` and the like leave
+them out without parsing them, `Record.activity(agent)` reads an agent's
+latest events (tool calls included) from the end of the file, and
+`Feed(team_dir, tool_calls=False)` follows the log without them; only
+`Record.events()` with no kind, or `events("tool_call")`, reads all of it.
+The log keeps the start and end of what each call returned (1,000
+characters; `ATEAM_TOOL_RESULT_LOG_CHARS`, and `..._ERROR_...` and
+`..._ARG_...` for errors and arguments).
 `ateam.actions` is everything the operator can do -- post to a channel or
 message an agent as the user (with the person's name as `author`), create
 channels and change their members, set or clear a model, waive a review,
@@ -2272,7 +2281,7 @@ Releases follow [Semantic Versioning](https://semver.org/), tagged
 in [RELEASING.md](RELEASING.md). Pin a tag rather than `main`:
 
 ```bash
-pip install "a-team @ git+https://github.com/roelle/a-team.git@v4.18.0"
+pip install "a-team @ git+https://github.com/roelle/a-team.git@v4.19.0"
 python -m ateam.supervisor --version
 ```
 

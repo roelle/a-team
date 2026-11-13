@@ -115,7 +115,7 @@ def _could_have_read(team_dir, row: dict) -> dict[str, bool]:
     elif row.get("to") and row["to"] != "user":
         out[row["to"]] = True
     from . import roster as roster_lib
-    for handle in channels_lib._MENTION.findall(row.get("content") or ""):
+    for handle in channels_lib.handles_in(row.get("content") or ""):
         who = roster_lib.resolve_name(handle, names, roster_lib.aliases(doc))
         if who and who != "user":
             out[who] = True
@@ -260,7 +260,7 @@ def dm(team_dir, agent: str, content: str, author: str | None = None,
     doc = channels_lib._roster_doc(team_dir)
     names = [a["name"] for a in doc.get("agents", []) if isinstance(a, dict) and a.get("name")]
     pulled = []
-    for handle in channels_lib._MENTION.findall(content):
+    for handle in channels_lib.handles_in(content):
         who = roster_lib.resolve_name(handle, names, roster_lib.aliases(doc))
         if who and who not in (agent, "user") and who not in pulled:
             pulled.append(who)

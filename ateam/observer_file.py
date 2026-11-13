@@ -13,12 +13,33 @@ import os
 import time
 from pathlib import Path
 
+from . import logtail
 from .observer import Observer
 
-try:
-    from .config import MAX_TOOL_OUTPUT_CHARS
-except ImportError:
-    MAX_TOOL_OUTPUT_CHARS = 20_000
+from . import config
+
+
+def clip(text: str, limit: int) -> str:
+    """`text` in about `limit` characters: its start and its end, with how
+    much between them was left out. The end is kept because that is where
+    a command says how it went."""
+    if limit <= 0 or len(text) <= limit:
+        return text
+    head = limit * 3 // 4
+    return (text[:head] + f"\n...[{len(text) - limit} chars left out]...\n"
+            + text[len(text) - (limit - head):])
+
+
+def _slim(value, limit: int, depth: int = 0):
+    """A call's arguments with each long string clipped: a file written
+    whole is not kept whole in the log as well."""
+    if isinstance(value, str):
+        return clip(value, limit)
+    if depth < 6 and isinstance(value, dict):
+        return {k: _slim(v, limit, depth + 1) for k, v in value.items()}
+    if depth < 6 and isinstance(value, (list, tuple)):
+        return [_slim(v, limit, depth + 1) for v in value]
+    return value
 
 
 class FileObserver(Observer):
@@ -103,27 +124,20 @@ class FileObserver(Observer):
                          duration_s: float | None = None,
                          **kwargs) -> None:
         try:
-            truncated_res = result
-            if truncated_res is not None:
-                if not isinstance(truncated_res, str):
-                    try:
-                        truncated_res = json.dumps(truncated_res, default=str)
-                    except Exception:
-                        truncated_res = str(truncated_res)
-                if len(truncated_res) > MAX_TOOL_OUTPUT_CHARS:
-                    truncated_res = (
-                        truncated_res[:MAX_TOOL_OUTPUT_CHARS]
-                        + f"\n...[truncated {len(truncated_res) - MAX_TOOL_OUTPUT_CHARS} chars]"
-                    )
+            if result is not None and not isinstance(result, str):
+                try:
+                    result = json.dumps(result, default=str)
+                except Exception:
+                    result = str(result)
             event = {
                 "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
                 "event": "tool_call",
                 "agent": agent,
                 "conversation": conversation,
                 "tool": tool,
-                "args": args,
-                "result": truncated_res,
-                "error": str(error) if error is not None else None,
+                "args": _slim(args, config.TOOL_ARG_LOG_CHARS),
+                "result": clip(result, config.TOOL_RESULT_LOG_CHARS) if result is not None else None,
+                "error": clip(str(error), config.TOOL_ERROR_LOG_CHARS) if error is not None else None,
                 "duration_s": round(duration_s, 2) if duration_s is not None else None,
                 **kwargs,
             }
@@ -163,8 +177,17 @@ class FileObserver(Observer):
                            "event": event, **fields})
 
     def events(self, event_type: str | None = None) -> list[dict]:
-        """Return recorded events, or [] if missing or empty."""
+        """Return recorded events, or [] if missing or empty.
+
+        One kind of event (other than tool calls) costs only what was
+        appended since it was last asked for: the supervisor asks for the
+        turns on every pass, and read whole each time the log's size became
+        the length of a pass. Everything, or the tool calls, still reads
+        the whole file; for one agent's recent calls, calls()."""
         try:
+            if event_type is not None and event_type != "tool_call":
+                rows, _ = logtail.tail(self.events_path, without="tool_call")
+                return [dict(r) for r in rows if r.get("event") == event_type]
             if not self.events_path.exists():
                 return []
             records = []
@@ -181,3 +204,25 @@ class FileObserver(Observer):
             return records
         except OSError:
             return []
+
+    def calls(self, agent: str, since: str = "") -> list[dict]:
+        """The agent's tool calls from `since`, oldest first, read back from
+        the end of the log no further than `since`."""
+        out, older = [], 0
+        try:
+            for row in logtail.newest(self.events_path):
+                ts = str(row.get("ts") or "")
+                if since and ts and ts < since:
+                    # Several processes append, each stamping before it
+                    # writes: one older line is not yet the end of them.
+                    older += 1
+                    if older > 64:
+                        break
+                    continue
+                if ts:
+                    older = 0
+                if row.get("event") == "tool_call" and row.get("agent") == agent:
+                    out.append(row)
+        except OSError:
+            pass
+        return out[::-1]

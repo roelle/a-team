@@ -15,15 +15,16 @@ parses the files itself and none of them drifts when a format changes.
 
 Everything here reads. Changing the team goes through ateam.actions.
 """
+import functools
 import hashlib
 import json
 import os
-import threading
 import time
 from pathlib import Path
 
 from . import channels as channels_lib
 from . import duties as duties_lib
+from . import logtail
 
 #: Supervisor plumbing: messages a person does not need in the stream.
 PLUMBING_SENDERS = {"supervisor"}
@@ -48,50 +49,17 @@ def _jsonl(path: Path) -> list[dict]:
     return out
 
 
-# An append-only log, parsed once per process: later reads parse only what
-# was appended since. The app re-read the whole bus on every request (six
-# times for one state), so a team's history made every click slower; at 20
-# MB and 11,000 messages a channel took a quarter of a second.
-_TAILS: dict[str, dict] = {}
-_TAILS_LOCK = threading.Lock()
+# The logs are parsed once per process: later reads parse only what was
+# appended since (ateam.logtail). The app re-read the whole bus on every
+# request (six times for one state), so a team's history made every click
+# slower; at 20 MB and 11,000 messages a channel took a quarter of a second.
+_tail = logtail.tail
 
-
-def _tail(path: Path) -> tuple[list[dict], tuple]:
-    """The rows of an append-only JSONL log, and a signature that changes
-    whenever they do. The rows are shared between callers: do not change
-    them. A log that shrank or was replaced is read again from the start;
-    a line still being written is left for the next read."""
-    key = str(path)
-    try:
-        st = path.stat()
-    except OSError:
-        _TAILS.pop(key, None)
-        return [], ()
-    with _TAILS_LOCK:
-        t = _TAILS.get(key)
-        if t is None or t["ino"] != (st.st_dev, st.st_ino) or st.st_size < t["offset"]:
-            t = _TAILS[key] = {"ino": (st.st_dev, st.st_ino), "offset": 0, "rows": [], "edge": b""}
-        if st.st_size > t["offset"]:
-            with path.open("rb") as f:
-                # The bytes before where it left off, read again: a file
-                # rewritten in place rather than appended to is read anew.
-                f.seek(t["offset"] - len(t["edge"]))
-                if f.read(len(t["edge"])) != t["edge"]:
-                    t = _TAILS[key] = {"ino": t["ino"], "offset": 0, "rows": [], "edge": b""}
-                    f.seek(0)
-                chunk = f.read(st.st_size - t["offset"])
-            end = chunk.rfind(b"\n") + 1
-            rows = list(t["rows"])
-            for line in chunk[:end].decode("utf-8", errors="replace").splitlines():
-                try:
-                    row = json.loads(line)
-                except ValueError:
-                    continue
-                if isinstance(row, dict):
-                    rows.append(row)
-            if end:
-                t.update(offset=t["offset"] + end, rows=rows, edge=chunk[max(0, end - 256):end])
-        return t["rows"], (key, t["ino"], t["offset"])
+#: Most of an event log by weight, and nothing here but an agent's Activity
+#: reads them: left out of what is kept in memory, and read from the end of
+#: the file when asked for.
+TOOL_CALL = "tool_call"
+_TOOL_CALL_LINE = logtail._marker(TOOL_CALL)
 
 
 _BUS: dict[str, tuple] = {}
@@ -106,9 +74,26 @@ def _key(m: dict) -> str:
 
 def _epoch(ts) -> float | None:
     """A record timestamp ("%Y-%m-%d %H:%M:%S", local time) as epoch seconds."""
+    return _local(str(ts)[:19], time.tzname)
+
+
+# The same few thousand timestamps are asked for on every refresh, and
+# strptime is slow enough to show: 50,000 turns took half a second.
+@functools.lru_cache(maxsize=1 << 17)
+def _local(s: str, zone=None) -> float | None:
+    # `zone` only keys the memo: local time read after tzset() is another answer.
     try:
-        return time.mktime(time.strptime(str(ts)[:19], "%Y-%m-%d %H:%M:%S"))
-    except (ValueError, TypeError):
+        return time.mktime(time.strptime(s, "%Y-%m-%d %H:%M:%S"))
+    except (ValueError, OverflowError):
+        return None
+
+
+@functools.lru_cache(maxsize=1 << 15)
+def _utc(s: str) -> float | None:
+    import calendar
+    try:
+        return float(calendar.timegm(time.strptime(s, "%Y-%m-%dT%H:%M:%S")))
+    except (ValueError, OverflowError):
         return None
 
 
@@ -132,14 +117,8 @@ def instant(ts) -> float | None:
     overrides, the heartbeat) and local time with a space ("2026-10-27
     12:01:18": the bus, events, reviews, the memory log). Compared as text
     they disagree by the UTC offset, so compare these instead."""
-    s = str(ts or "").strip()
-    try:
-        if "T" in s[:19]:
-            import calendar
-            return float(calendar.timegm(time.strptime(s[:19], "%Y-%m-%dT%H:%M:%S")))
-        return time.mktime(time.strptime(s[:19], "%Y-%m-%d %H:%M:%S"))
-    except (ValueError, OverflowError):
-        return None
+    s = str(ts or "").strip()[:19]
+    return _utc(s) if "T" in s else _local(s, time.tzname)
 
 
 class Record:
@@ -281,8 +260,49 @@ class Record:
         return _jsonl(self.team_dir / "reviews.jsonl")
 
     def events(self, kind: str | None = None) -> list[dict]:
-        rows = _jsonl(self.team_dir / "events.jsonl")
-        return [r for r in rows if kind is None or r.get("event") == kind]
+        """The event log, or one kind of event from it. Asking for one kind
+        (other than tool calls) costs only what was appended since the last
+        read; everything, or the tool calls, reads the whole file, which on
+        a busy team is hundreds of megabytes. For what an agent did lately,
+        activity()."""
+        if kind is None or kind == TOOL_CALL:
+            rows = _jsonl(self.team_dir / "events.jsonl")
+            return [r for r in rows if kind is None or r.get("event") == kind]
+        return [dict(r) for r in self._events() if r.get("event") == kind]
+
+    def _events(self) -> list[dict]:
+        """Every event but the tool calls. Shared: do not change the rows."""
+        return _tail(self.team_dir / "events.jsonl", without=TOOL_CALL)[0]
+
+    def events_signature(self) -> tuple:
+        """Changes when an event other than a tool call is recorded: for
+        caching what is worked out from turns, failures and the like."""
+        return _tail(self.team_dir / "events.jsonl", without=TOOL_CALL)[1]
+
+    def _from_events(self, what: str, compute):
+        """What `compute` derives from the events, worked out again only
+        when one that is not a tool call is recorded. Shared between
+        callers: copy it before changing it."""
+        sig = self.events_signature()
+        key = (str(self.team_dir), "events", what)
+        hit = _BUS.get(key)
+        if hit and hit[0] == sig:
+            return hit[1]
+        out = compute()
+        _BUS[key] = (sig, out)
+        return out
+
+    def activity(self, agent: str, limit: int = 120) -> list[dict]:
+        """The agent's latest events, tool calls included, oldest first.
+        Read from the end of the log, so its length does not matter."""
+        out = []
+        needle = json.dumps(agent).encode()
+        for row in logtail.newest(self.team_dir / "events.jsonl", contains=needle):
+            if row.get("agent") == agent:
+                out.append(row)
+                if len(out) >= limit:
+                    break
+        return out[::-1]
 
     def norms(self) -> str:
         try:
@@ -335,7 +355,9 @@ class Record:
             u[how] += 1
             u["agents"][agent] = u["agents"].get(agent, 0) + round(inp + outp)
 
-        for ev in self.events("turn"):
+        for ev in self._events():
+            if ev.get("event") != "turn":
+                continue
             agent, ts = ev.get("agent"), instant(ev.get("ts"))
             if ts is None:
                 continue
@@ -412,7 +434,7 @@ class Record:
             return per_mem.setdefault(name, {"offered": 0, "hinted": 0, "missed": 0,
                                              "last_offered": None, "used": 0, "ignored": 0,
                                              "overruled": 0})
-        for e in self.events():
+        for e in self._events():
             if e.get("agent") != agent or e.get("event") not in ("recall", "recall_miss", "recall_used",
                                                                  "recall_ignored"):
                 continue
@@ -564,11 +586,32 @@ class Record:
 
     def _last_turns(self) -> dict[str, dict]:
         """{agent: its latest "turn" or "failure" event}."""
-        last: dict[str, dict] = {}
-        for e in self.events():
-            if e.get("event") in ("turn", "failure") and e.get("agent"):
-                last[e["agent"]] = e
-        return last
+        def build():
+            last: dict[str, dict] = {}
+            for e in self._events():
+                if e.get("event") in ("turn", "failure") and e.get("agent"):
+                    last[e["agent"]] = e
+            return last
+        return self._from_events("last_turns", build)
+
+    def _spans(self) -> dict[str, dict]:
+        """{agent: {"spans": [(start, end)] of its turns, "busy_s": their sum,
+        "ordered": whether each ended no earlier than the one before}}."""
+        def build():
+            out: dict[str, dict] = {}
+            for e in self._events():
+                if e.get("event") not in ("turn", "failure") or not e.get("agent"):
+                    continue
+                end, dur = _epoch(e.get("ts")), e.get("duration_s")
+                if end is None or not isinstance(dur, (int, float)) or dur <= 0:
+                    continue
+                a = out.setdefault(e["agent"], {"spans": [], "busy_s": 0.0, "ordered": True})
+                if a["spans"] and end < a["spans"][-1][1]:
+                    a["ordered"] = False            # a clock set back, or a log put together
+                a["spans"].append((end - dur, end))
+                a["busy_s"] += dur
+            return out
+        return self._from_events("spans", build)
 
     def presence(self) -> dict[str, dict]:
         """{agent: {"state", "since", "detail"}}.
@@ -633,7 +676,7 @@ class Record:
                "deferred": 0, "input_tokens": 0}
         channels: dict[str, int] = {}
         agents: dict[str, dict] = {}
-        for e in self.events():
+        for e in self._events():
             if e.get("event") != "turn":
                 continue
             at = _epoch(e.get("ts"))
@@ -675,19 +718,13 @@ class Record:
         from .transport import Message
         now = time.time() if now is None else now
         windows = {"hour": 3600.0, "day": 86400.0}
-        spans: dict[str, list[tuple[float, float]]] = {}
-        for e in self.events():
-            if e.get("event") not in ("turn", "failure") or not e.get("agent"):
-                continue
-            end, dur = _epoch(e.get("ts")), e.get("duration_s")
-            if end is None or not isinstance(dur, (int, float)) or dur <= 0:
-                continue
-            spans.setdefault(e["agent"], []).append((end - dur, end))
+        spans = self._spans()
         inflight = _json(self.team_dir / "inflight.json", {})
         inflight = inflight if isinstance(inflight, dict) else {}
         out = {}
         for agent in self.agents():
-            done = spans.get(agent, [])
+            mine = spans.get(agent) or {"spans": [], "busy_s": 0.0, "ordered": True}
+            done = mine["spans"]
             turn = inflight.get(agent) if isinstance(inflight.get(agent), dict) else None
             since = turn.get("ts") if turn else None
             start = _epoch(since)
@@ -695,7 +732,13 @@ class Record:
             busy = {}
             for name, w in windows.items():
                 lo = now - w
-                spent = sum(max(0.0, min(b, now) - max(a, lo)) for a, b in done + live)
+                spent = sum(max(0.0, min(b, now) - max(a, lo)) for a, b in live)
+                # Newest first, and no further back than the window: turns
+                # are recorded as they end, so the rest ended before it.
+                for a, b in reversed(done):
+                    if b < lo and mine["ordered"]:
+                        break
+                    spent += max(0.0, min(b, now) - max(a, lo))
                 busy[name] = round(min(1.0, spent / w), 3)
             waiting = 0
             for line in _lines(self.team_dir / "inbox" / f"{agent}.jsonl"):
@@ -708,7 +751,7 @@ class Record:
                     waiting += 1
             out[agent] = {"working": bool(turn), "since": since, "waiting": waiting,
                           "busy": busy,
-                          "busy_s": round(sum(b - a for a, b in done + live)),
+                          "busy_s": round(mine["busy_s"] + sum(b - a for a, b in live)),
                           "turns": len(done)}
         return out
 
@@ -795,13 +838,18 @@ class Feed:
     events) and notices when the snapshot files change (inflight,
     channels, roster, the heartbeat). A log that shrinks -- rotated or
     rewritten -- is read again from the start.
+
+    With tool_calls=False the tool calls are left out. A working team
+    records several a second, and a page that looks again at each one does
+    nothing else.
     """
     LOGS = ("bus.jsonl", "tasks.jsonl", "reviews.jsonl", "events.jsonl", "edits.jsonl")
     SNAPSHOTS = ("inflight.json", "distilling.json", "channels.json", "roster.json", "supervisor.json",
                  "models.jsonl", ".stop")
 
-    def __init__(self, team_dir, from_start: bool = False):
+    def __init__(self, team_dir, from_start: bool = False, tool_calls: bool = True):
         self.team_dir = Path(team_dir)
+        self.tool_calls = tool_calls
         self.offsets: dict[str, int] = {}
         self.stamps: dict[str, tuple] = {}
         if not from_start:
@@ -839,10 +887,15 @@ class Feed:
                     chunk = f.read(size - start)
                 # Only whole lines: a writer may be mid-line.
                 cut = chunk.rfind(b"\n") + 1
+                quiet = name == "events.jsonl" and not self.tool_calls
                 for line in chunk[:cut].splitlines():
+                    if quiet and line.find(_TOOL_CALL_LINE, 0, logtail.HEAD) != -1:
+                        continue
                     try:
                         row = json.loads(line)
                     except ValueError:
+                        continue
+                    if quiet and isinstance(row, dict) and row.get("event") == TOOL_CALL:
                         continue
                     out.append({"stream": name.split(".")[0], "item": row})
                 self.offsets[name] = start + cut

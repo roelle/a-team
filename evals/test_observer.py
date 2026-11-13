@@ -13,6 +13,7 @@ independent SQLite fixture. Verifies:
 import datetime
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -102,8 +103,13 @@ def contract(label: str, env_for) -> tuple[int, int]:
         check("total tool calls matches", totals.get("tool_calls") == 3, str(totals)),
         check("total failures matches", totals.get("failures") == 1, str(totals)),
         check("total cost estimated from PRICING", totals.get("cost_usd", 0) > 0, str(totals)),
-        check("tool result exceeding 20k chars truncated with marker",
-              "...[truncated 5000 chars]" in (tool_evs[1].get("result") or ""), str(tool_evs[1].get("result"))[:100]),
+        # How much is kept is the store's to choose (the file observer keeps
+        # 1,000 characters, an older one 20,000); that it is cut, and says by
+        # how much, is the contract.
+        check("a long tool result is cut short and says by how much",
+              len(tool_evs[1].get("result") or "") <= 20_100
+              and re.search(r"\[(truncated )?\d+ chars", tool_evs[1].get("result") or "") is not None,
+              str(tool_evs[1].get("result"))[:100]),
         check("non-serializable args and non-string result recorded without error",
               len(tool_evs) == 3 and tool_evs[2].get("tool") == "custom_tool" and "ok" in str(tool_evs[2].get("result")) and tool_evs[2].get("args") is not None, str(tool_evs[2] if len(tool_evs) > 2 else None)),
         check("summary formatting includes agents, episodes, and tool calls",

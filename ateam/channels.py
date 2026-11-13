@@ -49,6 +49,9 @@ FILE = "channels.json"
 DEFAULT = "general"
 _NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
 _MENTION = re.compile(r"(?<![\w@])@([A-Za-z0-9](?:[\w-]|\.(?=\w))*)")
+# A fenced block (to its end, or the message's if it never closes) and an
+# inline span on one line.
+_CODE = re.compile(r"```.*?(?:```|\Z)|`[^`\n]*`", re.S)
 
 
 class ChannelError(ValueError):
@@ -271,9 +274,16 @@ def of(team_dir, agent: str) -> list[str]:
     return sorted(n for n, c in active(team_dir).items() if agent in c.get("members", []))
 
 
+def prose(content: str) -> str:
+    """`content` without its code: what is in backticks is written about,
+    not said. A note on how mentions work, or a pasted log, names handles
+    without calling anyone."""
+    return _CODE.sub(" ", content or "")
+
+
 def handles_in(content: str) -> list[str]:
-    """Each @handle in `content`, as written."""
-    return _MENTION.findall(content or "")
+    """Each @handle in `content`, as written; none from inside code."""
+    return _MENTION.findall(prose(content))
 
 
 def mentioned(content: str, channel_members: list[str], roster: list[str],

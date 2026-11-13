@@ -68,6 +68,15 @@ ANOMALY_REPETITION_RATIO = float(
 
 MAX_TOOL_OUTPUT_CHARS = 20_000   # tool results truncated beyond this
 
+# What the event log keeps of a tool call: the start and end of what it
+# returned, of an error, and of each argument. Nothing reads more of a
+# result than the app's Activity shows (600 characters), and at up to 20,000
+# a call the log of a working team grew by hundreds of megabytes, which
+# everything that read the log then read.
+TOOL_RESULT_LOG_CHARS = int(os.environ.get("ATEAM_TOOL_RESULT_LOG_CHARS", 1_000))
+TOOL_ERROR_LOG_CHARS = int(os.environ.get("ATEAM_TOOL_ERROR_LOG_CHARS", 4_000))
+TOOL_ARG_LOG_CHARS = int(os.environ.get("ATEAM_TOOL_ARG_LOG_CHARS", 2_000))
+
 # Retrospective bounding and rate-control (Step 3 of TASK.md).
 # A retro costs a turn per participating agent plus the leader's synthesis turn.
 

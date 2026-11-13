@@ -72,6 +72,48 @@ def stamped(rows):
     return rows
 
 
+class Shared:
+    """One working-out at a time, shared by everyone who asked for it.
+
+    Whoever asks while one is under way waits for the next, which begins
+    after they asked, so nobody is handed an answer older than their
+    question; and however many are waiting, that next one runs once. Ten
+    tabs refreshing together cost two, not ten at once, each slower for
+    the others.
+    """
+
+    def __init__(self):
+        self._cond = threading.Condition()
+        self._running = False
+        self._done = 0                  # how many have finished
+        self._last = (None, None)       # (value, error) of the latest
+
+    def get(self, compute):
+        with self._cond:
+            want = self._done + (2 if self._running else 1)
+            while self._done < want and self._running:
+                self._cond.wait()
+            if self._done >= want:
+                value, error = self._last
+                if error is not None:
+                    raise error
+                return value
+            self._running = True
+        value = error = None
+        try:
+            value = compute()
+        except Exception as e:
+            error = e
+        with self._cond:
+            self._done += 1
+            self._last = (value, error)
+            self._running = False
+            self._cond.notify_all()
+        if error is not None:
+            raise error
+        return value
+
+
 class App:
     def __init__(self, teams_root: Path | None, team_dirs: list[Path], author: str):
         self.teams_root = teams_root
@@ -91,6 +133,8 @@ class App:
         self.argv: list[str] = []        # main's arguments, for a restart in place
         self.reexec = self._reexec
         self._usage_cache: dict = {}
+        self._states: dict[tuple, Shared] = {}
+        self._states_lock = threading.Lock()
         self.refresh()
 
     @property
@@ -127,6 +171,15 @@ class App:
         return out
 
     def state(self, team: str) -> dict:
+        """Everything a page needs to draw the team. Every open tab asks
+        again whenever the record changes, so those asking together share
+        one answer (Shared); it is the same for everyone who is the same
+        person."""
+        with self._states_lock:
+            shared = self._states.setdefault((team, self.person), Shared())
+        return shared.get(lambda: self._state(team))
+
+    def _state(self, team: str) -> dict:
         t = self.team(team)
         rec = Record(t.dir)
         presence = rec.presence()
@@ -229,13 +282,19 @@ class App:
                    "missed_total", "last_missed")
 
     def tree(self, team_dir) -> dict:
-        """Record.task_tree, recomputed only when the event or task log changed."""
+        """Record.task_tree, recomputed only when a turn or the task log changed."""
         return self._cached(team_dir, "tree", lambda: Record(team_dir).task_tree(),
                             {"levels": [], "nodes": {}})
 
+    def usage(self, team_dir) -> dict:
+        """Record.task_usage, recomputed only when a turn or the task log changed."""
+        return self._cached(team_dir, "usage", lambda: Record(team_dir).task_usage(), {})
+
     def _cached(self, team_dir, what, compute, empty):
-        key = [what]
-        for f in ("events.jsonl", "tasks.jsonl", "roster.json"):
+        # Not the event log's size: that changes with every tool call, and
+        # working these out again for each one was most of a refresh.
+        key = [what, Record(team_dir).events_signature()]
+        for f in ("tasks.jsonl", "roster.json"):
             try:
                 st = (Path(team_dir) / f).stat()
                 key.append((st.st_mtime_ns, st.st_size))
@@ -251,25 +310,6 @@ class App:
             value = empty
         self._usage_cache[slot] = (key, value)
         return value
-
-    def usage(self, team_dir) -> dict:
-        """Record.task_usage, recomputed only when the event or task log changed."""
-        key = []
-        for f in ("events.jsonl", "tasks.jsonl"):
-            try:
-                st = (Path(team_dir) / f).stat()
-                key.append((st.st_mtime_ns, st.st_size))
-            except OSError:
-                key.append(None)
-        hit = self._usage_cache.get(str(team_dir))
-        if hit and hit[0] == key:
-            return hit[1]
-        try:
-            usage = Record(team_dir).task_usage()
-        except Exception:
-            usage = {}
-        self._usage_cache[str(team_dir)] = (key, usage)
-        return usage
 
     def tasks(self, team: str) -> list[dict]:
         t = self.team(team)
@@ -647,13 +687,17 @@ def _handles_re(handles: set[str]):
 
 
 def mentions_me(m: dict, handles: set[str], said=None) -> bool:
-    """Whether a message mentions you: recorded so when it was posted, or an
-    @ of one of your handles in it. The text is read too, because what was
-    recorded depends on the code the agent posted with and the roster then."""
-    if "user" in (m.get("mentions") or []):
-        return True
+    """Whether a message mentions you: an @ of one of your handles in it,
+    or recorded so when it was posted. The text is read too, because what
+    was recorded depends on the code the agent posted with and the roster
+    then. A handle inside code is not a mention (channels.prose), and a
+    record made from one, before code was left out, is not believed."""
+    from ateam import channels
     said = said if said is not None else _handles_re(handles)
-    return bool(said and said.search(m.get("content") or ""))
+    text = m.get("content") or ""
+    if said and said.search(channels.prose(text)):
+        return True
+    return "user" in (m.get("mentions") or []) and not (said and said.search(text))
 
 
 def _distill_queue():
@@ -798,9 +842,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"runner": getattr(cls, "label", None),
                                    "models": runner_lib.list_models(team_dir=td)})
             if path == "/api/activity":
-                rows = [e for e in Record(self.app.team(team).dir).events()
-                        if e.get("agent") == q.get("agent")]
-                return self._json({"events": stamped(rows[-120:])})
+                rows = Record(self.app.team(team).dir).activity(q.get("agent") or "")
+                return self._json({"events": stamped(rows)})
             if path == "/api/wiki":
                 t = self.app.team(team)
                 return self._json({"norms": Record(t.dir).norms(), "memories": t.memories()})
@@ -876,7 +919,9 @@ class Handler(BaseHTTPRequestHandler):
     def _events(self, team: str):
         """Server-sent events: each row appended to the record, as it lands."""
         t = self.app.team(team)
-        feed = Feed(t.dir)
+        # No tool calls: a page looks at the state again for each event, and
+        # a working team records several a second.
+        feed = Feed(t.dir, tool_calls=False)
         rec = Record(t.dir)
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
@@ -947,6 +992,9 @@ def serve(app: App, host: str = "127.0.0.1", port: int = 8765) -> ThreadingHTTPS
     app.host = host
     class Server(ThreadingHTTPServer):
         address_family = socket.AF_INET6 if ":" in host else socket.AF_INET
+        # The default of 5 turns a burst away at the door: a page opening
+        # asks for a dozen things at once, and two pages do it twice.
+        request_queue_size = 128
 
     httpd = Server((host, port), Handler)
     httpd.daemon_threads = True

@@ -12,7 +12,7 @@ beside the conversation.
 ## Run it
 
 ```bash
-pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.18.0"
+pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.19.0"
 a-team
 ```
 
@@ -157,10 +157,14 @@ untick that and pick some.
   all of it. A busy channel costs no turns. A channel can name agents
   that every post wakes, no mention needed (**Channel… → Woken by every
   post**). Use it for an agent that owns the channel's work, docs in
-  `#docs`. The header and the message box say who that is.
+  `#docs`. The header and the message box say who that is. A handle in
+  code, inline or in a fenced block, is written about, not called: it
+  wakes nobody and is not a mention of you.
 - **Direct messages wake.** A message to one agent was addressed to it.
 - **Threads.** Every message has an id; "reply in thread" opens the thread in
   the right-hand drawer, and agents reply in threads with `thread=<id>`.
+  A thread with replies you have not read opens at the first of them,
+  under a **new** line.
 - **The message menu.** Right-click any message (in a channel, a DM or a
   thread), or click its ⋯ (on hover beside "make a task"; always shown on
   a touch screen): Copy link to message; Copy link to thread, when it is in

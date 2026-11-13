@@ -2025,9 +2025,8 @@ class Supervisor:
         last["found_checked"] = True
         since, shown = str(turn.get("ts") or ""), set(last.get("shown") or ())
         opened = []
-        for e in self.observer.events("tool_call"):
-            if e.get("agent") != agent or str(e.get("ts") or "") < since \
-                    or not str(e.get("tool") or "").endswith("read_memory") or e.get("error"):
+        for e in self.observer.calls(agent, since):
+            if not str(e.get("tool") or "").endswith("read_memory") or e.get("error"):
                 continue
             args = e.get("args")
             if isinstance(args, str):
@@ -2100,8 +2099,7 @@ class Supervisor:
         try:
             backend = recall_lib.backend_for(cfg)
             actions = recall_lib.turn_actions(
-                [e for e in self.observer.events("tool_call")
-                 if e.get("agent") == agent and str(e.get("ts") or "") >= since], reply)
+                self.observer.calls(agent, since), reply)
             if not backend.available or not actions.strip():
                 return                  # no record of the turn is not a verdict on it
             for m in picked:
