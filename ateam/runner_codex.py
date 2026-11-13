@@ -187,6 +187,7 @@ class _Server:
 
 class CodexRunner(Runner):
     label = "codex"
+    records_calls = True
     # Audit: every command, edit, team tool and search is logged as it starts,
     # from the turn's own events. Codex runs a command without asking, so this
     # records rather than vetoes; the team's own tools still check the policy

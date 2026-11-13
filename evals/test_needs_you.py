@@ -78,7 +78,7 @@ def test_a_later_question_is_not_answered_by_an_earlier_reply(team):
 def post(sender, text, **kw):
     bus = load_transport(sender)
     try:
-        bus.post("dev", ["coder", "qa", "user"], text, **kw)
+        return bus.post("dev", ["coder", "qa", "user"], text, **kw)
     finally:
         bus.close()
 
@@ -88,8 +88,112 @@ def test_a_question_in_a_channel_counts_when_it_names_the_person(team):
     post("coder", "@qa which one?", kind="question", mentioned={"qa"})
     rows = Record(team).needs_you()
     assert [r["channel"] for r in rows] == ["dev"]
-    post("user", "The first.")
+    post("user", "@coder the first.", mentioned={"coder"})
     assert kinds(team) == []
+
+
+# --- which reply answers which question ------------------------------------------
+#
+# Asked for by a team downstream: "Clear an open question or blocker only
+# when the operator replies to that specific message (or clicks Clear),
+# rather than clearing every open question in a thread whenever the operator
+# posts any reply there." Any post by the operator in a channel, in any of
+# its threads, used to clear every question asked there outside a thread.
+
+def waiting(team):
+    return [r["content"] for r in Record(team).needs_you()]
+
+
+def ask(sender, text, **kw):
+    return post(sender, text, kind="question", mentioned={"user"}, **kw)
+
+
+def test_posting_something_else_in_the_channel_answers_nothing(team):
+    ask("coder", "@user which rounding?")
+    post("user", "Lunch is at noon.")
+    post("user", "@qa the release notes are up.", mentioned={"qa"})
+    assert waiting(team) == ["@user which rounding?"]
+
+
+def test_a_reply_in_another_thread_answers_nothing(team):
+    other = post("qa", "Release notes are drafted.")
+    ask("coder", "@user which rounding?")
+    post("user", "Thanks, looks right.", thread=other)
+    assert waiting(team) == ["@user which rounding?"]
+
+
+def test_a_reply_in_the_questions_own_thread_answers_it(team):
+    q = ask("coder", "@user which rounding?")
+    ask("qa", "@user ship today?")
+    post("user", "Half-even.", thread=q)
+    assert waiting(team) == ["@user ship today?"]
+
+
+def test_a_reply_that_names_the_asker_answers_theirs_and_not_anothers(team):
+    root = post("qa", "Billing cutover plan.")
+    ask("coder", "@user which rounding?", thread=root)
+    ask("qa", "@user ship today?", thread=root)
+    post("user", "Noted.", thread=root)                         # names nobody
+    assert len(waiting(team)) == 2
+    post("user", "@coder half-even.", thread=root, mentioned={"coder"})
+    assert waiting(team) == ["@user ship today?"]
+    post("user", "@qa yes.", thread=root, mentioned={"qa"})
+    assert waiting(team) == []
+
+
+def test_one_reply_answers_one_question_the_latest(team):
+    send("coder", "user", "Which database?", kind="question")
+    send("coder", "user", "And which region?", kind="question")
+    send("user", "coder", "eu-west.")
+    assert waiting(team) == ["Which database?"]
+    send("user", "coder", "Postgres.")
+    assert waiting(team) == []
+
+
+def test_a_reply_in_a_thread_answers_the_latest_there_before_the_one_it_hangs_from(team):
+    q1 = ask("coder", "@user which rounding?")
+    ask("coder", "@user and for refunds?", thread=q1)
+    post("user", "@coder the same.", thread=q1, mentioned={"coder"})
+    assert waiting(team) == ["@user which rounding?"]
+    post("user", "Half-even.", thread=q1)
+    assert waiting(team) == []
+
+
+def test_a_reply_outside_the_thread_does_not_answer_what_was_asked_in_it(team):
+    send("user", "coder", "Build the importer.")
+    root = Record(team).bus()[-1]["id"]
+    send("coder", "user", "CSV or JSON?", kind="question", thread=root)
+    send("user", "coder", "Also add tests.")
+    assert waiting(team) == ["CSV or JSON?"]
+    send("user", "coder", "CSV.", thread=root)
+    assert waiting(team) == []
+
+
+def test_a_channel_that_wakes_an_agent_on_every_post_reaches_it(team):
+    from ateam import channels
+    channels.create(team, "dev", ["coder", "qa"])
+    actions.set_channel_wake(team, "dev", ["coder"])
+    ask("coder", "@user which rounding?")
+    ask("qa", "@user ship today?")
+    post("user", "Half-even.")
+    assert waiting(team) == ["@user ship today?"]
+
+
+def test_a_reply_that_was_deleted_answered_nothing(team):
+    send("coder", "user", "Which database?", kind="question")
+    actions.dm(team, "coder", "Postgres.", author="matt")
+    assert waiting(team) == []
+    mid = Record(team).bus()[-1]["id"]
+    actions.delete_message(team, mid, by="matt")
+    assert waiting(team) == ["Which database?"]
+
+
+def test_the_cross_still_clears_what_no_reply_did(team):
+    ask("coder", "@user which rounding?")
+    post("user", "Lunch is at noon.")
+    (row,) = Record(team).needs_you()
+    assert actions.clear_waiting(team, ids=[row["key"]], by="matt") == 1
+    assert waiting(team) == []
 
 
 def test_tasks_the_person_owns_and_tasks_that_are_stuck(team):

@@ -248,6 +248,20 @@ def turn_events(team_dir, agent: str, since: str) -> list[dict]:
     return out
 
 
+def plain(events: list[dict]) -> list[dict]:
+    """The events with each call a host made through its one generic
+    MCP-call tool written as the call it made (triggers.unwrap), so it is
+    shaped, matched and read like any other."""
+    out = []
+    for e in events:
+        if e.get("event") == "tool_call":
+            tool, args = triggers.unwrap(str(e.get("tool") or ""), _args(e))
+            if tool != e.get("tool"):
+                e = {**e, "tool": tool, "args": args}
+        out.append(e)
+    return out
+
+
 def _args(ev: dict) -> dict:
     args = ev.get("args")
     if isinstance(args, str):
@@ -449,7 +463,7 @@ def _observe(team_dir, agent, events, judge, record, now) -> list[str]:
     cfg = triggers.config(team_dir)
     if cfg is None or not cfg.get("learn") or not events:
         return []
-    events = [e for e in events if not _held(e)]
+    events = plain([e for e in events if not _held(e)])
     mems = _memories(team_dir, agent)
     asks = int(cfg.get("judge_max") or 0) if judge is not None else 0
     credits, trouble, lines = [], [], []

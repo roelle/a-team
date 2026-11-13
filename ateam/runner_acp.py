@@ -162,6 +162,7 @@ class _Conn:
 
 class AcpRunner(Runner):
     label = "acp"
+    records_calls = True
     # Audit: every tool call the harness reports, as it starts. Scoping and
     # containment: see the module docstring.
     supports_audit = True

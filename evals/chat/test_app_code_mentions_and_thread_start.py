@@ -124,13 +124,37 @@ def test_the_page_leaves_code_out_too():
 
 def test_the_page_starts_a_thread_at_its_first_unread_reply():
     app = (ROOT / "ateam/chat/static/app.js").read_text()
-    body = app[app.index("async function openThread(id)"):][:4500]
+    body = app[app.index("async function drawThread(id)"):][:4500]
     # what was unread is worked out before the thread is marked read
     assert body.index("const since = S.tseen[tKey(id)]") < body.index("S.tseen[tKey(id)] = last")
     assert "m.id !== id && m.from !== \"user\" && m.ts > since" in body
     assert '<div class="new-divider"><span>new</span></div>' in body
     # only when opened, not when drawn again for a reply that arrived
     assert "if (opening) {" in body and "box.scrollTop = mark ?" in body
+
+
+def test_a_thread_opened_twice_at_once_is_opened_once():
+    """A Waiting on you row and the view it opens can both open the thread;
+    the second drew over the first, losing the unread line and the reply box."""
+    app = (ROOT / "ateam/chat/static/app.js").read_text()
+    opener = app[app.index("async function openThread(id)"):app.index("async function drawThread(id)")]
+    assert "if (threadOpening?.id === id) { threadOpening.again = true; return threadOpening.promise; }" in opener
+    assert "while (mine.again && S.thread === id)" in opener
+    body = app[app.index("async function drawThread(id)"):][:5000]
+    assert 'const here = kept || box.querySelector(`.thread-compose[data-thread="${CSS.escape(id)}"]`);' in body
+
+
+def test_a_waiting_row_opens_the_questions_thread_addressed_to_who_asked():
+    app = (ROOT / "ateam/chat/static/app.js").read_text()
+    assert 'const th = n.thread || (n.channel && n.id) || "";' in app
+    assert 'n.channel && n.from !== "supervisor" ? ` data-answer="${esc(n.from)}"` : ""' in app
+    assert "return nav.dataset.answer ? answerTo(nav.dataset.answer) : undefined;" in app
+    assert "if (!ta.value.trim()) ta.value = `@${agent} `;" in app
+
+
+def test_the_page_looks_again_when_a_question_arrives_or_is_answered():
+    app = (ROOT / "ateam/chat/static/app.js").read_text()
+    assert 'if (item.from === "user" || item.kind === "question" || item.kind === "blocker") later();' in app
 
 
 # --- what the log keeps of a call --------------------------------------------------

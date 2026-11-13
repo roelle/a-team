@@ -941,6 +941,9 @@ class Supervisor:
             doc[agent] = {"handle": turn["handle"], "ts": turn["ts"],
                           "hop": turn["hop"], "trigger": turn["trigger"],
                           "pull": self.inbox_pull,
+                          # Whether the runner records this agent's tool
+                          # calls itself, so a host's hook knows not to.
+                          "calls": self._records_calls(agent),
                           "msgs": [m.as_dict() for m in turn["msgs"]]}
             if turn.get("distill"):
                 doc[agent]["distill"] = turn["distill"]
@@ -949,6 +952,13 @@ class Supervisor:
                 _rewrite(self.ledger_path, json.dumps(doc, indent=2) + "\n")
         except OSError:
             pass                    # bookkeeping must not stop dispatch
+
+    def _records_calls(self, agent: str) -> bool:
+        per_agent = getattr(self.runner, "records_calls_for", None)
+        try:
+            return bool(per_agent(agent) if per_agent else getattr(self.runner, "records_calls", False))
+        except Exception:
+            return False
 
     def _load_ledger(self) -> None:
         try:
@@ -2025,7 +2035,7 @@ class Supervisor:
         last["found_checked"] = True
         since, shown = str(turn.get("ts") or ""), set(last.get("shown") or ())
         opened = []
-        for e in self.observer.calls(agent, since):
+        for e in trigger_learn.plain(self.observer.calls(agent, since)):
             if not str(e.get("tool") or "").endswith("read_memory") or e.get("error"):
                 continue
             args = e.get("args")

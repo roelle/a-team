@@ -12,7 +12,7 @@ beside the conversation.
 ## Run it
 
 ```bash
-pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.19.0"
+pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.20.0"
 a-team
 ```
 
@@ -138,7 +138,14 @@ untick that and pick some.
 - **Waiting on you** lists a stopped team, unanswered questions and blockers,
   your tasks, stuck tasks, and a standing duty that is behind ("<owner>'s
   duty is behind": two runs missed in a row, or a run overdue by more than
-  a period with nothing delivering it). A reply clears a message from an agent. The ×
+  a period with nothing delivering it). Your reply clears the question it
+  answers: click the row and it opens the question's thread with the reply
+  box addressed to whoever asked (`@coder `), which is also what wakes
+  them. In a direct message, a reply where the question was asked does
+  (in its thread, if it was asked in one). One reply answers
+  one question, the latest from that agent there; an earlier one stays
+  until you answer it too. Posting something else in the channel, or
+  replying in another thread, clears nothing. The ×
   clears a message without replying, and the agent is not told. Notices from the
   supervisor have nobody to reply to, so they have the × and **Clear all**, and
   a notice that an agent keeps failing clears itself once that agent's turn

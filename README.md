@@ -17,11 +17,11 @@ It is also a lab for watching agent teams fail. Most of what is interesting here
 ## Install
 
 ```bash
-pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.19.0"
+pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.20.0"
 a-team
 ```
 
-Or with [uv](https://docs.astral.sh/uv/): `uv tool install "a-team @ git+https://github.com/roelle/a-team.git@v4.19.0"`.
+Or with [uv](https://docs.astral.sh/uv/): `uv tool install "a-team @ git+https://github.com/roelle/a-team.git@v4.20.0"`.
 
 It opens your browser, shows what this machine can run agents on, and creates a team. It takes no keys; put an API key in the environment you start it from.
 
@@ -920,7 +920,7 @@ session with the plugin installed is left alone. How a note gets there depends o
 | Claude | The runner's tool hook, after each tool call |
 | Antigravity SDK | That SDK's post-tool hook can only look, so a person's mail or a repeat of 5 or more refuses one call and says why. Anything else waits for the next team tool result. |
 | OpenCode and other ACP harnesses | The end of the next team tool result; the runner counts calls itself. |
-| Any other host | The end of the next team tool result. Point the host's hooks at `python -m ateam.hook_step` if it has them. |
+| Any other host | The end of the next team tool result. Point the host's hooks at `python -m ateam.hook_step` if it has them: `tool` after a tool call, which also puts the call on the record, and `model` before a model call. |
 
 Each note is recorded as a `steer` event in `events.jsonl`.
 
@@ -950,8 +950,17 @@ the agent still knows what was hard. Who has been asked is kept in
 `question` or `blocker` sent to the operator with no reply yet, a task the
 operator owns, and a task an agent marked `blocked`. Only those two message
 kinds count, so an ordinary report stays a report, and agents are told to use
-them for that alone. A reply in the same conversation or thread clears a
-message. a-team shows the list at the top of the sidebar when it has anything on it.
+them for that alone. A message is cleared by the reply that answers it: one
+in the same place (the same thread, or the same channel or conversation
+outside any thread) that is addressed to whoever asked, by being a direct
+message to them, by an @ of them, or in a channel that wakes them on every
+post; or else one in the message's own thread. One reply answers one
+question from an agent, the latest still open, so an earlier one waits for
+its own. Something else posted in the channel, or a reply in another
+thread, clears nothing (any reply in the same conversation used to, and a
+question could leave the list unanswered). `actions.clear_waiting` clears
+without replying. a-team shows the list at the top of the sidebar when it
+has anything on it.
 A task the operator owns is how the app's "Follow up later" works: it makes one
 from a message, with no channel, and the ✓ on its row marks it done. A task
 the operator gives themself tells no agent; nothing is posted or sent.
@@ -1538,6 +1547,10 @@ The agent makes the call again, and that one goes through.
   MCP servers. Where nothing can stop a call before it runs (agy's and
   Codex's own tools) what it triggered is a note at the agent's next
   step: after the first use, before the second.
+- A call made through a host's one generic MCP-call tool, which names
+  the real tool in its arguments (`ToolName`, `Arguments`), is matched as
+  the call it makes: `send_to_teammate(user)` comes up however the host
+  made the call. A trigger on the generic tool's own name still matches.
 - Each showing is a `triggered` event in `events.jsonl` (agent, tool,
   what was shown). State is per agent in `<team_dir>/triggers/<agent>.json`.
 - On by default; it only does anything once a memory or norm names
@@ -1620,6 +1633,15 @@ round again, and the record moves toward the memories that help.
   its score, whether it is shown, and the calls with no memory yet.
   `"memory_triggers": {"learn": false}` turns learning off and leaves
   written triggers as they were.
+- **What it learns from is the turn's tool calls on the record.** The
+  Claude, ACP, Codex and SDK runners record each call as it finishes. A
+  host that runs its agents' tools itself (agy, or anything on the host
+  runner) records them through its post-tool hook, `python -m
+  ateam.hook_step tool`, which the agy plugin installs: in a supervised
+  turn it writes the call with what it returned or how it failed, read
+  from the common names a host gives them (the module's docstring lists
+  them). Without that hook such a host's turns leave no calls to learn
+  from, and Activity shows none.
 
 ## agy CLI plugin (the installable form)
 
@@ -2281,7 +2303,7 @@ Releases follow [Semantic Versioning](https://semver.org/), tagged
 in [RELEASING.md](RELEASING.md). Pin a tag rather than `main`:
 
 ```bash
-pip install "a-team @ git+https://github.com/roelle/a-team.git@v4.19.0"
+pip install "a-team @ git+https://github.com/roelle/a-team.git@v4.20.0"
 python -m ateam.supervisor --version
 ```
 
@@ -2296,7 +2318,8 @@ The version promises this surface, and only this:
   directory's record (`bus.jsonl`, `tasks.jsonl`, `reviews.jsonl`,
   `events.jsonl`, `channels.json`, `models.jsonl`); `ateam.record` and
   `ateam.actions`; the `Runner`, `Transport`, memory and observer seams; and
-  the payloads `hook_pre_tool_use` and `hook_stop` accept and emit.
+  the payloads `hook_pre_tool_use`, `hook_step` and `hook_stop` accept and
+  emit.
 
 Not covered: other modules' internals, the wording of prompts and briefs
 given to agents, `evals/` and `bench/`.

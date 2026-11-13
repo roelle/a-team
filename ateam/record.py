@@ -522,9 +522,22 @@ class Record:
 
         Only those kinds of message count, not ordinary mail: whether a
         report is really a question is not something to guess from its text.
-        A reply from the operator in the same conversation or thread clears
-        a message, and so does actions.clear_waiting. A notice that an agent
-        is failing (its "failing" field) clears once that agent's turn works.
+
+        A message is cleared by the reply that answers it, and by
+        actions.clear_waiting. A reply answers the latest message still
+        open, in the same place (the same thread, or the same channel or
+        conversation outside any thread), from each agent it is addressed
+        to: the agent a direct message is to, an agent it mentions, an agent
+        the channel wakes on every post. Failing that, it answers the
+        message whose thread it is in. So one reply answers one question
+        from an agent, and an earlier one waits for a reply of its own.
+        Posting something else in a channel does not answer what was asked
+        there, and nor does a reply in another thread; any reply in the
+        same conversation used to, so a question could leave the list
+        unanswered and unseen.
+
+        A notice that an agent is failing (its "failing" field) clears once
+        that agent's turn works.
         """
         from . import tasks as tasks_lib
         rows = []
@@ -533,27 +546,47 @@ class Record:
             rows.append({"kind": "stopped", "reason": reason, "ts": ""})
         operator = self.operator()
         names = {"user", operator.get("name"), *operator.get("handles", [])} - {"", None}
-        replied: dict[tuple, int] = {}          # by place in the log: ts is to the second
         cleared = {r.get("id") for r in _jsonl(self.team_dir / CLEARED)}
         last_turn = self._last_turns()
+        chans = self.channels()
         waiting = []
+        answered: set[int] = set()              # by place in the log: ts is to the second
+        asked: dict[str, int] = {}              # a question's id -> its place in the log
+        still: dict[tuple, list[int]] = {}      # (where, who asked) -> theirs not yet answered
         for n, m in enumerate(self.bus()):
             sender = m.get("from")
             where = (("channel", m["channel"]) if m.get("channel")
                      else ("dm", m.get("to") if sender == "user" else sender))
+            place = ("thread", m["thread"]) if m.get("thread") else where
             if sender == "user":
-                replied[where] = n
-                if m.get("thread"):
-                    replied[("thread", m["thread"])] = n
+                if m.get("deleted"):
+                    continue
+                if m.get("channel"):
+                    to = set(m.get("mentions") or []) | set(
+                        (chans.get(m["channel"]) or {}).get("wake") or [])
+                else:
+                    to = {m.get("to")}
+                found = False
+                for who in to:
+                    mine = still.get((place, who)) or []
+                    while mine:
+                        k = mine.pop()
+                        if k not in answered:
+                            answered.add(k)
+                            found = True
+                            break
+                # In a question's own thread, and answering nothing later in it.
+                if not found and m.get("thread") in asked:
+                    answered.add(asked[m["thread"]])
             elif m.get("kind") in ("question", "blocker") and (
                     m.get("to") in names or names & set(m.get("mentions") or [])):
                 waiting.append((n, m, where))
+                still.setdefault((place, sender), []).append(n)
+                if m.get("id"):
+                    asked[m["id"]] = n
         for n, m, where in waiting:
-            keys = [("thread", m["thread"])] if m.get("thread") else [where]
-            if m.get("id"):
-                keys.append(("thread", m["id"]))
             key = m.get("id") or _key(m)
-            if any(replied.get(k, -1) > n for k in keys) or key in cleared:
+            if n in answered or key in cleared:
                 continue
             if last_turn.get(m.get("failing"), {}).get("event") == "turn":
                 continue

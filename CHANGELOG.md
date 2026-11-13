@@ -7,6 +7,60 @@ the README for what counts as the public surface.
 
 ## [Unreleased]
 
+## [4.20.0] - 2026-11-12
+
+### Added
+- **Tool calls on the record from hosts that run their own tools.** The
+  Claude, ACP, Codex and SDK runners record each tool call; the host and
+  agy runners never saw them, so nothing was learned from those turns
+  and Activity showed no calls. `python -m ateam.hook_step tool`, the
+  post-tool hook the agy plugin already installs, now writes a
+  `tool_call` event in a supervised turn where the runner does not: the
+  call, and what it returned or how it failed, read from whichever of
+  the common names the host sends (`tool_response`, `result`, `output`,
+  `error`, a non-zero `exitCode`, an MCP result's `isError`). A runner
+  says whether it records calls itself (`Runner.records_calls`, per agent
+  on a mixed team) and the supervisor writes that into the turn's entry
+  in `inflight.json` (`"calls"`), so no call is recorded twice.
+- **Triggers see through a host's generic MCP call.** A host with one
+  tool for every MCP server names the real tool in its arguments
+  (`ToolName`, `Arguments`). `triggers.unwrap` reads the call inside, as
+  `tools_off` already did: a trigger on `send_to_teammate(user)` holds
+  the call however the host made it, the `triggered` event carries the
+  inner call, and trigger learning and recall's "opened it itself" check
+  read `read_memory` through the wrapper. A trigger on the generic
+  tool's own name still matches.
+- **A Waiting on you row opens the question's own thread**, in a channel
+  with the reply box addressed to whoever asked (`@coder `), unless you
+  are already writing something there.
+
+### Changed
+- **A reply clears the question it answers, not every question nearby.**
+  Any post by the operator in a channel, in any of its threads, cleared
+  every question asked in that channel outside a thread, and a reply in
+  a thread cleared every question in it. Now a reply clears the latest
+  question still open, in the same thread (or the same channel or
+  conversation outside any thread), from each agent it is addressed to:
+  the agent a direct message is to, an agent it mentions, an agent the
+  channel wakes on every post. Failing that it clears the question whose
+  thread it is in. An earlier question from the same agent waits for a
+  reply of its own, and the × still clears without replying. A reply
+  that was deleted answered nothing.
+
+### Fixed
+- **Waiting on you kept up only when something else on the team moved.**
+  The page looked again when a turn began or ended, not when a question
+  arrived or you answered one, so with the team stopped the list stayed
+  as it was until a reload. It now looks again for both.
+- **A thread opened twice at once was drawn twice.** A Waiting on you
+  row and the view it opens (jumping to what is new) could open the same
+  thread together; the second drew over the first and lost where the
+  unread began, and anything in the reply box. One opening now serves
+  both.
+- **A hook or a trigger whose observer would not load could end the
+  process.** `observer.load` exits on a bad `ATEAM_OBSERVER`; the step
+  hook and the `triggered` event now treat that as a call not recorded.
+
 ## [4.19.0] - 2026-11-12
 
 ### Fixed
@@ -1427,7 +1481,8 @@ MCP memory server.
 ## [1.0] - 2026-09-08
 Milestone tag (pre-semver).
 
-[Unreleased]: https://github.com/roelle/a-team/compare/v4.19.0...HEAD
+[Unreleased]: https://github.com/roelle/a-team/compare/v4.20.0...HEAD
+[4.20.0]: https://github.com/roelle/a-team/compare/v4.19.0...v4.20.0
 [4.19.0]: https://github.com/roelle/a-team/compare/v4.18.0...v4.19.0
 [4.18.0]: https://github.com/roelle/a-team/compare/v4.17.0...v4.18.0
 [4.17.0]: https://github.com/roelle/a-team/compare/v4.16.0...v4.17.0

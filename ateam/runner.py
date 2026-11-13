@@ -192,6 +192,12 @@ class Runner(ABC):
     #: never that the team produced none.
     supports_audit = False
 
+    #: True if this runner puts each tool call on the record itself
+    #: (observer.record_tool_call). Where it does not, the host's post-tool
+    #: hook does (ateam.hook_step), and the hook must not where the runner
+    #: already has: the supervisor writes this into the turn's ledger entry.
+    records_calls = False
+
     #: True if this runner confines agents to granted workspace directories.
     #: When False, containment is whatever the underlying host enforces, which
     #: ateam neither sets nor can observe: roster `workspaces` and

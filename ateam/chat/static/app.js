@@ -500,6 +500,15 @@ function navItem(v, label, extra = "", opts) {
   return `<li class="${active ? "active" : ""} ${unread ? "unread" : ""} ${mentioned ? "mentioned" : ""} ${opts?.cls || ""}" data-view='${esc(JSON.stringify(v))}'>${label}${at}${extra}</li>`;
 }
 
+// The thread's reply box, addressed to whoever asked, unless something is
+// already being written there.
+function answerTo(agent) {
+  const ta = $("#drawer-thread .thread-compose textarea");
+  if (!ta) return;
+  if (!ta.value.trim()) ta.value = `@${agent} `;
+  ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
+}
+
 // What needs a person, first and only when there is something: a-team decides
 // what counts, and a reply, a closed task or the × clears it. A notice has no
 // one to reply to, so the × and "Clear all" are the way to clear one.
@@ -512,8 +521,13 @@ function needsItem(n) {
     const key = n.key || n.id;   // key: also for a message from before ids
     const clear = key && !S.state.member
       ? `<button class="need-clear" data-clear="${esc(key)}" title="Clear without replying. It stays in the conversation, and ${n.from === "supervisor" ? "nothing is sent" : esc(nameOf(n.from)) + " is not told"}." aria-label="Clear">×</button>` : "";
+    // In a channel a reply answers it in its own thread, or by naming who
+    // asked (which is also what wakes them): so the row opens that thread
+    // with the @ already written.
+    const th = n.thread || (n.channel && n.id) || "";
+    const answer = n.channel && n.from !== "supervisor" ? ` data-answer="${esc(n.from)}"` : "";
     return row(n.kind === "blocker" ? "bad" : "", `${clear}<span class="what">${esc(nameOf(n.from))}</span> ${text(n.content)}`,
-      `${n.kind} from ${n.from}: ${n.content}`, `data-view='${esc(JSON.stringify(v))}'${n.thread ? ` data-then-thread="${esc(n.thread)}"` : ""}`);
+      `${n.kind} from ${n.from}: ${n.content}`, `data-view='${esc(JSON.stringify(v))}'${th ? ` data-then-thread="${esc(th)}"` : ""}${answer}`);
   }
   if (n.kind === "duty")
     return row("bad", `<a href="${esc(boardURL(n.id))}"><span class="what">${esc(nameOf(n.owner))}'s duty is behind</span> ${text(n.title)}</a>${talkLink(n)}`,
@@ -860,7 +874,22 @@ function openDrawer(tab) {
 // A reply arriving re-renders the thread's messages only: the reply box, and
 // what is being typed in it, stays as it is. What is typed is also kept under
 // the thread (S.drafts), so another thread or a reload does not lose it.
+// One at a time for a thread: two things can open the same one at once (a
+// Waiting on you row, and the view it opens jumping to what is new), and the
+// second used to draw over the first, losing where the unread began and
+// whatever was in the reply box. A request that arrives meanwhile has the
+// thread drawn once more after, so a reply that landed in between shows.
+let threadOpening = null;
 async function openThread(id) {
+  if (threadOpening?.id === id) { threadOpening.again = true; return threadOpening.promise; }
+  const mine = threadOpening = { id, again: false };
+  mine.promise = (async () => {
+    await drawThread(id);
+    while (mine.again && S.thread === id) { mine.again = false; await drawThread(id); }
+  })();
+  try { await mine.promise; } finally { if (threadOpening === mine) threadOpening = null; }
+}
+async function drawThread(id) {
   // Opened, as against drawn again because a reply arrived while it was open.
   const opening = S.thread !== id || $("#drawer").classList.contains("hidden") || $("#drawer-thread").classList.contains("hidden");
   if (S.thread !== id && S.view) remember(`${hashFor(S.view)}&thread=${enc(id)}`);
@@ -891,7 +920,10 @@ async function openThread(id) {
   const where = root?.channel ? { channel: root.channel } : { to: (root?.from === "user" ? root?.to : root?.from) };
   const canReply = root && root.from !== "supervisor" && (root.channel || root.from === "user" || root.to === "user");
   const html = messages.map((m) => (newAt && m.id === newAt ? `<div class="new-divider"><span>new</span></div>` : "") + msgHTML(m, { inThread: true })).join("");
-  if (kept && box.querySelector(".thread-msgs")) {
+  // Looked for again now: the thread may have been drawn while this was
+  // fetching (opened twice at once), and its reply box may have text in it.
+  const here = kept || box.querySelector(`.thread-compose[data-thread="${CSS.escape(id)}"]`);
+  if (here && box.querySelector(".thread-msgs")) {
     box.querySelector(".thread-msgs").innerHTML = html;
     hydrateLinks(box);
   } else {
@@ -1187,6 +1219,9 @@ function listen() {
       if (S.thread && (item.thread === S.thread || item.id === S.thread)) openThread(S.thread);
       renderSidebar();
       if (item.from !== "user" && item.from !== "supervisor" && (item.to === "user" || mentionsMe(item))) document.title = `• a-team`;
+      // What is waiting on you changes with a question asked and with your
+      // reply to one, whether or not anything else on the team moves.
+      if (item.from === "user" || item.kind === "question" || item.kind === "blocker") later();
     } else if (stream === "edits") {
       applyEdit(item);
     } else later();
@@ -1220,7 +1255,9 @@ document.addEventListener("click", async (e) => {
   const nav = e.target.closest("[data-view]");
   if (nav) {
     e.preventDefault(); await openView(JSON.parse(nav.dataset.view));
-    return nav.dataset.thenThread ? openThread(nav.dataset.thenThread) : undefined;
+    if (!nav.dataset.thenThread) return;
+    await openThread(nav.dataset.thenThread);
+    return nav.dataset.answer ? answerTo(nav.dataset.answer) : undefined;
   }
   const pnl = e.target.closest("[data-panel]");
   if (pnl) return openDrawer(pnl.dataset.panel);

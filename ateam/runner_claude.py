@@ -139,6 +139,7 @@ def _team_tool(name: str) -> str:
 
 class ClaudeRunner(Runner):
     label = "claude"
+    records_calls = True
     # Audit: the hooks in _hooks see every call, in the process that runs it.
     # Scoping: a disallowed tool's definition is removed from the request, so
     # the model never sees it. Containment is not provided: file tools are held

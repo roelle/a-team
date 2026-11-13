@@ -38,6 +38,7 @@ WORKER = types.SubagentConfig(
 
 class SdkRunner(Runner):
     label = "sdk"
+    records_calls = True
     # Audit and capability scoping are real here: the audit hook is installed
     # per session in sdk_agent.build_config, and roster `tools_off` /
     # `workers` reach build_config as disabled_tools, so the schema for a

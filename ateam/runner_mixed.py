@@ -75,6 +75,13 @@ class MixedRunner(Runner):
         """
         return all(self._sub(a).supports_capability_scoping for a in self._specs)
 
+    def records_calls_for(self, agent: str) -> bool:
+        """Whether this agent's runner records its tool calls itself."""
+        try:
+            return bool(self._sub(agent).records_calls)
+        except Exception:
+            return False
+
     def capability_report(self) -> dict:
         """Per-agent flags, so a mixed team can say exactly who is covered."""
         return {a: {"runner": self.runner_spec(a),

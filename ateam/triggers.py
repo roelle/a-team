@@ -186,6 +186,29 @@ def with_triggers(body: str, triggers: list[str]) -> str:
 
 # --- matching a call -----------------------------------------------------------------
 
+def unwrap(tool: str, args: dict) -> tuple[str, dict]:
+    """The call a host's generic MCP-call tool is making, or the call as it
+    was given. Such a host has one tool for every MCP server and names the
+    real one in its arguments ({"ServerName", "ToolName", "Arguments"}), so
+    a trigger on save_memory or send_to_teammate(user) has to see through
+    it, as tools_off does (policy.check_tool_policy)."""
+    args = args if isinstance(args, dict) else {}
+    inner = next((args[k] for k in ("ToolName", "tool_name", "toolName")
+                  if isinstance(args.get(k), str) and args[k]), None)
+    if not inner:
+        return tool, args
+    for k in ("Arguments", "arguments", "args"):
+        v = args.get(k)
+        if isinstance(v, str):
+            try:
+                v = json.loads(v)
+            except ValueError:
+                continue
+        if isinstance(v, dict):
+            return inner, v
+    return inner, {}
+
+
 def tool_name(raw: str) -> str:
     """A-team's name for a call: a team tool however a host prefixes it."""
     name = str(raw or "")
@@ -399,8 +422,10 @@ def due_for(team_dir, agent: str, tool: str, args: dict) -> list[dict]:
     """Memories and norms whose triggers match this call (shown or not),
     each with the trigger that matched as "via"."""
     out = []
+    calls = [unwrap(tool, args), (tool, args)]      # what it calls, and the call as made
     for s in _sources(team_dir, agent):
-        via = next((t for t in s["triggers"] if matches(t, tool, args, team_dir)), None)
+        via = next((t for t in s["triggers"]
+                    if any(matches(t, name, a, team_dir) for name, a in calls)), None)
         if via:
             out.append({**s, "via": via})
     return out
@@ -556,13 +581,13 @@ AFTER = ("[Your last {tool} call ran; it could not be held. This is what you hav
 def hold(team_dir, agent: str, tool: str, args: dict) -> str:
     """The refusal that holds this call, or "" to let it run."""
     text = check(team_dir, agent, tool, args)
-    return HOLD.format(tool=tool_name(tool), text=text) if text else ""
+    return HOLD.format(tool=tool_name(unwrap(tool, args)[0]), text=text) if text else ""
 
 
 def after(team_dir, agent: str, tool: str, args: dict) -> str:
     """The note for a runtime that could not hold the call, or ""."""
     text = check(team_dir, agent, tool, args)
-    return AFTER.format(tool=tool_name(tool), text=text) if text else ""
+    return AFTER.format(tool=tool_name(unwrap(tool, args)[0]), text=text) if text else ""
 
 
 def _record(team_dir, agent: str, tool: str, args: dict, items: list[dict]) -> None:
@@ -570,6 +595,7 @@ def _record(team_dir, agent: str, tool: str, args: dict, items: list[dict]) -> N
     what trigger_learn judges afterwards."""
     try:
         from . import observer
+        tool, args = unwrap(tool, args)
         name = tool_name(tool)
         text = command(args) if name.lower() in SHELL else json.dumps(args, default=str)
         observer.load().record_event(
@@ -577,5 +603,5 @@ def _record(team_dir, agent: str, tool: str, args: dict, items: list[dict]) -> N
             shown=[i["key"].rsplit(":", 1)[0] for i in items],
             via=[i.get("via") or "" for i in items],
             call=text[:400], family=shape(tool, args, sub=False))
-    except Exception:
+    except (Exception, SystemExit):         # an observer that will not load exits
         pass
