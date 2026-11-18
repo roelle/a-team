@@ -7,6 +7,16 @@ the README for what counts as the public surface.
 
 ## [Unreleased]
 
+## [4.21.0] - 2026-11-18
+
+### Added
+- **Go links with more than one prefix.** ⚙ Preferences takes one prefix
+  and address per line (`go/ http://go/`, `x/ http://x/`), and `x/name` in
+  a message, a markdown link or a bookmark links to `http://x/name`. An
+  address must be http or https. One address saved by an earlier version
+  is kept as the address for `go/`. A go link may now be one character
+  after the slash (`x/a`).
+
 ## [4.20.0] - 2026-11-12
 
 ### Added
@@ -1481,7 +1491,8 @@ MCP memory server.
 ## [1.0] - 2026-09-08
 Milestone tag (pre-semver).
 
-[Unreleased]: https://github.com/roelle/a-team/compare/v4.20.0...HEAD
+[Unreleased]: https://github.com/roelle/a-team/compare/v4.21.0...HEAD
+[4.21.0]: https://github.com/roelle/a-team/compare/v4.20.0...v4.21.0
 [4.20.0]: https://github.com/roelle/a-team/compare/v4.19.0...v4.20.0
 [4.19.0]: https://github.com/roelle/a-team/compare/v4.18.0...v4.19.0
 [4.18.0]: https://github.com/roelle/a-team/compare/v4.17.0...v4.18.0

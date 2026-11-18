@@ -6,9 +6,34 @@
 // --- preferences (per browser) ------------------------------------------------------
 
 const PREFS_KEY = "agychat.prefs";
-const Prefs = Object.assign({ tz: "", hour12: true, golinks: "http://go/" },
+const Prefs = Object.assign({ tz: "", hour12: true, golinks: { go: "http://go/" } },
   (() => { try { return JSON.parse(localStorage.getItem(PREFS_KEY)) || {}; } catch { return {}; } })());
 function savePrefs() { try { localStorage.setItem(PREFS_KEY, JSON.stringify(Prefs)); } catch {} }
+
+// Go links: "x/name" in a message links to the address kept for "x" + name.
+// Earlier versions kept one address, for go/ only, as a string.
+const GO_PREFIX = /^[A-Za-z0-9][\w-]{0,31}$/;
+function goLinks() {
+  const g = Prefs.golinks;
+  const map = typeof g === "string" ? { go: g } : g && typeof g === "object" ? g : {};
+  return Object.entries(map).filter(([p, u]) => GO_PREFIX.test(p) && /^https?:\/\/\S+$/i.test(String(u)));
+}
+// One "prefix address" per line, "x/ http://x/" or "x -> http://x/"; the
+// lines it could not read come back in `bad`.
+function parseGoLinks(text) {
+  const map = {}, bad = [];
+  for (const line of String(text).split("\n").map((l) => l.trim()).filter(Boolean)) {
+    const m = line.match(/^([A-Za-z0-9][\w-]{0,31})\/?\s*(?:->|→|=)?\s*(https?:\/\/\S+)$/i);
+    if (m) map[m[1]] = m[2]; else bad.push(line);
+  }
+  return { map, bad };
+}
+function goLinkRule() {
+  const prefixes = goLinks().map(([p]) => p).sort((a, b) => b.length - a.length);
+  return prefixes.length
+    ? new RegExp(`(?<![\\w\\/.\\-])(?:${prefixes.join("|")})\\/[\\w\\-](?:[\\w\\-.\\/#?=]*[\\w\\-\\/])?`, "g")
+    : /(?!)/g;
+}
 const browserTZ = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
 const tzOf = () => Prefs.tz || browserTZ();
 
@@ -58,7 +83,7 @@ const INLINE_RULES = [
   ["bold", /\*\*([^*\n]+)\*\*/g],
   ["strike", /~~([^~\n]+)~~/g],
   ["italic", /(?<![\w*])\*([^*\s][^*\n]*)\*(?![\w*])|(?<![\w&#])_([^_\s][^_\n]*)_(?!\w)/g],
-  ["golink", /(?<![\w\/.\-])go\/[\w\-][\w\-.\/#?=]*[\w\-\/]/g],
+  ["golink", goLinkRule()],
   ["path", /(?<![\w\/.:\-])(?:~\/[\w.\-]+(?:\/[\w.\-]+)*\/?|\.{1,2}\/[\w.\-]+(?:\/[\w.\-]+)*\/?|\/[\w.~\-]+(?:\/[\w.\-]+)+\/?|[\w\-][\w.\-]*(?:\/[\w.\-]+)+\.[A-Za-z0-9]{1,8})/g],
   ["mention", /(?<![\w@&#])@([A-Za-z0-9](?:[\w-]|\.(?=\w))*)/g],
   ["channel", /(?<![\w&#\/])#([a-z0-9][a-z0-9_-]{0,39})(?![\w-])/g],
@@ -68,7 +93,8 @@ const INLINE_RULES = [
 function href(u) {
   const raw = unesc(u);
   if (/^https?:\/\//i.test(raw)) return escHTML(raw);
-  if (/^go\//.test(raw)) return escHTML(Prefs.golinks.replace(/\/?$/, "/") + raw.slice(3));
+  for (const [p, base] of goLinks())
+    if (raw.startsWith(p + "/")) return escHTML(base.replace(/\/?$/, "/") + raw.slice(p.length + 1));
   return null;
 }
 
@@ -225,8 +251,9 @@ function openPrefs(onSaved) {
     <label>Clock</label>
     <select name="hour12"><option value="1" ${Prefs.hour12 ? "selected" : ""}>12-hour (3:04 PM)</option><option value="0" ${Prefs.hour12 ? "" : "selected"}>24-hour (15:04)</option></select>
     <label>Go links</label>
-    <input type="text" name="golinks" value="${escHTML(Prefs.golinks)}" placeholder="http://go/">
-    <div class="hint">"go/name" in a message links to this address + name.</div>
+    <textarea name="golinks" rows="3" placeholder="go/ http://go/">${escHTML(goLinks().map(([p, u]) => `${p}/ ${u}`).join("\n"))}</textarea>
+    <div class="hint">One per line: a prefix and an address. "go/name" in a message links to the address for go/ + name.</div>
+    <div class="hint golinks-bad" style="color:var(--bad)"></div>
     <div class="hint" style="margin-top:8px">Now: ${escHTML(fmtTime(Date.now() / 1000))}</div>
     <div class="modal-actions"><button type="button" class="btn ghost" data-cancel>Cancel</button><button class="btn">Save</button></div>
   </form></div>`;
@@ -236,7 +263,12 @@ function openPrefs(onSaved) {
   form.onsubmit = (e) => {
     e.preventDefault(); const fd = new FormData(form);
     Prefs.tz = fd.get("tz") || ""; Prefs.hour12 = fd.get("hour12") === "1";
-    Prefs.golinks = (fd.get("golinks") || "http://go/").trim();
+    const go = parseGoLinks(fd.get("golinks") || "");
+    if (go.bad.length) {
+      dlg.querySelector(".golinks-bad").textContent = `Not a prefix and an http(s) address: ${go.bad.join("; ")}`;
+      return;
+    }
+    Prefs.golinks = go.map; INLINE_RULES.find(([k]) => k === "golink")[1] = goLinkRule();
     savePrefs(); dlg.remove(); if (onSaved) onSaved();
   };
 }

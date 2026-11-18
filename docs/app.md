@@ -12,7 +12,7 @@ beside the conversation.
 ## Run it
 
 ```bash
-pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.20.0"
+pipx install "a-team @ git+https://github.com/roelle/a-team.git@v4.21.0"
 a-team
 ```
 
@@ -211,7 +211,9 @@ untick that and pick some.
 - **Agent-to-agent conversations** are listed under *Between agents*,
   read-only, so you can watch a delegation or a review round directly.
 - **What becomes a link.** Web addresses; go links (`go/name`, sent to the
-  go-link address in ⚙ Preferences, `http://go/` by default); `#channel`
+  address set for `go/` in ⚙ Preferences, `http://go/` by default; add a
+  line per prefix there, such as `x/ http://x/`, for `x/name` to link to
+  `http://x/name`); `#channel`
   (opens it); `@name` (shown by the agent's alias, and resolved as a-team
   resolves it); task ids (shown as the task's title, linked to the board);
   file paths, absolute, `~/`, or relative to the team's folders. A link
